@@ -17,7 +17,7 @@
   <meta property="og:image" content="https://plot.ph/og.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="plot.ph hero — colored bubbles representing Philippine provinces on a poverty vs spend chart">
+  <meta property="og:image:alt" content="plot.ph hero: colored bubbles representing Philippine provinces on a poverty vs spend chart">
 
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="plot.ph: Philippine public data, animated">
@@ -60,6 +60,11 @@
         download CSV, or copy a shareable link. A text version of the current view
         is below the chart.
       </p>
+      <div
+        id="last-tap-panel"
+        aria-live="polite"
+        aria-label="last tapped bubble"
+      ></div>
     </section>
 
     <aside id="controls" aria-label="controls">
@@ -169,8 +174,11 @@
       Per-capita DPWH spend uses whole-province population including HUCs. Per
       capita GDP uses PSA's "province-only" measure (HUCs are published separately
       and are NOT rolled in here). Bubble size is the 2020 Census and does not
-      animate. Mountain Province and Sulu have only the 2023 poverty anchor in PSA's
-      published data; both are held constant across the panel.
+      animate. Every province carries all three published PSA anchors (2018, 2021,
+      2023); for example Sulu fell from 75.3% in 2018 to 41.5% in 2021 to 13.0% in
+      2023. Years before 2018 and after 2023 are held constant at the nearest
+      anchor and drawn with a colored border so the held-constant treatment is
+      visible.
     </p>
   </section>
 
@@ -180,6 +188,12 @@
       Sources: PSA OpenStat, PhilGEPS, PSA 2020 Census ·
       <a href="https://github.com/xmpuspus" rel="noopener">Built by Xavier Puspus</a> ·
       MIT license
+    </p>
+    <p id="data-freshness" class="freshness"></p>
+    <p class="disclaimer">
+      All data sourced from public records (PSA OpenStat, PhilGEPS, PSA Census).
+      This tool visualizes statistical indicators only. Specific allegations, if
+      any, require independent investigation and corroboration.
     </p>
   </footer>
 

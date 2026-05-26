@@ -30,9 +30,30 @@ CPI_PATH = "2M/PI/CPI/2018NEW/0012M4ACP22.px"
 MISSING_SENTINELS = {"..", "...", "-", "", None}
 
 
+CACHE_TTL_DAYS = 30
+
+
 def _cache_path(name: str) -> Path:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     return CACHE_DIR / name
+
+
+def clear_cache() -> None:
+    """Delete every cached PSA payload. Used by `etl.build --no-cache`."""
+    if not CACHE_DIR.exists():
+        return
+    for f in CACHE_DIR.glob("*.json"):
+        f.unlink()
+
+
+def _cache_fresh(path: Path, ttl_days: int = CACHE_TTL_DAYS) -> bool:
+    """True if the cache file exists and was modified within ttl_days."""
+    if not path.exists():
+        return False
+    import time
+
+    age_seconds = time.time() - path.stat().st_mtime
+    return age_seconds < ttl_days * 86400
 
 
 def _get_json(url: str) -> dict | list:
@@ -76,8 +97,9 @@ def _clean_geo_text(text: str) -> str:
 
 
 def _fetch_or_cache(name: str, fetch: callable) -> dict:
+    """Fetch with a 30-day TTL. Stale entries are re-fetched (PSA republishes annually)."""
     cache = _cache_path(name)
-    if cache.exists():
+    if _cache_fresh(cache):
         return json.loads(cache.read_text())
     payload = fetch()
     cache.write_text(json.dumps(payload))

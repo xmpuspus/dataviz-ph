@@ -70,7 +70,7 @@ These ship with the page in the on-page Methodology section so a journalist who 
 - NCR is the regional aggregate (16 cities) treated as a single bubble.
 - Poverty rates are PSA's "province-without-HUC" measure. Per-capita spend uses whole-province population (HUCs rolled into parent provinces via `psgc.HUC_TO_PARENT`). Per capita GDP uses PSA's "province-only" measure. Documented in the on-page Limits paragraph.
 - Bubble size is the 2020 Census, held constant across the animation.
-- Mountain Province and Sulu have only the 2023 poverty anchor in PSA's published data; both are held constant across the panel.
+- Every province has all three PSA poverty anchors (2018, 2021, 2023) in `poverty.json`. Sulu fell from 75.3% in 2018 to 41.5% in 2021 to 13.0% in 2023; Mountain Province from 17.1% to 15.3% to 10.5%. Anchor years render as solid bubbles; years between are linearly interpolated; years before 2018 and after 2023 are held constant at the nearest anchor and tagged `extrap: true`.
 
 ## Accessibility
 

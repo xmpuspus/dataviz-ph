@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import argparse
+import hashlib
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 from etl import interpolate, philgeps, psa_openstat, validate
@@ -23,7 +26,14 @@ def write_json(name: str, payload: object) -> None:
     print(f"wrote {out.relative_to(PUBLIC_DATA.parent.parent)}  ({out.stat().st_size:,} bytes)")
 
 
-def main() -> None:
+def main(no_cache: bool = False) -> None:
+    if no_cache:
+        psa_openstat.clear_cache()
+        from etl import psgc as _psgc
+
+        _psgc.clear_cache()
+        print(">> --no-cache: cleared PSA + PSGC caches")
+
     print(">> load provinces")
     provinces = load_provinces()
 
@@ -205,6 +215,21 @@ def main() -> None:
     ]
     write_json("stories.json", stories)
 
+    # Write manifest LAST so its sha256 covers every freshly-written file.
+    manifest = build_manifest(
+        row_counts={
+            "provinces": len(provinces_out),
+            "poverty": len(poverty),
+            "dpwh_spend_per_capita": len(dpwh_spend),
+            "all_spend_per_capita": len(all_spend),
+            "gdp_per_capita": len(gdp),
+            "cpi": len(cpi),
+            "stories": len(stories),
+            "indicators": len(indicators),
+        },
+    )
+    write_json("manifest.json", manifest)
+
     # quick coverage summary
     print()
     print("summary:")
@@ -215,7 +240,43 @@ def main() -> None:
     print(f"  gdp per capita rows: {len(gdp)}")
     print(f"  cpi years: {len(cpi)}")
     print(f"  stories: {len(stories)}")
+    print(f"  manifest built_at: {manifest['built_at']}")
+
+
+def build_manifest(row_counts: dict[str, int]) -> dict:
+    """Build a manifest of every JSON in public/data/ with sha256 + row count.
+
+    Run AFTER all data files are written. Excludes manifest.json itself.
+    """
+    files = sorted(p for p in PUBLIC_DATA.glob("*.json") if p.name != "manifest.json")
+    sha = {}
+    sizes = {}
+    for f in files:
+        h = hashlib.sha256(f.read_bytes()).hexdigest()
+        sha[f.name] = h
+        sizes[f.name] = f.stat().st_size
+    return {
+        "built_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "source_vintages": {
+            "poverty": "PSA OpenStat 1E/FY Table 1a, anchors 2018/2021/2023",
+            "cpi": "PSA OpenStat 2M/PI/CPI/2018NEW, annual averages 2018-2025",
+            "philgeps": "csiiiv/philgeps-awards-dashboard mirror, 2014-2024",
+            "gdp_per_capita": "PSA OpenStat 2A/PPA/2025 Table 9, constant 2018 prices, 2022-2024",
+            "population": "PSA 2020 Census of Population and Housing",
+            "psgc": "psgc.gitlab.io community mirror",
+        },
+        "row_counts": row_counts,
+        "file_bytes": sizes,
+        "sha256_per_file": sha,
+    }
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="plot.ph ETL build")
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Ignore on-disk caches; refetch every upstream source.",
+    )
+    args = parser.parse_args()
+    main(no_cache=args.no_cache)

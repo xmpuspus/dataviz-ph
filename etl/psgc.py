@@ -99,6 +99,14 @@ def _cache_path(name: str) -> Path:
     return CACHE_DIR / name
 
 
+def clear_cache() -> None:
+    """Delete the cached PSGC payload. Used by `etl.build --no-cache`."""
+    if not CACHE_DIR.exists():
+        return
+    for f in CACHE_DIR.glob("*.json"):
+        f.unlink()
+
+
 def _fetch_provinces_raw() -> list[dict]:
     cache = _cache_path("provinces.json")
     if cache.exists():

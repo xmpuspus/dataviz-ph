@@ -48,15 +48,17 @@ async function fetchJson(path) {
 }
 
 async function loadData() {
-  const [provinces, poverty, spend, allSpend, gdp, indicators, stories] = await Promise.all([
-    fetchJson("data/provinces.json"),
-    fetchJson("data/poverty.json"),
-    fetchJson("data/dpwh_spend_per_capita.json"),
-    fetchJson("data/all_spend_per_capita.json"),
-    fetchJson("data/gdp_per_capita.json"),
-    fetchJson("data/indicators.json"),
-    fetchJson("data/stories.json"),
-  ]);
+  const [provinces, poverty, spend, allSpend, gdp, indicators, stories, manifest] =
+    await Promise.all([
+      fetchJson("data/provinces.json"),
+      fetchJson("data/poverty.json"),
+      fetchJson("data/dpwh_spend_per_capita.json"),
+      fetchJson("data/all_spend_per_capita.json"),
+      fetchJson("data/gdp_per_capita.json"),
+      fetchJson("data/indicators.json"),
+      fetchJson("data/stories.json"),
+      fetchJson("data/manifest.json").catch(() => null),
+    ]);
   return {
     provinces,
     indicatorRows: {
@@ -67,7 +69,31 @@ async function loadData() {
     },
     indicators: Object.fromEntries(indicators.map((i) => [i.id, i])),
     stories,
+    manifest,
   };
+}
+
+function renderFreshness(manifest) {
+  const target = document.getElementById("data-freshness");
+  if (!target) return;
+  if (!manifest || !manifest.built_at) {
+    target.textContent = "";
+    return;
+  }
+  let dateText = manifest.built_at;
+  try {
+    const d = new Date(manifest.built_at);
+    dateText = d.toLocaleDateString("en-PH", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  } catch (_e) {
+    // keep raw ISO if parsing fails
+  }
+  const vintages = manifest.source_vintages || {};
+  const povertyV = vintages.poverty || "PSA 2018/2021/2023 anchors";
+  target.textContent = `Built ${dateText}. Poverty anchors: ${povertyV}.`;
 }
 
 function indexRows(rows) {
@@ -89,10 +115,16 @@ const DEFLATABLE_INDICATORS = new Set([
   "all_spend_per_capita",
 ]);
 
+// PSA CPI 2018=100 series starts at 2018. Years before that cannot be deflated
+// honestly without backcasting against the older 2006 base. We drop the bubble
+// rather than silently fall back to nominal.
+const CPI_BASE_YEAR = 2018;
+
 function indicatorValue(row, indicatorId, state) {
   if (!row) return null;
   if (DEFLATABLE_INDICATORS.has(indicatorId) && state.deflate) {
-    return row.value_real ?? row.value;
+    if (row.value_real === null || row.value_real === undefined) return null;
+    return row.value_real;
   }
   return row.value;
 }
@@ -226,6 +258,11 @@ function shortAxisName(indicatorId, state) {
   return indicatorId;
 }
 
+const IS_TOUCH =
+  typeof window !== "undefined" &&
+  window.matchMedia &&
+  window.matchMedia("(hover: none)").matches;
+
 function baseOption(story, data, state) {
   const xIndicator = story.x;
   const yIndicator = story.y;
@@ -269,6 +306,11 @@ function baseOption(story, data, state) {
     },
     tooltip: {
       trigger: "item",
+      // On touch devices ECharts' default 'mousemove|click' fires on the synthetic
+      // mouseleave of the first tap and dismisses immediately. 'click' keeps the
+      // tooltip visible until the next click anywhere.
+      triggerOn: IS_TOUCH ? "click" : "mousemove|click",
+      enterable: false,
       backgroundColor: "rgba(255,255,255,0.97)",
       borderColor: "#ddd",
       textStyle: { color: "#111" },
@@ -332,6 +374,7 @@ function buildOption(story, data, state) {
   const trailIds = [...state.sel];
   const compareSeries = buildCompareSeries(story, data, state);
 
+  const xDeflatable = DEFLATABLE_INDICATORS.has(story.x);
   const stepOptions = years.map((year) => {
     const allTrails = buildTrails(year, story, data, state);
     const trailsByPsgc = new Map(
@@ -347,14 +390,37 @@ function buildOption(story, data, state) {
     if (compareSeries) {
       stepSeries.push({ id: "compare", data: compareSeries.data });
     }
-    return {
-      series: stepSeries,
-      title: {
+    const titleBlocks = [
+      {
         text: compareSeries ? `${year} vs ${state.compareYear}` : `${year}`,
         left: "center",
         top: 10,
         textStyle: { fontSize: 48, fontWeight: 700, color: "rgba(0,0,0,0.06)" },
       },
+    ];
+    if (xDeflatable && state.deflate && year < CPI_BASE_YEAR) {
+      titleBlocks.push({
+        text:
+          "Showing nominal PHP only. PSA CPI 2018-base does not cover this year, so 2018-real values cannot be computed.",
+        left: "center",
+        top: 4,
+        textStyle: {
+          fontSize: 12,
+          fontWeight: 500,
+          color: "#a13b2d",
+          fontFamily:
+            "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial, sans-serif",
+        },
+        backgroundColor: "rgba(252, 239, 234, 0.95)",
+        borderColor: "#e6c0b5",
+        borderWidth: 1,
+        borderRadius: 4,
+        padding: [4, 10],
+      });
+    }
+    return {
+      series: stepSeries,
+      title: titleBlocks,
     };
   });
 
@@ -707,6 +773,66 @@ function downloadCsv(story, data, state) {
   }, 0);
 }
 
+// ---------- last-tapped panel (mobile) ----------
+
+function renderLastTapPanel(seriesPoint, state) {
+  const panel = document.getElementById("last-tap-panel");
+  if (!panel) return;
+  if (!seriesPoint || !seriesPoint.value || seriesPoint.value.length < 8) {
+    panel.replaceChildren();
+    return;
+  }
+  const [x, y, pop, name, year, interp, island, extrap] = seriesPoint.value;
+  const color = PALETTE[island] || "#999";
+  const xLabel = shortAxisName(state.story.x, state);
+  const yLabel = shortAxisName(state.story.y, state);
+  let noteText;
+  if (extrap) {
+    noteText = "poverty held constant from nearest PSA anchor";
+  } else if (interp) {
+    noteText = "poverty linearly interpolated between PSA anchors";
+  } else {
+    noteText = "poverty value at PSA anchor year";
+  }
+  panel.replaceChildren();
+  const head = document.createElement("div");
+  head.className = "ltp-head";
+  const dot = document.createElement("span");
+  dot.className = "ltp-dot";
+  dot.style.background = color;
+  head.appendChild(dot);
+  const headText = document.createElement("strong");
+  headText.textContent = `${name} · ${year}`;
+  head.appendChild(headText);
+  const island_lbl = document.createElement("span");
+  island_lbl.className = "ltp-island";
+  island_lbl.textContent = ISLAND_LABEL[island] || island;
+  head.appendChild(island_lbl);
+  panel.appendChild(head);
+  const rows = [
+    [xLabel, formatValue(x, state.story.x)],
+    [yLabel, formatValue(y, state.story.y)],
+    ["Population (2020)", COUNT.format(pop)],
+  ];
+  for (const [k, v] of rows) {
+    const row = document.createElement("div");
+    row.className = "ltp-row";
+    const ks = document.createElement("span");
+    ks.className = "ltp-k";
+    ks.textContent = k;
+    const vs = document.createElement("span");
+    vs.className = "ltp-v";
+    vs.textContent = v;
+    row.appendChild(ks);
+    row.appendChild(vs);
+    panel.appendChild(row);
+  }
+  const note = document.createElement("div");
+  note.className = "ltp-note";
+  note.textContent = noteText;
+  panel.appendChild(note);
+}
+
 // ---------- boot ----------
 
 async function main() {
@@ -726,6 +852,7 @@ async function main() {
   };
 
   const chart = echarts.init(root, null, { renderer: "canvas" });
+  renderFreshness(data.manifest);
 
   let rendering = false;
   function render() {
@@ -772,10 +899,28 @@ async function main() {
     renderSrTable(state.story, data, state);
   });
 
+  let lastTapPsgc = null;
+  let lastTapAt = 0;
   chart.on("click", (params) => {
     if (params.componentType !== "series" || params.seriesId !== "bubbles") return;
     const psgc = params.data && params.data.id;
-    if (psgc) toggleSel(psgc, state, render);
+    if (!psgc) return;
+    renderLastTapPanel(params.data, state);
+    if (IS_TOUCH) {
+      // First tap: show tooltip + panel only. Second tap within 4s on the same
+      // bubble: toggle selection. This stops touch users from pinning trails
+      // accidentally while they are trying to read the tooltip.
+      const now = Date.now();
+      const isRepeat = psgc === lastTapPsgc && now - lastTapAt < 4000;
+      lastTapPsgc = psgc;
+      lastTapAt = now;
+      if (isRepeat) {
+        toggleSel(psgc, state, render);
+        lastTapPsgc = null;
+      }
+      return;
+    }
+    toggleSel(psgc, state, render);
   });
 
   document.getElementById("log-toggle").addEventListener("click", () => {

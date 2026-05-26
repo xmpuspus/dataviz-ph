@@ -358,6 +358,23 @@ footer a { color: var(--ink); text-decoration: underline; }
 footer a:hover { text-decoration: none; }
 footer strong { color: var(--ink); font-weight: 600; }
 
+footer p { margin: 0.3rem 0; }
+
+footer .freshness {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+footer .freshness:empty { display: none; }
+
+footer .disclaimer {
+  font-size: 0.78rem;
+  color: var(--muted);
+  max-width: 60ch;
+  margin-top: 0.6rem;
+}
+
 #share-status {
   margin-top: 0.4rem;
   min-height: 1rem;
@@ -369,7 +386,77 @@ footer strong { color: var(--ink); font-weight: 600; }
   }
 }
 
+/* Last-tapped panel for touch devices. Hidden on hover-capable pointers. */
+#last-tap-panel {
+  display: none;
+  margin: 0.7rem 0 0;
+  padding: 0.7rem 0.85rem;
+  background: var(--soft);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+#last-tap-panel:empty { display: none; }
+
+#last-tap-panel .ltp-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.45rem;
+}
+
+#last-tap-panel .ltp-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+#last-tap-panel .ltp-island {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+#last-tap-panel .ltp-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.18rem 0;
+}
+
+#last-tap-panel .ltp-k {
+  color: var(--muted);
+  font-size: 0.82rem;
+  flex: 1;
+}
+
+#last-tap-panel .ltp-v {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+#last-tap-panel .ltp-note {
+  margin-top: 0.4rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* Show on any touch device, regardless of viewport. iPads + small Android
+   tablets benefit from a persistent panel just as much as phones. */
+@media (hover: none) {
+  #last-tap-panel:not(:empty) { display: block; }
+}
+
 @media (max-width: 600px) {
   header h1 { font-size: 1.4rem; }
   #chart { height: 500px; }
+  /* Always show on small viewports too, even if device claims hover */
+  #last-tap-panel:not(:empty) { display: block; }
 }
