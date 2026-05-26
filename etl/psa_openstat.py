@@ -18,9 +18,33 @@ import re
 from pathlib import Path
 
 import httpx
+from tenacity import (
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential_jitter,
+)
 
 API_BASE = "https://openstat.psa.gov.ph/PXWeb/api/v1/en/DB"
 CACHE_DIR = Path(__file__).resolve().parent.parent / ".etl_cache" / "psa"
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """Retry only on transient network failures and 429/5xx, never on 4xx logic errors."""
+    if isinstance(exc, (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout)):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        return code == 429 or 500 <= code < 600
+    return False
+
+
+_RETRY = retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential_jitter(initial=1, max=4, jitter=0.1),
+    retry=retry_if_exception(_is_retryable),
+    reraise=True,
+)
 
 POVERTY_PATH = "1E/FY/0021E3DF01A.px"
 POPULATION_PATH = "1A/PO/0011A6DPHH0.px"
@@ -56,6 +80,7 @@ def _cache_fresh(path: Path, ttl_days: int = CACHE_TTL_DAYS) -> bool:
     return age_seconds < ttl_days * 86400
 
 
+@_RETRY
 def _get_json(url: str) -> dict | list:
     with httpx.Client(timeout=30.0) as client:
         r = client.get(url)
@@ -63,8 +88,10 @@ def _get_json(url: str) -> dict | list:
         return r.json()
 
 
+@_RETRY
 def _post_json(url: str, query: dict) -> dict:
-    with httpx.Client(timeout=60.0) as client:
+    # 180s tolerates the slowest PSA bulk pull (poverty Geolocation has 142 items).
+    with httpx.Client(timeout=180.0) as client:
         r = client.post(url, json=query)
         r.raise_for_status()
         return r.json()

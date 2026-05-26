@@ -17,6 +17,8 @@ from pathlib import Path
 
 import httpx
 
+from etl.psa_openstat import _RETRY  # reuse the same retry policy
+
 PSGC_BASE = "https://psgc.gitlab.io/api"
 CACHE_DIR = Path(__file__).resolve().parent.parent / ".etl_cache" / "psgc"
 NCR_CODE = "130000000"  # PSGC region code for NCR; reused as virtual province key
@@ -107,14 +109,19 @@ def clear_cache() -> None:
         f.unlink()
 
 
+@_RETRY
+def _http_get(url: str) -> object:
+    with httpx.Client(timeout=30.0) as client:
+        r = client.get(url)
+        r.raise_for_status()
+        return r.json()
+
+
 def _fetch_provinces_raw() -> list[dict]:
     cache = _cache_path("provinces.json")
     if cache.exists():
         return json.loads(cache.read_text())
-    with httpx.Client(timeout=30.0) as client:
-        r = client.get(f"{PSGC_BASE}/provinces.json")
-        r.raise_for_status()
-        data = r.json()
+    data = _http_get(f"{PSGC_BASE}/provinces.json")
     cache.write_text(json.dumps(data))
     return data
 
