@@ -207,6 +207,64 @@ function lookupRow(indicatorId, psgc, year, data) {
   return null;
 }
 
+// Anchor-year cache for the projection helper. Per (indicatorId, psgc), list
+// of {year, value} for rows where interp=false && extrap=false.
+const _anchorsCache = new Map();
+function getAnchors(indicatorId, psgc, data) {
+  const key = `${indicatorId}|${psgc}`;
+  if (_anchorsCache.has(key)) return _anchorsCache.get(key);
+  const rows = data.indicatorRows[indicatorId];
+  const out = [];
+  if (rows) {
+    for (const k of Object.keys(rows)) {
+      if (!k.startsWith(`${psgc}-`)) continue;
+      const r = rows[k];
+      if (r && !r.interp && !r.extrap && r.value !== null && r.value !== undefined) {
+        out.push({ year: parseInt(k.split("-")[1], 10), value: r.value });
+      }
+    }
+    out.sort((a, b) => a.year - b.year);
+  }
+  _anchorsCache.set(key, out);
+  return out;
+}
+
+// Linear projection from the two nearest anchors. Returns the projected value
+// or null if fewer than 2 anchors are available.
+function projectValue(indicatorId, psgc, year, data) {
+  const anchors = getAnchors(indicatorId, psgc, data);
+  if (anchors.length < 2) {
+    return anchors.length === 1 ? anchors[0].value : null;
+  }
+  const first = anchors[0];
+  const last = anchors[anchors.length - 1];
+  let a, b;
+  if (year < first.year) {
+    a = first;
+    b = anchors[1];
+  } else if (year > last.year) {
+    a = anchors[anchors.length - 2];
+    b = last;
+  } else {
+    // Inside the anchor range; the existing linear_fill in the ETL already
+    // handles this. Return the value of the nearest anchor as a fallback.
+    return anchors.reduce((acc, x) =>
+      Math.abs(x.year - year) < Math.abs(acc.year - year) ? x : acc,
+    ).value;
+  }
+  if (b.year === a.year) return a.value;
+  const slope = (b.value - a.value) / (b.year - a.year);
+  let projected = a.value + slope * (year - a.year);
+  // Reasonable clipping for known indicators.
+  if (indicatorId === "poverty" || indicatorId === "dpwh_share_pct") {
+    projected = Math.max(0, Math.min(100, projected));
+  }
+  if (indicatorId.endsWith("_per_capita") || indicatorId === "population") {
+    projected = Math.max(0, projected);
+  }
+  return projected;
+}
+
 // Build per-province point for a year in the current story.
 function pointFor(psgc, year, story, data, state) {
   const info = data.provinces[psgc];
@@ -214,8 +272,27 @@ function pointFor(psgc, year, story, data, state) {
   const xRow = lookupRow(story.x, psgc, year, data);
   const yRow = lookupRow(story.y, psgc, year, data);
   if (!xRow || !yRow) return null;
-  const xVal = indicatorValue(xRow, story.x, state);
-  const yVal = indicatorValue(yRow, story.y, state);
+  let xVal = indicatorValue(xRow, story.x, state);
+  let yVal = indicatorValue(yRow, story.y, state);
+  let projected = false;
+  // When extrapolate mode is on, swap held-constant extrap values for
+  // linear-projected values from the nearest two anchors.
+  if (state.extrapolate) {
+    if (yRow.extrap) {
+      const proj = projectValue(story.y, psgc, year, data);
+      if (proj !== null) {
+        yVal = proj;
+        projected = true;
+      }
+    }
+    if (xRow.extrap) {
+      const proj = projectValue(story.x, psgc, year, data);
+      if (proj !== null) {
+        xVal = proj;
+        projected = true;
+      }
+    }
+  }
   if (xVal === null || yVal === null) return null;
   return {
     psgc,
@@ -227,6 +304,7 @@ function pointFor(psgc, year, story, data, state) {
     y: yVal,
     interp: !!yRow.interp,
     extrap: !!yRow.extrap,
+    projected,
   };
 }
 
@@ -252,6 +330,7 @@ function buildSeriesData(year, story, data, state) {
     const showLabel = isSel || outlier.has(p.psgc);
     const color = PALETTE[p.island] || "#999";
     const isAnchor = !p.interp && !p.extrap;
+    const isProjected = !!p.projected;
     return {
       id: p.psgc,
       name: p.name,
@@ -259,9 +338,10 @@ function buildSeriesData(year, story, data, state) {
       symbolSize: sizeFor(p.pop),
       itemStyle: {
         color,
-        opacity: isAnchor ? 0.88 : 0.55,
-        borderColor: isAnchor ? "#fff" : color,
-        borderWidth: isAnchor ? 0.6 : 1.5,
+        opacity: isProjected ? 0.45 : isAnchor ? 0.88 : 0.55,
+        borderColor: isProjected ? color : isAnchor ? "#fff" : color,
+        borderWidth: isProjected ? 2 : isAnchor ? 0.6 : 1.5,
+        borderType: isProjected ? "dashed" : "solid",
       },
       label: {
         show: showLabel,
@@ -965,6 +1045,7 @@ function parseHash(stories) {
   const yParam = params.get("y");
   const ctParam = (params.get("ct") || "bubbles").toLowerCase();
   const chartType = ["bubbles", "line", "bar"].includes(ctParam) ? ctParam : "bubbles";
+  const extrap = params.get("extrap");
   return {
     story,
     xIndicator: xParam || story.x,
@@ -975,6 +1056,7 @@ function parseHash(stories) {
     logX: logX === null ? !!(story && story.default_log_x) : logX === "x",
     sel: new Set(sel),
     deflate: deflate === null ? true : deflate === "real",
+    extrapolate: extrap === "on",
     hadHash: h.length > 0,
   };
 }
@@ -989,6 +1071,9 @@ function writeHash(state, view) {
   }
   if (state.chartType && state.chartType !== "bubbles") {
     params.set("ct", state.chartType);
+  }
+  if (state.extrapolate) {
+    params.set("extrap", "on");
   }
   params.set("year", state.year);
   params.set("log", state.logX ? "x" : "none");
@@ -1647,6 +1732,7 @@ async function main() {
     logX: initial.logX,
     sel: initial.sel,
     deflate: initial.deflate,
+    extrapolate: initial.extrapolate,
     view: null,
   };
 
@@ -1708,6 +1794,15 @@ async function main() {
       document.getElementById("log-toggle").textContent = state.logX
         ? "X: log"
         : "X: linear";
+      // Extrap toggle label
+      const extBtn = document.getElementById("extrap-toggle");
+      if (extBtn) {
+        extBtn.textContent = state.extrapolate
+          ? "Project past anchors: on"
+          : "Project past anchors: off";
+        extBtn.setAttribute("aria-pressed", state.extrapolate ? "true" : "false");
+        extBtn.classList.toggle("on", state.extrapolate);
+      }
       // Indicator pickers (X + Y dropdowns)
       renderIndicatorPickers(state, view, data, render);
       // Story tabs (mark active when view matches preset exactly)
@@ -1778,6 +1873,11 @@ async function main() {
 
   document.getElementById("deflate-toggle").addEventListener("click", () => {
     state.deflate = !state.deflate;
+    render();
+  });
+
+  document.getElementById("extrap-toggle").addEventListener("click", () => {
+    state.extrapolate = !state.extrapolate;
     render();
   });
 
