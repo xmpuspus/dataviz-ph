@@ -502,14 +502,17 @@ function baseOption(story, data, state) {
   const yIndicator = story.y;
   const logX = state.logX;
   return {
-    grid: { left: 90, right: 28, top: 44, bottom: 130 },
+    // Bottom margin reserves 200px for: tick labels (~30px), X picker pill (~36px),
+    // caption (italic ~14px), timeline component, and the big play button.
+    grid: { left: 60, right: 28, top: 56, bottom: 200 },
     xAxis: {
       type: logX ? "log" : "value",
-      // Indicator name moves to the HTML axis picker pill. Canvas keeps the
-      // unit + scale caveat as a smaller subtitle beneath.
+      // Indicator name lives in the HTML picker pill ABOVE this caption.
+      // nameGap places this italic caption far enough below the axis to sit
+      // under the pill, not on top of it.
       name: shortAxisCaption(xIndicator, state) + (logX ? " · log scale" : " · linear"),
       nameLocation: "middle",
-      nameGap: 56,
+      nameGap: 100,
       nameTextStyle: { fontSize: 11, color: "#8a8a8a", fontStyle: "italic" },
       min: logX ? undefined : 0,
       axisLine: { lineStyle: { color: "#ccc" } },
@@ -526,12 +529,13 @@ function baseOption(story, data, state) {
     },
     yAxis: {
       type: "value",
-      // Indicator name moves to the HTML axis picker pill (rotated, top-left).
-      // Canvas keeps the unit as a small italic subtitle.
-      name: shortAxisCaption(yIndicator, state),
+      // Y indicator name lives in the HTML picker pill at top-left of the chart.
+      // We deliberately don't put a canvas Y axis name here — it overlaps the
+      // tick labels at the chart's left edge and the pill already names it.
+      name: "",
       nameLocation: "middle",
-      nameGap: 64,
-      nameTextStyle: { fontSize: 11, color: "#8a8a8a", fontStyle: "italic" },
+      nameGap: 0,
+      nameTextStyle: { fontSize: 0 },
       min: yIndicator === "poverty_change_pp" ? undefined : 0,
       max: yIndicator === "poverty" ? 80 : undefined,
       scale: yIndicator === "poverty_change_pp",
@@ -1435,18 +1439,17 @@ function attachAxisInfoButtons(chart, view, data) {
     layer.appendChild(group);
   };
 
-  // X picker: bottom-center, above the timeline scrubber.
+  // X picker pill: bottom-center, BELOW the X axis ticks but ABOVE the italic
+  // caption. The chart's grid.bottom reserves 200px down there.
   place("x", view.x, view.y, {
     left: "50%",
-    bottom: "72px",
+    bottom: "126px",
     transform: "translateX(-50%)",
   });
-  // Y picker: top-left, vertically rotated to match the Y axis label orientation.
+  // Y picker: top-left, horizontal text.
   place("y", view.y, view.x, {
-    left: "8px",
-    top: "50%",
-    transform: "translateY(-50%) rotate(-90deg)",
-    transformOrigin: "left center",
+    left: "12px",
+    top: "8px",
   });
 }
 

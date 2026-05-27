@@ -31,17 +31,42 @@
           referrerpolicy="no-referrer"></script>
 </head>
 <body>
-  <header>
+  <!-- Slim top bar: brand on the left, preset tabs in the middle, source link on the right -->
+  <header id="topbar">
+    <a class="brand" href="/">plot.<span class="brand-tld">ph</span></a>
     <nav id="story-switcher" aria-label="story switcher" role="tablist"></nav>
-    <h1 id="story-headline"></h1>
-    <p class="tagline" id="story-tagline"></p>
-    <p class="story-why" id="story-why"></p>
-    <p class="story-source"><a id="story-source" href="#" target="_blank" rel="noopener" hidden>Source</a></p>
+    <div class="topbar-right">
+      <a id="story-source" href="#" target="_blank" rel="noopener" hidden>Source</a>
+      <a class="topbar-link" href="#methodology">Methodology</a>
+    </div>
   </header>
 
   <noscript>
     <p class="noscript">This page needs JavaScript to render the chart. The underlying data is in <a href="data/dpwh_spend_per_capita.json">dpwh_spend_per_capita.json</a>, <a href="data/gdp_per_capita.json">gdp_per_capita.json</a>, and <a href="data/poverty.json">poverty.json</a>.</p>
   </noscript>
+
+  <!-- Compact title strip: one-line headline + chart-type strip on the right -->
+  <section id="title-strip">
+    <div class="title-text">
+      <h1 id="story-headline"></h1>
+      <p class="tagline" id="story-tagline"></p>
+      <p class="story-why" id="story-why" hidden></p>
+    </div>
+    <nav id="chart-type-strip" aria-label="chart type">
+      <button type="button" class="chart-type-btn active" data-type="bubbles" aria-pressed="true" title="Bubbles">
+        <span class="ct-icon" aria-hidden="true">●</span>
+        <span class="ct-label">Bubbles</span>
+      </button>
+      <button type="button" class="chart-type-btn" data-type="line" aria-pressed="false" title="Lines">
+        <span class="ct-icon" aria-hidden="true">/\</span>
+        <span class="ct-label">Lines</span>
+      </button>
+      <button type="button" class="chart-type-btn" data-type="bar" aria-pressed="false" title="Ranks">
+        <span class="ct-icon" aria-hidden="true">▥</span>
+        <span class="ct-label">Ranks</span>
+      </button>
+    </nav>
+  </section>
 
   <main>
     <section id="chart-wrap">
@@ -103,7 +128,7 @@
 
       <div class="block">
         <h2>Selected</h2>
-        <p class="hint" id="selected-hint">Click a bubble to keep it labeled and draw its trail.</p>
+        <p class="hint" id="selected-hint">Click a bubble to keep it labeled.</p>
         <div id="selected-chips"></div>
       </div>
 
@@ -121,10 +146,10 @@
       <div class="block">
         <h2>Year <span id="year-display"></span></h2>
         <div class="year-stepper">
-          <button id="year-prev" type="button" aria-label="previous year">&#9664; Prev</button>
-          <button id="year-next" type="button" aria-label="next year">Next &#9654;</button>
+          <button id="year-prev" type="button" aria-label="previous year">&#9664;</button>
+          <button id="year-next" type="button" aria-label="next year">&#9654;</button>
         </div>
-        <label class="hint" for="compare-select">Compare with year:</label>
+        <label class="hint" for="compare-select">Compare with year</label>
         <select id="compare-select" aria-label="compare with year"></select>
       </div>
 
@@ -141,33 +166,17 @@
       <div class="block">
         <h2>Projection</h2>
         <button id="extrap-toggle" type="button" aria-pressed="false">Project past anchors: off</button>
-        <p class="hint">When on, values for years past the last PSA anchor are projected from the slope of the two nearest anchors instead of held constant. Bubbles render with a dashed border.</p>
       </div>
 
       <div class="block">
         <h2>Download</h2>
-        <button id="csv" type="button">CSV (this year)</button>
-        <button id="png" type="button">Save PNG</button>
-        <button id="share" type="button">Copy link</button>
+        <button id="csv" type="button">CSV</button>
+        <button id="png" type="button">PNG</button>
+        <button id="share" type="button">Link</button>
         <p class="hint" id="share-status" role="status" aria-live="polite"></p>
       </div>
     </aside>
   </main>
-
-  <section id="chart-type-strip" aria-label="chart type">
-    <button type="button" class="chart-type-btn active" data-type="bubbles" aria-pressed="true">
-      <span class="ct-icon ct-icon-bubbles">●</span>
-      <span class="ct-label">Bubbles</span>
-    </button>
-    <button type="button" class="chart-type-btn" data-type="line" aria-pressed="false">
-      <span class="ct-icon ct-icon-line">∿</span>
-      <span class="ct-label">Lines</span>
-    </button>
-    <button type="button" class="chart-type-btn" data-type="bar" aria-pressed="false">
-      <span class="ct-icon ct-icon-bar">▥</span>
-      <span class="ct-label">Ranks</span>
-    </button>
-  </section>
 
   <section id="sr-data" aria-label="text version of current chart" aria-live="polite">
     <h2 class="sr-only">Text version of current chart</h2>
@@ -227,7 +236,6 @@
 
   <footer>
     <p>
-      <a href="#methodology">Methodology</a> ·
       Sources: PSA OpenStat, PhilGEPS, PSA 2020 Census ·
       <a href="https://github.com/xmpuspus" rel="noopener">Built by Xavier Puspus</a> ·
       MIT license
