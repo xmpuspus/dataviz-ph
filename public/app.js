@@ -301,7 +301,12 @@ function baseOption(story, data, state) {
       splitLine: { show: true, lineStyle: { color: "#f0f0f0" } },
       axisLabel: {
         color: "#595959",
-        formatter: (v) => (yIndicator === "poverty" ? v + "%" : v.toString()),
+        formatter: (v) => {
+          if (yIndicator === "poverty") return v + "%";
+          if (v >= 1_000_000) return (v / 1_000_000).toFixed(1) + "M";
+          if (v >= 1000) return (v / 1000).toFixed(0) + "k";
+          return v.toString();
+        },
       },
     },
     tooltip: {
@@ -319,15 +324,17 @@ function baseOption(story, data, state) {
         const [x, y, pop, name, year, interp, island, extrap] = p.value;
         const color = PALETTE[island] || "#999";
         const swatch = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px;vertical-align:middle"></span>`;
-        let note;
-        if (extrap) {
-          note = "poverty held constant from nearest PSA anchor (PSA does not publish this year)";
-        } else if (interp) {
-          note = "poverty value linearly interpolated between PSA anchors";
-        } else {
-          note = "poverty value: PSA anchor year";
+        // Note describes the Y indicator's interpolation state. Skip on plain
+        // anchor-year data points where the note adds no information.
+        let noteHtml = "";
+        if (extrap || interp) {
+          const yName = (data.indicators[yIndicator] && data.indicators[yIndicator].name) ||
+            yIndicator;
+          const note = extrap
+            ? `${yName} held constant from nearest PSA anchor (PSA does not publish this year)`
+            : `${yName} linearly interpolated between PSA anchors`;
+          noteHtml = `<div style="color:#595959;font-size:11px;margin-top:6px;border-top:1px solid #eee;padding-top:4px">${escapeHtml(note)}</div>`;
         }
-        const noteHtml = `<div style="color:#595959;font-size:11px;margin-top:6px;border-top:1px solid #eee;padding-top:4px">${escapeHtml(note)}</div>`;
         return (
           `<div style="font-weight:600;margin-bottom:4px">${swatch}${escapeHtml(name)} · ${year}</div>` +
           `<div style="color:#595959;font-size:11px;margin-bottom:6px">${escapeHtml(ISLAND_LABEL[island] || island)}</div>` +
@@ -965,13 +972,13 @@ function renderLastTapPanel(seriesPoint, state) {
   const color = PALETTE[island] || "#999";
   const xLabel = shortAxisName(state.story.x, state);
   const yLabel = shortAxisName(state.story.y, state);
-  let noteText;
-  if (extrap) {
-    noteText = "poverty held constant from nearest PSA anchor";
-  } else if (interp) {
-    noteText = "poverty linearly interpolated between PSA anchors";
-  } else {
-    noteText = "poverty value at PSA anchor year";
+  let noteText = "";
+  if (extrap || interp) {
+    const yKey = state.story.y;
+    const friendly = yKey === "poverty" ? "Poverty" : "Y value";
+    noteText = extrap
+      ? `${friendly} held constant from nearest PSA anchor`
+      : `${friendly} linearly interpolated between PSA anchors`;
   }
   panel.replaceChildren();
   const head = document.createElement("div");
@@ -1006,10 +1013,12 @@ function renderLastTapPanel(seriesPoint, state) {
     row.appendChild(vs);
     panel.appendChild(row);
   }
-  const note = document.createElement("div");
-  note.className = "ltp-note";
-  note.textContent = noteText;
-  panel.appendChild(note);
+  if (noteText) {
+    const note = document.createElement("div");
+    note.className = "ltp-note";
+    note.textContent = noteText;
+    panel.appendChild(note);
+  }
 }
 
 // ---------- boot ----------

@@ -242,6 +242,32 @@ def main(no_cache: bool = False) -> None:
             "default_log_x": True,
         },
         {
+            "id": "all-spend-vs-gdp",
+            "tab_label": "Spend vs GDP",
+            "headline": "Where the money goes, where the wealth lives.",
+            "tagline": (
+                "82 provinces. 2022 to 2024. All government contracts per capita "
+                "against per-capita GDP."
+            ),
+            "why": (
+                "DPWH-vs-poverty and all-spend-vs-poverty both ask whether money "
+                "follows poverty. This one asks the opposite: does procurement "
+                "spend follow wealth? If the cloud tilts upward, procurement money "
+                "lands where GDP already is. If it tilts downward, it lands where "
+                "GDP isn't. Both indicators are already shipped, so this preset "
+                "needed zero new data."
+            ),
+            "source_url": (
+                "https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__2A__PPA/"
+            ),
+            "x": "all_spend_per_capita",
+            "y": "gdp_per_capita",
+            "size": "population_2020",
+            "panel_years": GDP_PANEL_YEARS,
+            "default_year": 2023,
+            "default_log_x": True,
+        },
+        {
             "id": "gdp-vs-poverty",
             "tab_label": "GDP vs poverty",
             "headline": "Wealthier provinces, lower poverty?",
