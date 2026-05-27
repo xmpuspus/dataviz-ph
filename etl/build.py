@@ -98,6 +98,14 @@ def main(no_cache: bool = False) -> None:
             "name": "Poverty incidence among families",
             "unit": "%",
             "source": "PSA OpenStat 1E/FY Table 1a",
+            "source_url": (
+                "https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1E__FY/"
+            ),
+            "definition": (
+                "Share of families whose per-capita income falls below the official "
+                "poverty threshold for their province, as published by the PSA in Table "
+                "1a of the Full-Year Official Poverty Statistics."
+            ),
             "vintage": (
                 "PSA Full-Year anchors at 2018, 2021, 2023. Years between anchors are "
                 "linearly interpolated; years before 2018 and after 2023 hold constant. "
@@ -113,6 +121,12 @@ def main(no_cache: bool = False) -> None:
             "name": "DPWH spend per capita",
             "unit": "PHP per person per year",
             "source": "PhilGEPS awards (DPWH subset) / PSA 2020 Census population",
+            "source_url": "https://github.com/csiiiv/philgeps-awards-dashboard",
+            "definition": (
+                "Sum of every PhilGEPS contract awarded to the Department of Public "
+                "Works and Highways that can be tied to a single province, divided by "
+                "the 2020 Census whole-province population (HUCs rolled in)."
+            ),
             "vintage": (
                 "DPWH-tagged awards 2014-2024, summed per province per year, divided "
                 "by 2020 Census whole-province population (HUCs rolled into parents). "
@@ -133,6 +147,13 @@ def main(no_cache: bool = False) -> None:
             "name": "All PhilGEPS spend per capita",
             "unit": "PHP per person per year",
             "source": "PhilGEPS awards (all agencies) / PSA 2020 Census population",
+            "source_url": "https://github.com/csiiiv/philgeps-awards-dashboard",
+            "definition": (
+                "Sum of every PhilGEPS award (any agency) attributable to a single "
+                "province via area_of_delivery, divided by the 2020 Census "
+                "whole-province population. Excludes about 20 percent of total award "
+                "value where no province tag is available."
+            ),
             "vintage": (
                 "Every PhilGEPS award 2014-2024 attributable to a single province via "
                 "area_of_delivery, summed and divided by 2020 Census whole-province "
@@ -150,6 +171,14 @@ def main(no_cache: bool = False) -> None:
             "name": "Per capita GDP",
             "unit": "PHP per person per year (constant 2018 prices)",
             "source": "PSA OpenStat 2A/PPA/2025 Table 9 (Per Capita GDP, constant 2018 prices)",
+            "source_url": (
+                "https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__2A__PPA/"
+            ),
+            "definition": (
+                "Total provincial economic output divided by population, expressed in "
+                "PHP at constant 2018 prices so values across years are directly "
+                "comparable without an inflation adjustment."
+            ),
             "vintage": (
                 "PSA province-level estimates, 2022, 2023, 2024. Already at constant 2018 "
                 "prices. HUCs are published as separate rows (Cebu City, Davao City, etc.) "
@@ -175,6 +204,13 @@ def main(no_cache: bool = False) -> None:
                 "DPWH spend per capita against poverty incidence. 82 provinces. "
                 "2014 to 2024. Hit play, or use the arrow keys."
             ),
+            "why": (
+                "DPWH is the single largest PhilGEPS-tracked spend by agency. If "
+                "infrastructure money tracks poverty reduction at all, this is where "
+                "to look first. The chart shows you whether provinces with higher "
+                "per-capita road spend also moved lower on the poverty axis."
+            ),
+            "source_url": "https://github.com/csiiiv/philgeps-awards-dashboard",
             "x": "dpwh_spend_per_capita",
             "y": "poverty",
             "size": "population_2020",
@@ -190,6 +226,14 @@ def main(no_cache: bool = False) -> None:
                 "Every province-attributable PhilGEPS contract per capita against "
                 "poverty incidence. 82 provinces, 2014 to 2024. Scrub the years."
             ),
+            "why": (
+                "DPWH alone is too narrow. This widens the lens to every PhilGEPS "
+                "contract any agency awarded that could be tied to a province via "
+                "area_of_delivery. About 20 percent of total award value carries no "
+                "usable province tag and is excluded; what remains is the broadest "
+                "per-capita procurement picture available."
+            ),
+            "source_url": "https://github.com/csiiiv/philgeps-awards-dashboard",
             "x": "all_spend_per_capita",
             "y": "poverty",
             "size": "population_2020",
@@ -205,6 +249,14 @@ def main(no_cache: bool = False) -> None:
                 "Per capita GDP (constant 2018 PHP) against poverty incidence. "
                 "Three years of PSA province data, 2022 to 2024."
             ),
+            "why": (
+                "GDP per capita is the headline wealth measure. Pairing it with "
+                "poverty incidence shows whether the two are negatively correlated "
+                "across provinces in the way most economic theory predicts, and where "
+                "the outliers sit. PSA only publishes provincial per-capita GDP from "
+                "2022 onward, so the panel is short."
+            ),
+            "source_url": "https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__2A__PPA/",
             "x": "gdp_per_capita",
             "y": "poverty",
             "size": "population_2020",

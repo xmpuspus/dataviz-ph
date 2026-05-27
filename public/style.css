@@ -92,9 +92,32 @@ input:focus-visible {
 
 header .tagline {
   color: var(--muted);
-  margin: 0 0 1.5rem;
+  margin: 0 0 0.45rem;
   font-size: 0.98rem;
 }
+
+.story-why {
+  color: var(--ink);
+  font-size: 0.9rem;
+  margin: 0 0 0.45rem;
+  max-width: 70ch;
+  line-height: 1.55;
+}
+
+.story-why:empty { display: none; }
+
+.story-source {
+  margin: 0 0 1.5rem;
+  font-size: 0.82rem;
+}
+
+.story-source a {
+  color: var(--luzon);
+  text-decoration: underline;
+}
+
+.story-source a[hidden] { display: none; }
+.story-source:has(a[hidden]) { display: none; }
 
 main {
   display: grid;
@@ -384,6 +407,94 @@ footer .disclaimer {
   main {
     grid-template-columns: minmax(0, 1fr) 240px;
   }
+}
+
+/* Axis info buttons: small "i" badges that overlay the chart axis labels. */
+#axis-info-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.axis-info-btn {
+  pointer-events: auto;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid #c6c6c6;
+  background: #fff;
+  color: #595959;
+  font-size: 11px;
+  font-weight: 700;
+  font-style: italic;
+  font-family: Georgia, "Times New Roman", serif;
+  cursor: pointer;
+  line-height: 18px;
+  text-align: center;
+}
+
+.axis-info-btn:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.axis-info-btn:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+#axis-popover {
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 0.85rem 1rem 0.75rem;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
+  z-index: 10;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+#axis-popover h3 {
+  margin: 0 0 0.45rem;
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+  padding-right: 1.4rem;
+}
+
+#axis-popover p { margin: 0 0 0.5rem; }
+
+#axis-popover .axis-popover-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+#axis-popover a {
+  font-size: 0.85rem;
+  color: var(--luzon);
+  text-decoration: underline;
+}
+
+#axis-popover .axis-popover-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 22px;
+  border-radius: 4px;
+}
+
+#axis-popover .axis-popover-close:hover {
+  background: var(--soft);
+  color: var(--ink);
 }
 
 /* Last-tapped panel for touch devices. Hidden on hover-capable pointers. */

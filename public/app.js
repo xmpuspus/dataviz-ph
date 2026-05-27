@@ -369,12 +369,44 @@ function buildCompareSeries(story, data, state) {
   };
 }
 
+function buildCompareConnectors(year, story, data, state) {
+  if (!state.compareYear || !story.panel_years.includes(state.compareYear)) return [];
+  if (state.compareYear === year) return [];
+  const out = [];
+  for (const psgc of Object.keys(data.provinces)) {
+    const live = pointFor(psgc, year, story, data, state);
+    const ghost = pointFor(psgc, state.compareYear, story, data, state);
+    if (!live || !ghost) continue;
+    const color = PALETTE[live.island] || "#999";
+    out.push({
+      id: `cmp_link_${psgc}`,
+      type: "line",
+      name: `compare_link_${psgc}`,
+      data: [
+        [ghost.x, ghost.y],
+        [live.x, live.y],
+      ],
+      symbol: "none",
+      lineStyle: { color, width: 1, opacity: 0.35, type: "dotted" },
+      tooltip: { show: false },
+      silent: true,
+      z: 0,
+      animationDurationUpdate: 600,
+    });
+  }
+  return out;
+}
+
 function buildOption(story, data, state) {
   const years = story.panel_years;
   const trailIds = [...state.sel];
   const compareSeries = buildCompareSeries(story, data, state);
 
   const xDeflatable = DEFLATABLE_INDICATORS.has(story.x);
+  // For the base option we only need an empty stub per province for the connector
+  // ids that may be active. Use union of every year's connectors so notMerge:true
+  // re-attaches them on each step.
+  const allConnectorIds = new Set();
   const stepOptions = years.map((year) => {
     const allTrails = buildTrails(year, story, data, state);
     const trailsByPsgc = new Map(
@@ -389,6 +421,11 @@ function buildOption(story, data, state) {
     }
     if (compareSeries) {
       stepSeries.push({ id: "compare", data: compareSeries.data });
+      const connectors = buildCompareConnectors(year, story, data, state);
+      for (const c of connectors) {
+        stepSeries.push(c);
+        allConnectorIds.add(c.id);
+      }
     }
     const titleBlocks = [
       {
@@ -398,6 +435,25 @@ function buildOption(story, data, state) {
         textStyle: { fontSize: 48, fontWeight: 700, color: "rgba(0,0,0,0.06)" },
       },
     ];
+    if (compareSeries) {
+      titleBlocks.push({
+        text: `Compare: ${state.compareYear}`,
+        right: 28,
+        top: 8,
+        textStyle: {
+          fontSize: 11,
+          fontWeight: 600,
+          color: "#595959",
+          fontFamily:
+            "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial, sans-serif",
+        },
+        backgroundColor: "rgba(247, 247, 248, 0.95)",
+        borderColor: "#e6e6e6",
+        borderWidth: 1,
+        borderRadius: 99,
+        padding: [3, 9],
+      });
+    }
     if (xDeflatable && state.deflate && year < CPI_BASE_YEAR) {
       titleBlocks.push({
         text:
@@ -478,6 +534,14 @@ function buildOption(story, data, state) {
         },
         ...baseTrailStubs,
         ...(compareSeries ? [{ id: "compare", type: "scatter", data: [], silent: true, z: 0 }] : []),
+        ...[...allConnectorIds].map((id) => ({
+          id,
+          type: "line",
+          data: [],
+          symbol: "none",
+          silent: true,
+          z: 0,
+        })),
       ],
     },
     options: stepOptions,
@@ -773,6 +837,121 @@ function downloadCsv(story, data, state) {
   }, 0);
 }
 
+// ---------- axis definition popover ----------
+
+function attachAxisInfoButtons(chart, story, data) {
+  // Mount two absolute-positioned info buttons over the X and Y axis label area.
+  // ECharts paints axis labels into the canvas, so we overlay our own buttons that
+  // open a popover with the indicator's definition + source link.
+  const root = document.getElementById("chart");
+  if (!root) return;
+  let layer = document.getElementById("axis-info-layer");
+  if (!layer) {
+    layer = document.createElement("div");
+    layer.id = "axis-info-layer";
+    root.appendChild(layer);
+  }
+  layer.replaceChildren();
+
+  const place = (id, indicatorId, position) => {
+    const info = data.indicators && data.indicators[indicatorId];
+    if (!info) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.id = id;
+    btn.className = "axis-info-btn";
+    btn.setAttribute("aria-label", `${info.name}: what does this measure?`);
+    btn.textContent = "i";
+    btn.style.position = "absolute";
+    Object.assign(btn.style, position);
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      showAxisPopover(btn, info);
+    });
+    btn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        showAxisPopover(btn, info);
+      }
+    });
+    layer.appendChild(btn);
+  };
+
+  // X-axis label sits centered, ~24px above the timeline (story.x).
+  place("axis-info-x", story.x, { left: "50%", bottom: "76px", transform: "translateX(-50%)" });
+  // Y-axis label rotates 90deg, vertical text on the left.
+  place("axis-info-y", story.y, { left: "16px", top: "50%", transform: "translateY(-50%)" });
+}
+
+function showAxisPopover(anchorBtn, info) {
+  closeAxisPopover();
+  const root = document.getElementById("chart");
+  if (!root) return;
+  const pop = document.createElement("div");
+  pop.id = "axis-popover";
+  pop.setAttribute("role", "dialog");
+  pop.setAttribute("aria-modal", "false");
+  const title = document.createElement("h3");
+  title.textContent = info.name;
+  pop.appendChild(title);
+  const body = document.createElement("p");
+  body.textContent = info.definition || info.vintage || "";
+  pop.appendChild(body);
+  if (info.source) {
+    const meta = document.createElement("p");
+    meta.className = "axis-popover-meta";
+    meta.textContent = `Source: ${info.source}`;
+    pop.appendChild(meta);
+  }
+  if (info.source_url) {
+    const link = document.createElement("a");
+    link.href = info.source_url;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = "Open source";
+    pop.appendChild(link);
+  }
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "axis-popover-close";
+  close.setAttribute("aria-label", "close definition");
+  close.textContent = "×";
+  close.addEventListener("click", closeAxisPopover);
+  pop.appendChild(close);
+
+  // Position next to the anchor button; clamp inside the chart bounds.
+  const aRect = anchorBtn.getBoundingClientRect();
+  const rRect = root.getBoundingClientRect();
+  pop.style.position = "absolute";
+  pop.style.left = `${Math.max(12, aRect.left - rRect.left)}px`;
+  pop.style.top = `${Math.max(12, aRect.top - rRect.top + aRect.height + 6)}px`;
+  pop.style.maxWidth = `${Math.min(360, rRect.width - 24)}px`;
+
+  root.appendChild(pop);
+
+  // Dismiss on outside click or Escape
+  setTimeout(() => {
+    document.addEventListener("click", _outsideAxisClick, { capture: true });
+    document.addEventListener("keydown", _escAxisClose);
+  }, 0);
+}
+
+function _outsideAxisClick(e) {
+  const pop = document.getElementById("axis-popover");
+  if (pop && !pop.contains(e.target)) closeAxisPopover();
+}
+
+function _escAxisClose(e) {
+  if (e.key === "Escape") closeAxisPopover();
+}
+
+function closeAxisPopover() {
+  const pop = document.getElementById("axis-popover");
+  if (pop) pop.remove();
+  document.removeEventListener("click", _outsideAxisClick, { capture: true });
+  document.removeEventListener("keydown", _escAxisClose);
+}
+
 // ---------- last-tapped panel (mobile) ----------
 
 function renderLastTapPanel(seriesPoint, state) {
@@ -863,6 +1042,21 @@ async function main() {
       // Headline + tagline update with story
       document.getElementById("story-headline").textContent = state.story.headline;
       document.getElementById("story-tagline").textContent = state.story.tagline;
+      // Per-story why + source link (both optional)
+      const whyEl = document.getElementById("story-why");
+      if (whyEl) {
+        whyEl.textContent = state.story.why || "";
+        whyEl.hidden = !state.story.why;
+      }
+      const srcEl = document.getElementById("story-source");
+      if (srcEl) {
+        if (state.story.source_url) {
+          srcEl.href = state.story.source_url;
+          srcEl.hidden = false;
+        } else {
+          srcEl.hidden = true;
+        }
+      }
       // Deflate toggle visibility + label
       const deflateBlock = document.getElementById("deflate-block");
       const deflateBtn = document.getElementById("deflate-toggle");
@@ -882,6 +1076,8 @@ async function main() {
       renderYearControls(state, render);
       // Chart
       chart.setOption(buildOption(state.story, data, state), { notMerge: true });
+      // Axis-label info buttons (overlay)
+      attachAxisInfoButtons(chart, state.story, data);
       // Selection chips
       renderSelChips(state, data, render);
       // SR mirror
@@ -935,6 +1131,20 @@ async function main() {
 
   document.getElementById("csv").addEventListener("click", () => {
     downloadCsv(state.story, data, state);
+  });
+
+  document.getElementById("png").addEventListener("click", () => {
+    const url = chart.getDataURL({
+      type: "png",
+      pixelRatio: 2,
+      backgroundColor: "#fff",
+    });
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `plot-ph-${state.story.id}-${state.year}.png`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => a.remove(), 0);
   });
 
   document.getElementById("year-prev").addEventListener("click", () => {
@@ -998,7 +1208,16 @@ async function main() {
   render();
 
   if (!initial.hadHash) {
-    state.year = state.story.panel_years[0];
+    // Start autoplay from a year that has data in the current deflate mode so
+    // viewers don't watch 4 empty frames before bubbles appear. With deflate=real
+    // we can't render pre-CPI-base years, so start at CPI_BASE_YEAR.
+    const safeFirstYear =
+      DEFLATABLE_INDICATORS.has(state.story.x) && state.deflate
+        ? Math.max(state.story.panel_years[0], CPI_BASE_YEAR)
+        : state.story.panel_years[0];
+    state.year = state.story.panel_years.includes(safeFirstYear)
+      ? safeFirstYear
+      : state.story.panel_years[0];
     render();
     setTimeout(() => {
       chart.dispatchAction({ type: "timelinePlayChange", playState: true });
