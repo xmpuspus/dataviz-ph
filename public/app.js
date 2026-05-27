@@ -201,9 +201,38 @@ function buildSeriesData(year, story, data, state) {
   });
 }
 
+// Pick the 3 most-moved provinces (largest absolute Y change between the first
+// and last year that has data for them). Used to seed auto-trails on first
+// visit so the trace effect is visible without requiring a click.
+function autoTrailProvinces(story, data, n = 3) {
+  const movements = [];
+  for (const psgc of Object.keys(data.provinces)) {
+    let first = null;
+    let last = null;
+    for (const y of story.panel_years) {
+      const yRow = data.indicatorRows[story.y][`${psgc}-${y}`];
+      if (!yRow || yRow.value === null || yRow.value === undefined) continue;
+      if (first === null) first = yRow.value;
+      last = yRow.value;
+    }
+    if (first === null || last === null) continue;
+    movements.push({ psgc, delta: Math.abs(last - first) });
+  }
+  movements.sort((a, b) => b.delta - a.delta);
+  return movements.slice(0, n).map((m) => m.psgc);
+}
+
 function buildTrails(year, story, data, state) {
+  // Selected provinces: bold trail. Auto-trail (only when nothing is selected):
+  // faint trail for the 3 most-moved provinces, so the Gapminder trace effect
+  // is visible without requiring a click.
   const trails = [];
-  for (const psgc of state.sel) {
+  const autoTrails =
+    state.sel.size === 0 ? autoTrailProvinces(story, data) : [];
+  const psgcList = [...state.sel, ...autoTrails];
+
+  for (const psgc of psgcList) {
+    const isSel = state.sel.has(psgc);
     const pts = [];
     for (const y of story.panel_years) {
       if (y > year) break;
@@ -213,16 +242,25 @@ function buildTrails(year, story, data, state) {
     if (pts.length < 2) continue;
     const info = data.provinces[psgc];
     const color = PALETTE[info.island_group] || "#999";
+    const lineOpacity = isSel ? 0.7 : 0.32;
+    const dotOpacity = isSel ? 0.9 : 0.5;
     trails.push({
       type: "line",
       name: `trail_${psgc}`,
       data: pts,
-      symbol: "none",
-      smooth: true,
-      lineStyle: { color, width: 1.5, opacity: 0.45 },
+      // Small dot at each year the bubble has data for. Gapminder signature.
+      symbol: "circle",
+      symbolSize: isSel ? 4 : 3,
+      showSymbol: true,
+      // Straight segments between true measured points. Smoothing overshoots
+      // when X swings year-to-year (e.g. spend volatility) and creates loops
+      // that misrepresent the path.
+      smooth: false,
+      lineStyle: { color, width: isSel ? 2 : 1.2, opacity: lineOpacity },
+      itemStyle: { color, opacity: dotOpacity, borderWidth: 0 },
       tooltip: { show: false },
       animationDurationUpdate: 600,
-      z: 1,
+      z: isSel ? 2 : 1,
     });
   }
   return trails;
@@ -406,7 +444,12 @@ function buildCompareConnectors(year, story, data, state) {
 
 function buildOption(story, data, state) {
   const years = story.panel_years;
-  const trailIds = [...state.sel];
+  // Pre-compute the full trail set so base-option stubs and per-step series
+  // agree on which series IDs exist. Auto-trails are added only when nothing
+  // is user-selected; otherwise the chart focuses on the user's pick.
+  const autoTrails =
+    state.sel.size === 0 ? autoTrailProvinces(story, data) : [];
+  const trailIds = [...state.sel, ...autoTrails];
   const compareSeries = buildCompareSeries(story, data, state);
 
   const xDeflatable = DEFLATABLE_INDICATORS.has(story.x);
