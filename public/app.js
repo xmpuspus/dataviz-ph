@@ -566,7 +566,13 @@ function buildCompareConnectors(year, story, data, state) {
   return out;
 }
 
-function buildOption(story, data, state) {
+function buildOption(view, data, state) {
+  if (state.chartType === "line") return buildLineOption(view, data, state);
+  if (state.chartType === "bar") return buildBarOption(view, data, state);
+  return buildBubbleOption(view, data, state);
+}
+
+function buildBubbleOption(story, data, state) {
   const years = story.panel_years;
   // Pre-compute the full trail set so base-option stubs and per-step series
   // agree on which series IDs exist. Auto-trails are added only when nothing
@@ -722,6 +728,227 @@ function buildOption(story, data, state) {
   };
 }
 
+// ---------- line chart (Y indicator over time, multi-province) ----------
+
+function buildLineOption(view, data, state) {
+  const years = view.panel_years;
+  const yId = view.y;
+  const yMeta = data.indicators[yId] || {};
+
+  // Highlight selected + auto-trail. Other provinces are faded background context.
+  const auto =
+    state.sel.size === 0 ? new Set(autoTrailProvinces(view, data)) : new Set();
+  const highlighted = new Set([...state.sel, ...auto]);
+
+  const series = [];
+  for (const psgc of Object.keys(data.provinces)) {
+    const info = data.provinces[psgc];
+    const color = PALETTE[info.island_group] || "#999";
+    const pts = [];
+    for (const y of years) {
+      const row = lookupRow(yId, psgc, y, data);
+      if (!row) {
+        pts.push(null);
+        continue;
+      }
+      const val = indicatorValue(row, yId, state);
+      pts.push(val === null ? null : val);
+    }
+    // Drop provinces with no data for this indicator at all.
+    if (pts.every((v) => v === null)) continue;
+    const isHi = highlighted.has(psgc);
+    series.push({
+      id: `line_${psgc}`,
+      name: info.name,
+      type: "line",
+      data: pts,
+      symbol: isHi ? "circle" : "none",
+      symbolSize: isHi ? 5 : 0,
+      smooth: false,
+      lineStyle: {
+        color,
+        width: isHi ? 2.2 : 1,
+        opacity: isHi ? 0.85 : 0.18,
+      },
+      itemStyle: { color, opacity: isHi ? 0.95 : 0.4 },
+      emphasis: {
+        focus: "series",
+        lineStyle: { width: 3, opacity: 1 },
+      },
+      endLabel: isHi
+        ? {
+            show: true,
+            formatter: info.name,
+            color: "#111",
+            fontSize: 11,
+            fontWeight: 600,
+            backgroundColor: "rgba(255,255,255,0.75)",
+            padding: [1, 4],
+            borderRadius: 3,
+          }
+        : { show: false },
+      z: isHi ? 2 : 1,
+    });
+  }
+
+  return {
+    grid: { left: 70, right: 120, top: 44, bottom: 60 },
+    xAxis: {
+      type: "category",
+      data: years,
+      boundaryGap: false,
+      axisLine: { lineStyle: { color: "#ccc" } },
+      axisTick: { show: false },
+      axisLabel: { color: "#595959" },
+      name: "Year",
+      nameLocation: "middle",
+      nameGap: 28,
+      nameTextStyle: { fontSize: 11, color: "#8a8a8a", fontStyle: "italic" },
+    },
+    yAxis: {
+      type: "value",
+      name: shortAxisCaption(yId, state),
+      nameLocation: "middle",
+      nameGap: 56,
+      nameTextStyle: { fontSize: 11, color: "#8a8a8a", fontStyle: "italic" },
+      scale: yId === "poverty_change_pp",
+      axisLabel: {
+        color: "#595959",
+        formatter: (v) => {
+          if (yId === "poverty" || yId === "dpwh_share_pct" ||
+              yId === "cpi_yoy_pct" || yId === "poverty_change_pp") {
+            return v + "%";
+          }
+          if (v >= 1_000_000) return (v / 1_000_000).toFixed(1) + "M";
+          if (v >= 1000) return (v / 1000).toFixed(0) + "k";
+          return v.toString();
+        },
+      },
+      splitLine: { show: true, lineStyle: { color: "#f0f0f0" } },
+    },
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "line", lineStyle: { color: "#bbb" } },
+      backgroundColor: "rgba(255,255,255,0.97)",
+      borderColor: "#ddd",
+      textStyle: { color: "#111", fontSize: 12 },
+      formatter: (params) => {
+        if (!Array.isArray(params) || !params.length) return "";
+        const year = params[0].axisValue;
+        const visible = params
+          .filter((p) => p.value !== null && p.value !== undefined)
+          .sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity))
+          .slice(0, 12);
+        let html = `<div style="font-weight:600;margin-bottom:4px">${escapeHtml(String(year))}</div>`;
+        for (const p of visible) {
+          html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color};margin-right:6px;vertical-align:middle"></span>${escapeHtml(p.seriesName)}: <b>${escapeHtml(formatValue(p.value, yId))}</b></div>`;
+        }
+        if (params.length > visible.length) {
+          html += `<div style="color:#888;font-size:11px;margin-top:4px">... ${params.length - visible.length} more</div>`;
+        }
+        return html;
+      },
+    },
+    title: {
+      text: `${yMeta.name || yId} over time`,
+      left: "center",
+      top: 8,
+      textStyle: { fontSize: 13, fontWeight: 600, color: "#444" },
+    },
+    series,
+  };
+}
+
+// ---------- bar chart (Y indicator ranked at current year) ----------
+
+function buildBarOption(view, data, state) {
+  const yId = view.y;
+  const yMeta = data.indicators[yId] || {};
+
+  // Collect (psgc, value) for the current year, drop null.
+  const rows = [];
+  for (const psgc of Object.keys(data.provinces)) {
+    const row = lookupRow(yId, psgc, state.year, data);
+    if (!row) continue;
+    const val = indicatorValue(row, yId, state);
+    if (val === null) continue;
+    rows.push({ psgc, name: data.provinces[psgc].name, value: val,
+      island: data.provinces[psgc].island_group });
+  }
+  rows.sort((a, b) => b.value - a.value);
+
+  return {
+    grid: { left: 170, right: 80, top: 48, bottom: 40 },
+    xAxis: {
+      type: "value",
+      name: shortAxisCaption(yId, state),
+      nameLocation: "middle",
+      nameGap: 28,
+      nameTextStyle: { fontSize: 11, color: "#8a8a8a", fontStyle: "italic" },
+      scale: yId === "poverty_change_pp",
+      axisLabel: {
+        color: "#595959",
+        formatter: (v) => {
+          if (yId === "poverty" || yId === "dpwh_share_pct" ||
+              yId === "cpi_yoy_pct" || yId === "poverty_change_pp") {
+            return v + "%";
+          }
+          if (v >= 1_000_000) return (v / 1_000_000).toFixed(1) + "M";
+          if (v >= 1000) return (v / 1000).toFixed(0) + "k";
+          return v.toString();
+        },
+      },
+      splitLine: { show: true, lineStyle: { color: "#f0f0f0" } },
+    },
+    yAxis: {
+      type: "category",
+      data: rows.map((r) => r.name),
+      inverse: true,
+      axisLine: { lineStyle: { color: "#ccc" } },
+      axisTick: { show: false },
+      axisLabel: { color: "#444", fontSize: 11 },
+    },
+    title: {
+      text: `${yMeta.name || yId}, ${state.year}, ranked`,
+      left: "center",
+      top: 10,
+      textStyle: { fontSize: 13, fontWeight: 600, color: "#444" },
+    },
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "shadow" },
+      backgroundColor: "rgba(255,255,255,0.97)",
+      borderColor: "#ddd",
+      textStyle: { color: "#111" },
+      formatter: (params) => {
+        if (!Array.isArray(params) || !params.length) return "";
+        const p = params[0];
+        return `<div style="font-weight:600">${escapeHtml(p.name)}</div>` +
+          `<div>${escapeHtml(yMeta.name || yId)}: <b>${escapeHtml(formatValue(p.value, yId))}</b></div>`;
+      },
+    },
+    series: [
+      {
+        id: "ranks",
+        type: "bar",
+        data: rows.map((r) => ({
+          value: r.value,
+          itemStyle: { color: PALETTE[r.island] || "#999", opacity: 0.92 },
+        })),
+        barWidth: 12,
+        label: {
+          show: true,
+          position: "right",
+          color: "#444",
+          fontSize: 10,
+          formatter: (p) => formatValue(p.value, yId),
+        },
+        emphasis: { itemStyle: { opacity: 1 } },
+      },
+    ],
+  };
+}
+
 // ---------- URL hash state ----------
 
 function parseHash(stories) {
@@ -736,10 +963,13 @@ function parseHash(stories) {
   const deflate = params.get("deflate");
   const xParam = params.get("x");
   const yParam = params.get("y");
+  const ctParam = (params.get("ct") || "bubbles").toLowerCase();
+  const chartType = ["bubbles", "line", "bar"].includes(ctParam) ? ctParam : "bubbles";
   return {
     story,
     xIndicator: xParam || story.x,
     yIndicator: yParam || story.y,
+    chartType,
     year: story && story.panel_years.includes(year) ? year : (story && story.default_year),
     compareYear: story && story.panel_years.includes(cmp) ? cmp : null,
     logX: logX === null ? !!(story && story.default_log_x) : logX === "x",
@@ -756,6 +986,9 @@ function writeHash(state, view) {
   if (view && view.isCustom) {
     params.set("x", view.x);
     params.set("y", view.y);
+  }
+  if (state.chartType && state.chartType !== "bubbles") {
+    params.set("ct", state.chartType);
   }
   params.set("year", state.year);
   params.set("log", state.logX ? "x" : "none");
@@ -1408,6 +1641,7 @@ async function main() {
     story: initial.story,
     xIndicator: initial.xIndicator,
     yIndicator: initial.yIndicator,
+    chartType: initial.chartType,
     year: initial.year,
     compareYear: initial.compareYear,
     logX: initial.logX,
@@ -1480,10 +1714,21 @@ async function main() {
       renderStorySwitcher(data.stories, state, view, render);
       // Year stepper + compare year selector
       renderYearControls(state, view, render);
+      // Chart-type strip active state
+      document.querySelectorAll(".chart-type-btn").forEach((b) => {
+        const active = b.dataset.type === state.chartType;
+        b.classList.toggle("active", active);
+        b.setAttribute("aria-pressed", active ? "true" : "false");
+      });
       // Chart (notMerge:true so a fresh axis indicator triggers full re-render)
       chart.setOption(buildOption(view, data, state), { notMerge: true });
-      // Axis-label info buttons (overlay)
-      attachAxisInfoButtons(chart, view, data);
+      // Axis-label info buttons only make sense for the bubble chart layout
+      if (state.chartType === "bubbles") {
+        attachAxisInfoButtons(chart, view, data);
+      } else {
+        const layer = document.getElementById("axis-info-layer");
+        if (layer) layer.replaceChildren();
+      }
       // Selection chips
       renderSelChips(state, data, render);
       // SR mirror
@@ -1538,6 +1783,16 @@ async function main() {
 
   document.getElementById("csv").addEventListener("click", () => {
     downloadCsv(state.view || state.story, data, state);
+  });
+
+  // Chart-type strip: switch between bubble / line / bar.
+  document.querySelectorAll(".chart-type-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const t = btn.dataset.type;
+      if (!t || t === state.chartType) return;
+      state.chartType = t;
+      render();
+    });
   });
 
   document.getElementById("png").addEventListener("click", () => {

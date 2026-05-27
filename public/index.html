@@ -139,6 +139,21 @@
     </aside>
   </main>
 
+  <section id="chart-type-strip" aria-label="chart type">
+    <button type="button" class="chart-type-btn active" data-type="bubbles" aria-pressed="true">
+      <span class="ct-icon ct-icon-bubbles">●</span>
+      <span class="ct-label">Bubbles</span>
+    </button>
+    <button type="button" class="chart-type-btn" data-type="line" aria-pressed="false">
+      <span class="ct-icon ct-icon-line">∿</span>
+      <span class="ct-label">Lines</span>
+    </button>
+    <button type="button" class="chart-type-btn" data-type="bar" aria-pressed="false">
+      <span class="ct-icon ct-icon-bar">▥</span>
+      <span class="ct-label">Ranks</span>
+    </button>
+  </section>
+
   <section id="sr-data" aria-label="text version of current chart" aria-live="polite">
     <h2 class="sr-only">Text version of current chart</h2>
     <div id="chart-sr-table" class="sr-only"></div>

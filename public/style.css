@@ -404,6 +404,50 @@ label.hint {
 #methodology a { color: var(--luzon); text-decoration: underline; }
 #methodology a:hover { text-decoration: none; }
 
+/* Chart-type strip below the main chart. Click a tile to switch viz mode. */
+#chart-type-strip {
+  display: flex;
+  gap: 0.6rem;
+  margin: 1.2rem 0 0;
+  padding: 0.6rem 0 0;
+  border-top: 1px solid var(--rule);
+  flex-wrap: wrap;
+}
+
+.chart-type-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 0.95rem 0.55rem 0.85rem;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.chart-type-btn:hover { border-color: var(--ink); }
+
+.chart-type-btn.active {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+
+.ct-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.ct-icon-line { font-family: monospace; transform: scaleY(1.8); display: inline-block; }
+.ct-icon-bar { font-family: monospace; }
+
 footer {
   margin-top: 2rem;
   padding-top: 1rem;
