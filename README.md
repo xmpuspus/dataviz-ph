@@ -6,14 +6,18 @@ Animated bubble charts of Philippine public data. Pick a story, hit play.
 
 ## What it shows
 
-Four stories, all on the same 82-province canvas:
+Four indicators, free pick on either axis:
 
-- **DPWH vs poverty.** DPWH spend per capita against poverty incidence. 82 provinces, 2014 to 2024. PHP nominal or PHP 2018-real.
-- **All government spend vs poverty.** Every province-attributable PhilGEPS contract per capita against poverty incidence. Same panel, same toggles.
-- **Spend vs GDP.** All government contracts per capita against per-capita GDP. 82 provinces, 2022 to 2024.
-- **GDP vs poverty.** PSA per-capita GDP at constant 2018 prices against poverty incidence. 82 provinces (81 with both series), 2022 to 2024.
+- **Poverty incidence among families** (PSA Full-Year, 2018/2021/2023 anchors, linear-filled to 2014 to 2024)
+- **DPWH spend per capita** (PhilGEPS DPWH-tagged contracts over 2020 Census population, 2014 to 2024, PHP nominal or PHP 2018-real)
+- **All PhilGEPS spend per capita** (every province-attributable contract, same shape as DPWH)
+- **Per capita GDP** (PSA province-level, constant 2018 PHP, 2022 to 2024)
 
-Every story uses the same UI: island-group color, log or linear X, click a bubble to pin its trail, search a province, step through years, overlay a second year for compare, save the chart as PNG, download the current year as CSV, copy a deep link.
+Pick any indicator for X, any for Y, and the chart re-fits. The panel auto-clips to the years both indicators have data for. Bubble size is always 2020 Census population.
+
+Four presets are wired as quick-start tabs: DPWH vs poverty, All gov vs poverty, Spend vs GDP, GDP vs poverty. Click a preset, the X and Y dropdowns snap to it. Change a dropdown, the tab strip shows a "Custom" pill.
+
+Every view shares the same UI: island-group color, log or linear X, the 3 most-moved provinces auto-trail by default, click a bubble to pin its own trail, search a province, step through years, overlay a second year for compare, save the chart as PNG, download the current year as CSV, copy a deep link that round-trips every state.
 
 ## How it works
 
@@ -97,7 +101,7 @@ All data sourced from public records (PSA OpenStat, PhilGEPS, PSA Census). This 
 
 ## Honest gaps
 
-- A screen-reader user can read the data table and use the year buttons, but cannot click individual bubbles to pin trails.
+- A screen-reader user can read the data table, use the year buttons, and operate the X/Y indicator dropdowns, but cannot click individual bubbles to pin trails.
 - Auto-play kicks in on the first visit (no hash). Shared links with a hash skip it.
 - The OG card at `public/og.png` is hand-designed (1200x630). Per-view OG images would need a Cloudflare Worker.
 - Compare-with-year is a same-chart overlay. A side-by-side split view is not implemented.

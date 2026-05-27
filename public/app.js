@@ -47,6 +47,43 @@ async function fetchJson(path) {
   return r.json();
 }
 
+// The "view" is the active chart configuration. It's derived from the preset
+// (state.story) the user picked plus any custom X/Y indicator overrides from
+// the dropdowns. Computed each render so panel_years is always the intersection
+// of the two indicator series' coverage.
+function makeView(state, data) {
+  const xId = state.xIndicator || state.story.x;
+  const yId = state.yIndicator || state.story.y;
+  const xMeta = data.indicators[xId];
+  const yMeta = data.indicators[yId];
+  if (!xMeta || !yMeta) {
+    return { ...state.story, isCustom: false };
+  }
+  const xYears = new Set(xMeta.panel_years || []);
+  const panel_years = (yMeta.panel_years || []).filter((y) => xYears.has(y));
+  const isCustom = xId !== state.story.x || yId !== state.story.y;
+  let default_year = state.story.default_year;
+  if (!panel_years.includes(default_year)) {
+    default_year = panel_years[panel_years.length - 1];
+  }
+  const headline = isCustom
+    ? `${yMeta.name} vs ${xMeta.name}`
+    : state.story.headline;
+  const tagline = isCustom
+    ? `Custom view. ${panel_years.length} years of overlap: ${panel_years[0]} to ${panel_years[panel_years.length - 1]}.`
+    : state.story.tagline;
+  return {
+    ...state.story,
+    x: xId,
+    y: yId,
+    panel_years,
+    default_year,
+    headline,
+    tagline,
+    isCustom,
+  };
+}
+
 async function loadData() {
   const [provinces, poverty, spend, allSpend, gdp, indicators, stories, manifest] =
     await Promise.all([
@@ -610,8 +647,12 @@ function parseHash(stories) {
   const logX = params.get("log");
   const sel = (params.get("sel") || "").split(",").filter(Boolean);
   const deflate = params.get("deflate");
+  const xParam = params.get("x");
+  const yParam = params.get("y");
   return {
     story,
+    xIndicator: xParam || story.x,
+    yIndicator: yParam || story.y,
     year: story && story.panel_years.includes(year) ? year : (story && story.default_year),
     compareYear: story && story.panel_years.includes(cmp) ? cmp : null,
     logX: logX === null ? !!(story && story.default_log_x) : logX === "x",
@@ -621,9 +662,14 @@ function parseHash(stories) {
   };
 }
 
-function writeHash(state) {
+function writeHash(state, view) {
   const params = new URLSearchParams();
   params.set("story", state.story.id);
+  // Round-trip custom indicator picks only when they diverge from the preset.
+  if (view && view.isCustom) {
+    params.set("x", view.x);
+    params.set("y", view.y);
+  }
   params.set("year", state.year);
   params.set("log", state.logX ? "x" : "none");
   params.set("deflate", state.deflate ? "real" : "nominal");
@@ -714,7 +760,7 @@ function renderSelChips(state, data, render) {
 
 // ---------- year + compare controls ----------
 
-function renderYearControls(state, render) {
+function renderYearControls(state, view, render) {
   const display = document.getElementById("year-display");
   if (display) display.textContent = String(state.year);
 
@@ -726,7 +772,7 @@ function renderYearControls(state, render) {
   off.value = "";
   off.textContent = "Off";
   select.appendChild(off);
-  for (const y of state.story.panel_years) {
+  for (const y of view.panel_years) {
     if (y === state.year) continue;
     const opt = document.createElement("option");
     opt.value = String(y);
@@ -743,7 +789,7 @@ function renderYearControls(state, render) {
 }
 
 function stepYear(state, delta, render) {
-  const years = state.story.panel_years;
+  const years = (state.view && state.view.panel_years) || state.story.panel_years;
   const idx = years.indexOf(state.year);
   const next = years[idx + delta];
   if (next === undefined) return;
@@ -753,25 +799,71 @@ function stepYear(state, delta, render) {
 
 // ---------- story switcher UI ----------
 
-function renderStorySwitcher(stories, state, render) {
+function renderStorySwitcher(stories, state, view, render) {
   const nav = document.getElementById("story-switcher");
   nav.replaceChildren();
+  // A preset tab counts as active only when the user has not deviated from
+  // its X/Y picks (i.e. view is not custom AND its story id matches).
+  const activeId = view.isCustom ? null : state.story.id;
   for (const s of stories) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.role = "tab";
-    btn.setAttribute("aria-selected", s.id === state.story.id ? "true" : "false");
-    btn.className = "story-btn" + (s.id === state.story.id ? " active" : "");
+    btn.setAttribute("aria-selected", s.id === activeId ? "true" : "false");
+    btn.className = "story-btn" + (s.id === activeId ? " active" : "");
     btn.textContent = s.tab_label || s.headline.split(".")[0];
     btn.addEventListener("click", () => {
-      if (s.id === state.story.id) return;
       state.story = s;
+      state.xIndicator = s.x;
+      state.yIndicator = s.y;
       state.year = s.default_year;
       state.logX = !!s.default_log_x;
       render();
     });
     nav.appendChild(btn);
   }
+  // Append a "Custom" pill when the user has gone off-preset.
+  if (view.isCustom) {
+    const tag = document.createElement("span");
+    tag.className = "story-btn custom-tag active";
+    tag.textContent = "Custom";
+    tag.setAttribute("aria-label", "Custom indicator selection");
+    nav.appendChild(tag);
+  }
+}
+
+// ---------- indicator picker (Gapminder X/Y dropdowns) ----------
+
+function renderIndicatorPickers(state, view, data, render) {
+  const allIndicators = Object.values(data.indicators);
+  const wireOne = (selectId, currentId, otherId, onChange) => {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    // Build options once. On subsequent renders just mutate enabled/selected,
+    // so Playwright (and screen readers) don't see flickering DOM children.
+    if (select.options.length === 0) {
+      for (const ind of allIndicators) {
+        const opt = document.createElement("option");
+        opt.value = ind.id;
+        opt.textContent = ind.name;
+        select.appendChild(opt);
+      }
+      select.onchange = () => {
+        onChange(select.value);
+        render();
+      };
+    }
+    for (const opt of select.options) {
+      opt.disabled = opt.value === otherId;
+    }
+    select.value = currentId;
+  };
+  wireOne("y-select", view.y, view.x, (val) => {
+    state.yIndicator = val;
+  });
+  wireOne("x-select", view.x, view.y, (val) => {
+    state.xIndicator = val;
+  });
 }
 
 // ---------- sr-only data table ----------
@@ -1013,11 +1105,12 @@ function renderLastTapPanel(seriesPoint, state) {
   }
   const [x, y, pop, name, year, interp, island, extrap] = seriesPoint.value;
   const color = PALETTE[island] || "#999";
-  const xLabel = shortAxisName(state.story.x, state);
-  const yLabel = shortAxisName(state.story.y, state);
+  const v = state.view || state.story;
+  const xLabel = shortAxisName(v.x, state);
+  const yLabel = shortAxisName(v.y, state);
   let noteText = "";
   if (extrap || interp) {
-    const yKey = state.story.y;
+    const yKey = v.y;
     const friendly = yKey === "poverty" ? "Poverty" : "Y value";
     noteText = extrap
       ? `${friendly} held constant from nearest PSA anchor`
@@ -1039,8 +1132,8 @@ function renderLastTapPanel(seriesPoint, state) {
   head.appendChild(island_lbl);
   panel.appendChild(head);
   const rows = [
-    [xLabel, formatValue(x, state.story.x)],
-    [yLabel, formatValue(y, state.story.y)],
+    [xLabel, formatValue(x, v.x)],
+    [yLabel, formatValue(y, v.y)],
     ["Population (2020)", COUNT.format(pop)],
   ];
   for (const [k, v] of rows) {
@@ -1075,11 +1168,14 @@ async function main() {
   const initial = parseHash(data.stories);
   const state = {
     story: initial.story,
+    xIndicator: initial.xIndicator,
+    yIndicator: initial.yIndicator,
     year: initial.year,
     compareYear: initial.compareYear,
     logX: initial.logX,
     sel: initial.sel,
     deflate: initial.deflate,
+    view: null,
   };
 
   const chart = echarts.init(root, null, { renderer: "canvas" });
@@ -1090,20 +1186,31 @@ async function main() {
     if (rendering) return;
     rendering = true;
     try {
-      const xIndicator = data.indicators[state.story.x];
-      // Headline + tagline update with story
-      document.getElementById("story-headline").textContent = state.story.headline;
-      document.getElementById("story-tagline").textContent = state.story.tagline;
-      // Per-story why + source link (both optional)
+      // Compute the active view (preset overlaid with any custom indicator picks).
+      // Clamp year to the view's effective panel before any sub-render uses it.
+      const view = makeView(state, data);
+      state.view = view;
+      if (!view.panel_years.includes(state.year)) {
+        state.year = view.default_year;
+      }
+      if (state.compareYear && !view.panel_years.includes(state.compareYear)) {
+        state.compareYear = null;
+      }
+
+      const xIndicator = data.indicators[view.x];
+      // Headline + tagline update with view (preset or custom)
+      document.getElementById("story-headline").textContent = view.headline;
+      document.getElementById("story-tagline").textContent = view.tagline;
+      // Per-story why + source link: hide on custom views (preset copy doesn't apply)
       const whyEl = document.getElementById("story-why");
       if (whyEl) {
-        whyEl.textContent = state.story.why || "";
-        whyEl.hidden = !state.story.why;
+        whyEl.textContent = view.isCustom ? "" : view.why || "";
+        whyEl.hidden = view.isCustom || !view.why;
       }
       const srcEl = document.getElementById("story-source");
       if (srcEl) {
-        if (state.story.source_url) {
-          srcEl.href = state.story.source_url;
+        if (!view.isCustom && view.source_url) {
+          srcEl.href = view.source_url;
           srcEl.hidden = false;
         } else {
           srcEl.hidden = true;
@@ -1122,29 +1229,32 @@ async function main() {
       document.getElementById("log-toggle").textContent = state.logX
         ? "X: log"
         : "X: linear";
-      // Story tabs
-      renderStorySwitcher(data.stories, state, render);
+      // Indicator pickers (X + Y dropdowns)
+      renderIndicatorPickers(state, view, data, render);
+      // Story tabs (mark active when view matches preset exactly)
+      renderStorySwitcher(data.stories, state, view, render);
       // Year stepper + compare year selector
-      renderYearControls(state, render);
-      // Chart
-      chart.setOption(buildOption(state.story, data, state), { notMerge: true });
+      renderYearControls(state, view, render);
+      // Chart (notMerge:true so a fresh axis indicator triggers full re-render)
+      chart.setOption(buildOption(view, data, state), { notMerge: true });
       // Axis-label info buttons (overlay)
-      attachAxisInfoButtons(chart, state.story, data);
+      attachAxisInfoButtons(chart, view, data);
       // Selection chips
       renderSelChips(state, data, render);
       // SR mirror
-      renderSrTable(state.story, data, state);
+      renderSrTable(view, data, state);
       // URL hash
-      writeHash(state);
+      writeHash(state, view);
     } finally {
       rendering = false;
     }
   }
 
   chart.on("timelinechanged", (e) => {
-    state.year = state.story.panel_years[e.currentIndex];
-    writeHash(state);
-    renderSrTable(state.story, data, state);
+    const panel = (state.view && state.view.panel_years) || state.story.panel_years;
+    state.year = panel[e.currentIndex];
+    writeHash(state, state.view);
+    if (state.view) renderSrTable(state.view, data, state);
   });
 
   let lastTapPsgc = null;
@@ -1182,7 +1292,7 @@ async function main() {
   });
 
   document.getElementById("csv").addEventListener("click", () => {
-    downloadCsv(state.story, data, state);
+    downloadCsv(state.view || state.story, data, state);
   });
 
   document.getElementById("png").addEventListener("click", () => {
@@ -1191,9 +1301,11 @@ async function main() {
       pixelRatio: 2,
       backgroundColor: "#fff",
     });
+    const v = state.view || state.story;
+    const name = v.isCustom ? `${v.x}-vs-${v.y}` : v.id;
     const a = document.createElement("a");
     a.href = url;
-    a.download = `plot-ph-${state.story.id}-${state.year}.png`;
+    a.download = `plot-ph-${name}-${state.year}.png`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => a.remove(), 0);
@@ -1232,15 +1344,16 @@ async function main() {
   window.addEventListener("keydown", (e) => {
     const tag = (e.target.tagName || "").toLowerCase();
     if (tag === "input" || tag === "textarea" || tag === "select") return;
+    const panel = (state.view && state.view.panel_years) || state.story.panel_years;
     if (e.key === "ArrowRight") {
       stepYear(state, +1, render);
     } else if (e.key === "ArrowLeft") {
       stepYear(state, -1, render);
     } else if (e.key === "Home") {
-      state.year = state.story.panel_years[0];
+      state.year = panel[0];
       render();
     } else if (e.key === "End") {
-      state.year = state.story.panel_years[state.story.panel_years.length - 1];
+      state.year = panel[panel.length - 1];
       render();
     }
   });
@@ -1249,6 +1362,8 @@ async function main() {
   window.addEventListener("hashchange", () => {
     const next = parseHash(data.stories);
     state.story = next.story;
+    state.xIndicator = next.xIndicator;
+    state.yIndicator = next.yIndicator;
     state.year = next.year;
     state.compareYear = next.compareYear;
     state.logX = next.logX;
@@ -1263,13 +1378,12 @@ async function main() {
     // Start autoplay from a year that has data in the current deflate mode so
     // viewers don't watch 4 empty frames before bubbles appear. With deflate=real
     // we can't render pre-CPI-base years, so start at CPI_BASE_YEAR.
+    const panel = state.view.panel_years;
     const safeFirstYear =
-      DEFLATABLE_INDICATORS.has(state.story.x) && state.deflate
-        ? Math.max(state.story.panel_years[0], CPI_BASE_YEAR)
-        : state.story.panel_years[0];
-    state.year = state.story.panel_years.includes(safeFirstYear)
-      ? safeFirstYear
-      : state.story.panel_years[0];
+      DEFLATABLE_INDICATORS.has(state.view.x) && state.deflate
+        ? Math.max(panel[0], CPI_BASE_YEAR)
+        : panel[0];
+    state.year = panel.includes(safeFirstYear) ? safeFirstYear : panel[0];
     render();
     setTimeout(() => {
       chart.dispatchAction({ type: "timelinePlayChange", playState: true });
