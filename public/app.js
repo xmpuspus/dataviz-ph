@@ -1,4 +1,4 @@
-// plot.ph — story switcher, inflation toggle, CSV download, a11y mirror table,
+// plot.ph: story switcher, inflation toggle, CSV download, a11y mirror table,
 // compare-two-years overlay, keyboard scrubber.
 
 const PALETTE = {

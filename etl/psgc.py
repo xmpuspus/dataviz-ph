@@ -43,7 +43,7 @@ ALIASES: dict[str, str] = {
     "dinagat island": "Dinagat Islands",  # PhilGEPS uses singular
 }
 
-# Names that should NOT be mapped — they belong to provinces that don't exist
+# Names that should NOT be mapped. They belong to provinces that don't exist
 # as separate units in our 82-unit panel. Returning None keeps them out of the
 # data without silently overwriting the rolled-up parent's value.
 # Maguindanao split into del Norte / del Sur in 2022 but gitlab.io still shows
