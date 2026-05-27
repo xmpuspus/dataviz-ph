@@ -773,11 +773,9 @@ function buildBubbleOption(story, data, state) {
         lineStyle: { color: "#ccc" },
         checkpointStyle: { color: "#111", borderColor: "#fff", borderWidth: 2 },
         controlStyle: {
+          show: false,
           showNextBtn: false,
           showPrevBtn: false,
-          color: "#111",
-          borderColor: "#111",
-          itemSize: 18,
         },
         label: { color: "#595959", fontSize: 12 },
       },
@@ -1815,6 +1813,9 @@ async function main() {
         b.classList.toggle("active", active);
         b.setAttribute("aria-pressed", active ? "true" : "false");
       });
+      // Big play button is bubble-only (no timeline in line / bar modes)
+      const bp = document.getElementById("big-play");
+      if (bp) bp.hidden = state.chartType !== "bubbles";
       // Chart (notMerge:true so a fresh axis indicator triggers full re-render)
       chart.setOption(buildOption(view, data, state), { notMerge: true });
       // Axis-label info buttons only make sense for the bubble chart layout
@@ -1893,6 +1894,28 @@ async function main() {
       state.chartType = t;
       render();
     });
+  });
+
+  // Big yellow play button: drives the ECharts timeline.
+  const bigPlay = document.getElementById("big-play");
+  let isPlaying = false;
+  function setPlayingState(playing) {
+    isPlaying = playing;
+    if (bigPlay) {
+      bigPlay.classList.toggle("playing", playing);
+      bigPlay.setAttribute("aria-pressed", playing ? "true" : "false");
+      bigPlay.setAttribute("aria-label", playing ? "pause timeline" : "play timeline");
+    }
+  }
+  if (bigPlay) {
+    bigPlay.addEventListener("click", () => {
+      if (state.chartType !== "bubbles") return;
+      setPlayingState(!isPlaying);
+      chart.dispatchAction({ type: "timelinePlayChange", playState: isPlaying });
+    });
+  }
+  chart.on("timelineplaychanged", (e) => {
+    setPlayingState(!!(e && e.playState));
   });
 
   document.getElementById("png").addEventListener("click", () => {

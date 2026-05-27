@@ -745,6 +745,47 @@ footer .disclaimer {
   color: var(--ink);
 }
 
+/* Big yellow circular play button overlay - Gapminder pattern. Sits over
+   the timeline scrubber on the bottom-left of the chart. */
+#big-play {
+  position: absolute;
+  left: 16px;
+  bottom: 6px;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: #ffb347;
+  color: #1a1a1a;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  z-index: 6;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+
+#big-play:hover {
+  background: #ffa42a;
+  transform: scale(1.05);
+}
+
+#big-play:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 3px;
+}
+
+#big-play .bp-pause { display: none; font-size: 13px; letter-spacing: 1px; }
+#big-play.playing .bp-play { display: none; }
+#big-play.playing .bp-pause { display: inline; }
+
+#big-play.playing { background: #f49021; }
+
+#big-play[hidden] { display: none !important; }
+
 /* Last-tapped panel for touch devices. Hidden on hover-capable pointers. */
 #last-tap-panel {
   display: none;
