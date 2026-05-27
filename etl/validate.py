@@ -7,6 +7,9 @@ SCHEMAS = {
     "peso_per_capita": {"min": 0, "max": 200_000},
     "peso_per_capita_gdp": {"min": 1_000, "max": 1_500_000},
     "population": {"min": 1, "max": 30_000_000},
+    "share_pct": {"min": 0, "max": 100},
+    "yoy_pct": {"min": -20, "max": 30},
+    "delta_pp": {"min": -100, "max": 100},
 }
 
 

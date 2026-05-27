@@ -85,24 +85,50 @@ function makeView(state, data) {
 }
 
 async function loadData() {
-  const [provinces, poverty, spend, allSpend, gdp, indicators, stories, manifest] =
-    await Promise.all([
-      fetchJson("data/provinces.json"),
-      fetchJson("data/poverty.json"),
-      fetchJson("data/dpwh_spend_per_capita.json"),
-      fetchJson("data/all_spend_per_capita.json"),
-      fetchJson("data/gdp_per_capita.json"),
-      fetchJson("data/indicators.json"),
-      fetchJson("data/stories.json"),
-      fetchJson("data/manifest.json").catch(() => null),
-    ]);
+  const [
+    provinces,
+    poverty,
+    spend,
+    allSpend,
+    dohSpend,
+    infraSpend,
+    gdp,
+    dpwhShare,
+    cpiYoy,
+    povertyChange,
+    population,
+    indicators,
+    stories,
+    manifest,
+  ] = await Promise.all([
+    fetchJson("data/provinces.json"),
+    fetchJson("data/poverty.json"),
+    fetchJson("data/dpwh_spend_per_capita.json"),
+    fetchJson("data/all_spend_per_capita.json"),
+    fetchJson("data/doh_spend_per_capita.json").catch(() => []),
+    fetchJson("data/infra_spend_per_capita.json").catch(() => []),
+    fetchJson("data/gdp_per_capita.json"),
+    fetchJson("data/dpwh_share_pct.json").catch(() => []),
+    fetchJson("data/cpi_yoy_pct.json").catch(() => []),
+    fetchJson("data/poverty_change_pp.json").catch(() => []),
+    fetchJson("data/population.json").catch(() => []),
+    fetchJson("data/indicators.json"),
+    fetchJson("data/stories.json"),
+    fetchJson("data/manifest.json").catch(() => null),
+  ]);
   return {
     provinces,
     indicatorRows: {
       poverty: indexRows(poverty),
       dpwh_spend_per_capita: indexRows(spend),
       all_spend_per_capita: indexRows(allSpend),
+      doh_spend_per_capita: indexRows(dohSpend),
+      infra_spend_per_capita: indexRows(infraSpend),
       gdp_per_capita: indexRows(gdp),
+      dpwh_share_pct: indexRows(dpwhShare),
+      cpi_yoy_pct: indexRows(cpiYoy),
+      poverty_change_pp: indexRows(povertyChange),
+      population: indexRows(population),
     },
     indicators: Object.fromEntries(indicators.map((i) => [i.id, i])),
     stories,
@@ -166,12 +192,27 @@ function indicatorValue(row, indicatorId, state) {
   return row.value;
 }
 
+// Indicator row lookup with national-only fallback: if the per-province row
+// is missing AND the indicator is flagged national_only, return the national
+// row (psgc='000000000') so every bubble gets the national value at that year.
+function lookupRow(indicatorId, psgc, year, data) {
+  const rows = data.indicatorRows[indicatorId];
+  if (!rows) return null;
+  const exact = rows[`${psgc}-${year}`];
+  if (exact) return exact;
+  const meta = data.indicators[indicatorId];
+  if (meta && meta.national_only) {
+    return rows[`000000000-${year}`] || null;
+  }
+  return null;
+}
+
 // Build per-province point for a year in the current story.
 function pointFor(psgc, year, story, data, state) {
   const info = data.provinces[psgc];
   if (!info) return null;
-  const xRow = data.indicatorRows[story.x][`${psgc}-${year}`];
-  const yRow = data.indicatorRows[story.y][`${psgc}-${year}`];
+  const xRow = lookupRow(story.x, psgc, year, data);
+  const yRow = lookupRow(story.y, psgc, year, data);
   if (!xRow || !yRow) return null;
   const xVal = indicatorValue(xRow, story.x, state);
   const yVal = indicatorValue(yRow, story.y, state);
@@ -313,7 +354,15 @@ function unitFor(indicatorId, state) {
 }
 
 function formatValue(v, indicatorId) {
-  if (indicatorId === "poverty") return `${PCT.format(v)}%`;
+  if (indicatorId === "poverty" || indicatorId === "dpwh_share_pct" ||
+      indicatorId === "cpi_yoy_pct") {
+    return `${PCT.format(v)}%`;
+  }
+  if (indicatorId === "poverty_change_pp") {
+    const sign = v >= 0 ? "+" : "";
+    return `${sign}${PCT.format(v)} pp`;
+  }
+  if (indicatorId === "population") return COUNT.format(v);
   return PHP.format(v);
 }
 
@@ -328,9 +377,39 @@ function shortAxisName(indicatorId, state) {
       ? "All gov spend per capita, PHP 2018-real"
       : "All gov spend per capita, PHP nominal";
   }
+  if (indicatorId === "doh_spend_per_capita") {
+    return state.deflate
+      ? "DOH spend per capita, PHP 2018-real"
+      : "DOH spend per capita, PHP nominal";
+  }
+  if (indicatorId === "infra_spend_per_capita") {
+    return state.deflate
+      ? "Infra spend per capita, PHP 2018-real"
+      : "Infra spend per capita, PHP nominal";
+  }
   if (indicatorId === "gdp_per_capita") return "Per capita GDP, PHP (constant 2018)";
   if (indicatorId === "poverty") return "Poverty incidence among families (%)";
+  if (indicatorId === "dpwh_share_pct") return "DPWH share of all spend (%)";
+  if (indicatorId === "population") return "Population (2020 Census)";
+  if (indicatorId === "poverty_change_pp") return "Poverty change 2018 to 2023 (pp)";
+  if (indicatorId === "cpi_yoy_pct") return "National CPI year-on-year (%)";
   return indicatorId;
+}
+
+// Subtitle for the canvas axis (unit + caveat). The indicator name itself is
+// rendered as an HTML pill overlaid on the chart by attachAxisInfoButtons.
+function shortAxisCaption(indicatorId, state) {
+  if (indicatorId === "dpwh_spend_per_capita" || indicatorId === "all_spend_per_capita" ||
+      indicatorId === "doh_spend_per_capita" || indicatorId === "infra_spend_per_capita") {
+    return state.deflate ? "PHP per person, 2018-real" : "PHP per person, nominal";
+  }
+  if (indicatorId === "gdp_per_capita") return "PHP per person, constant 2018 prices";
+  if (indicatorId === "poverty") return "percent of families below poverty line";
+  if (indicatorId === "dpwh_share_pct") return "percent of total province spend";
+  if (indicatorId === "population") return "people, 2020 Census";
+  if (indicatorId === "poverty_change_pp") return "percentage points, 2023 minus 2018";
+  if (indicatorId === "cpi_yoy_pct") return "percent, national series only";
+  return "";
 }
 
 const IS_TOUCH =
@@ -343,13 +422,15 @@ function baseOption(story, data, state) {
   const yIndicator = story.y;
   const logX = state.logX;
   return {
-    grid: { left: 70, right: 28, top: 44, bottom: 110 },
+    grid: { left: 90, right: 28, top: 44, bottom: 130 },
     xAxis: {
       type: logX ? "log" : "value",
-      name: shortAxisName(xIndicator, state) + (logX ? " (log scale)" : " (linear)"),
+      // Indicator name moves to the HTML axis picker pill. Canvas keeps the
+      // unit + scale caveat as a smaller subtitle beneath.
+      name: shortAxisCaption(xIndicator, state) + (logX ? " · log scale" : " · linear"),
       nameLocation: "middle",
-      nameGap: 36,
-      nameTextStyle: { fontSize: 12, color: "#595959" },
+      nameGap: 56,
+      nameTextStyle: { fontSize: 11, color: "#8a8a8a", fontStyle: "italic" },
       min: logX ? undefined : 0,
       axisLine: { lineStyle: { color: "#ccc" } },
       axisTick: { show: false },
@@ -365,19 +446,25 @@ function baseOption(story, data, state) {
     },
     yAxis: {
       type: "value",
-      name: shortAxisName(yIndicator, state),
+      // Indicator name moves to the HTML axis picker pill (rotated, top-left).
+      // Canvas keeps the unit as a small italic subtitle.
+      name: shortAxisCaption(yIndicator, state),
       nameLocation: "middle",
-      nameGap: 42,
-      nameTextStyle: { fontSize: 12, color: "#595959" },
-      min: 0,
+      nameGap: 64,
+      nameTextStyle: { fontSize: 11, color: "#8a8a8a", fontStyle: "italic" },
+      min: yIndicator === "poverty_change_pp" ? undefined : 0,
       max: yIndicator === "poverty" ? 80 : undefined,
+      scale: yIndicator === "poverty_change_pp",
       axisLine: { lineStyle: { color: "#ccc" } },
       axisTick: { show: false },
       splitLine: { show: true, lineStyle: { color: "#f0f0f0" } },
       axisLabel: {
         color: "#595959",
         formatter: (v) => {
-          if (yIndicator === "poverty") return v + "%";
+          if (yIndicator === "poverty" || yIndicator === "dpwh_share_pct" ||
+              yIndicator === "cpi_yoy_pct" || yIndicator === "poverty_change_pp") {
+            return v + "%";
+          }
           if (v >= 1_000_000) return (v / 1_000_000).toFixed(1) + "M";
           if (v >= 1000) return (v / 1000).toFixed(0) + "k";
           return v.toString();
@@ -979,12 +1066,12 @@ function downloadCsv(story, data, state) {
   }, 0);
 }
 
-// ---------- axis definition popover ----------
+// ---------- axis pickers (Gapminder-style: click axis label, pick indicator) ----------
 
-function attachAxisInfoButtons(chart, story, data) {
-  // Mount two absolute-positioned info buttons over the X and Y axis label area.
-  // ECharts paints axis labels into the canvas, so we overlay our own buttons that
-  // open a popover with the indicator's definition + source link.
+function attachAxisInfoButtons(chart, view, data) {
+  // Overlay a clickable picker pill on each axis. The pill shows the current
+  // indicator name + a "▼" affordance; clicking opens an indicator panel.
+  // A small "i" badge alongside still opens the definition popover.
   const root = document.getElementById("chart");
   if (!root) return;
   let layer = document.getElementById("axis-info-layer");
@@ -995,35 +1082,186 @@ function attachAxisInfoButtons(chart, story, data) {
   }
   layer.replaceChildren();
 
-  const place = (id, indicatorId, position) => {
+  const place = (kind, indicatorId, otherId, position) => {
     const info = data.indicators && data.indicators[indicatorId];
     if (!info) return;
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.id = id;
-    btn.className = "axis-info-btn";
-    btn.setAttribute("aria-label", `${info.name}: what does this measure?`);
-    btn.textContent = "i";
-    btn.style.position = "absolute";
-    Object.assign(btn.style, position);
-    btn.addEventListener("click", (e) => {
+    const group = document.createElement("div");
+    group.className = `axis-picker axis-picker-${kind}`;
+    group.style.position = "absolute";
+    Object.assign(group.style, position);
+
+    const pick = document.createElement("button");
+    pick.type = "button";
+    pick.id = `axis-pick-${kind}`;
+    pick.className = "axis-pick-btn";
+    pick.setAttribute("aria-haspopup", "listbox");
+    pick.setAttribute("aria-label", `${kind === "x" ? "X" : "Y"} axis indicator: ${info.name}. Click to change.`);
+    pick.innerHTML = `<span class="axis-pick-name"></span><span class="axis-pick-caret">▾</span>`;
+    pick.querySelector(".axis-pick-name").textContent = info.name;
+    pick.addEventListener("click", (e) => {
       e.stopPropagation();
-      showAxisPopover(btn, info);
+      showIndicatorPanel(pick, kind, indicatorId, otherId, data);
     });
-    btn.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        showAxisPopover(btn, info);
-      }
+
+    const inf = document.createElement("button");
+    inf.type = "button";
+    inf.id = `axis-info-${kind}`;
+    inf.className = "axis-info-btn";
+    inf.setAttribute("aria-label", `${info.name}: definition and source`);
+    inf.textContent = "i";
+    inf.addEventListener("click", (e) => {
+      e.stopPropagation();
+      showAxisPopover(inf, info);
     });
-    layer.appendChild(btn);
+
+    group.appendChild(pick);
+    group.appendChild(inf);
+    layer.appendChild(group);
   };
 
-  // X-axis label sits centered, ~24px above the timeline (story.x).
-  place("axis-info-x", story.x, { left: "50%", bottom: "76px", transform: "translateX(-50%)" });
-  // Y-axis label rotates 90deg, vertical text on the left.
-  place("axis-info-y", story.y, { left: "16px", top: "50%", transform: "translateY(-50%)" });
+  // X picker: bottom-center, above the timeline scrubber.
+  place("x", view.x, view.y, {
+    left: "50%",
+    bottom: "72px",
+    transform: "translateX(-50%)",
+  });
+  // Y picker: top-left, vertically rotated to match the Y axis label orientation.
+  place("y", view.y, view.x, {
+    left: "8px",
+    top: "50%",
+    transform: "translateY(-50%) rotate(-90deg)",
+    transformOrigin: "left center",
+  });
 }
+
+// Indicator selection panel: list of all indicators, search, click to pick.
+let _indicatorPanelOpenFor = null;
+
+function showIndicatorPanel(anchorBtn, kind, currentId, otherId, data) {
+  closeIndicatorPanel();
+  _indicatorPanelOpenFor = kind;
+  const root = document.getElementById("chart");
+  if (!root) return;
+  const panel = document.createElement("div");
+  panel.id = "indicator-panel";
+  panel.className = `indicator-panel indicator-panel-${kind}`;
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-label", `${kind === "x" ? "X" : "Y"} axis indicator picker`);
+
+  const header = document.createElement("div");
+  header.className = "ipanel-head";
+  const title = document.createElement("strong");
+  title.textContent = kind === "x" ? "X axis" : "Y axis";
+  header.appendChild(title);
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "ipanel-close";
+  close.setAttribute("aria-label", "close");
+  close.textContent = "×";
+  close.addEventListener("click", closeIndicatorPanel);
+  header.appendChild(close);
+  panel.appendChild(header);
+
+  const search = document.createElement("input");
+  search.type = "search";
+  search.className = "ipanel-search";
+  search.placeholder = "Filter indicators";
+  search.setAttribute("aria-label", "filter indicators by name");
+  panel.appendChild(search);
+
+  const list = document.createElement("ul");
+  list.className = "ipanel-list";
+  list.setAttribute("role", "listbox");
+  panel.appendChild(list);
+
+  const allIndicators = Object.values(data.indicators);
+  function renderList(filter = "") {
+    list.replaceChildren();
+    const q = filter.trim().toLowerCase();
+    const filtered = allIndicators.filter(
+      (i) => !q || i.name.toLowerCase().includes(q) || (i.unit || "").toLowerCase().includes(q),
+    );
+    for (const ind of filtered) {
+      const li = document.createElement("li");
+      li.className = "ipanel-item";
+      li.setAttribute("role", "option");
+      const sameAsOther = ind.id === otherId;
+      const isCurrent = ind.id === currentId;
+      if (isCurrent) li.classList.add("active");
+      if (sameAsOther) li.classList.add("disabled");
+      li.setAttribute("aria-selected", isCurrent ? "true" : "false");
+      const name = document.createElement("div");
+      name.className = "ipanel-name";
+      name.textContent = ind.name;
+      const meta = document.createElement("div");
+      meta.className = "ipanel-meta";
+      const unit = ind.unit ? ind.unit : "";
+      const flag = ind.national_only ? " · national only" : "";
+      meta.textContent = unit + flag;
+      li.appendChild(name);
+      if (unit || flag) li.appendChild(meta);
+      if (!sameAsOther) {
+        li.tabIndex = 0;
+        li.addEventListener("click", () => {
+          _indicatorPickHandler(kind, ind.id);
+          closeIndicatorPanel();
+        });
+        li.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            _indicatorPickHandler(kind, ind.id);
+            closeIndicatorPanel();
+          }
+        });
+      }
+      list.appendChild(li);
+    }
+  }
+  renderList();
+  search.addEventListener("input", () => renderList(search.value));
+
+  // Position the panel near the anchor, clamped to chart bounds.
+  const aRect = anchorBtn.getBoundingClientRect();
+  const rRect = root.getBoundingClientRect();
+  panel.style.position = "absolute";
+  panel.style.left = `${Math.max(12, Math.min(aRect.left - rRect.left, rRect.width - 340))}px`;
+  if (kind === "x") {
+    // anchor below the X picker (above the timeline) - place ABOVE the pill
+    panel.style.bottom = `${rRect.bottom - aRect.top + 6}px`;
+  } else {
+    // Y picker is rotated; place panel to the right of where the un-rotated text
+    // would sit, near the top-left of the chart
+    panel.style.top = `${Math.max(12, aRect.top - rRect.top)}px`;
+  }
+  panel.style.maxHeight = `${Math.min(rRect.height - 24, 520)}px`;
+
+  root.appendChild(panel);
+  setTimeout(() => search.focus(), 0);
+  setTimeout(() => {
+    document.addEventListener("click", _outsideIndicatorClick, { capture: true });
+    document.addEventListener("keydown", _escIndicatorClose);
+  }, 0);
+}
+
+function _outsideIndicatorClick(e) {
+  const panel = document.getElementById("indicator-panel");
+  if (panel && !panel.contains(e.target)) closeIndicatorPanel();
+}
+
+function _escIndicatorClose(e) {
+  if (e.key === "Escape") closeIndicatorPanel();
+}
+
+function closeIndicatorPanel() {
+  const panel = document.getElementById("indicator-panel");
+  if (panel) panel.remove();
+  _indicatorPanelOpenFor = null;
+  document.removeEventListener("click", _outsideIndicatorClick, { capture: true });
+  document.removeEventListener("keydown", _escIndicatorClose);
+}
+
+// Bound from main() so the panel has access to render() + state mutation.
+let _indicatorPickHandler = () => {};
 
 function showAxisPopover(anchorBtn, info) {
   closeAxisPopover();
@@ -1180,6 +1418,13 @@ async function main() {
 
   const chart = echarts.init(root, null, { renderer: "canvas" });
   renderFreshness(data.manifest);
+
+  // Wire the axis-picker panel selection back into state.
+  _indicatorPickHandler = (kind, id) => {
+    if (kind === "x") state.xIndicator = id;
+    else state.yIndicator = id;
+    render();
+  };
 
   let rendering = false;
   function render() {

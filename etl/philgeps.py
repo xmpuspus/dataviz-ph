@@ -26,6 +26,18 @@ CACHE_DIR = Path(__file__).resolve().parent.parent / ".etl_cache" / "philgeps"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 DPWH_PATTERN = "PUBLIC WORKS AND HIGHWAYS"
+DOH_PATTERNS = ("DEPARTMENT OF HEALTH",)
+INFRA_KEYWORDS = (
+    "construction",
+    "road",
+    "bridge",
+    "flood",
+    "drainage",
+    "highway",
+    "concreting",
+    "asphalt",
+    "rehabilitation",
+)
 PANEL_START = 2014
 PANEL_END = 2024
 # Anything < this PHP/cap is almost certainly a coverage gap (typo in
@@ -115,6 +127,27 @@ def _dpwh_filter(df: pd.DataFrame) -> pd.DataFrame:
     return df[org.str.contains(DPWH_PATTERN)].copy()
 
 
+def _doh_filter(df: pd.DataFrame) -> pd.DataFrame:
+    org = df["organization_name"].fillna("").str.upper()
+    mask = False
+    for pat in DOH_PATTERNS:
+        mask = (org.str.contains(pat)) | mask
+    return df[mask].copy() if mask is not False else df.head(0)
+
+
+def _infra_filter(df: pd.DataFrame) -> pd.DataFrame:
+    # Combine the most descriptive free-text columns and match the infra keyword set.
+    text = (
+        df.get("award_title", "").fillna("").astype(str)
+        + " "
+        + df.get("notice_title", "").fillna("").astype(str)
+        + " "
+        + df.get("business_category", "").fillna("").astype(str)
+    ).str.lower()
+    pattern = "|".join(INFRA_KEYWORDS)
+    return df[text.str.contains(pattern, regex=True, na=False)].copy()
+
+
 def fetch_dpwh_spend(
     provinces: dict,
     normalize_name,
@@ -122,6 +155,24 @@ def fetch_dpwh_spend(
 ) -> list[dict]:
     """DPWH contracts grouped by (province, year), divided by 2020 population."""
     return _aggregate(_dpwh_filter, provinces, normalize_name, population_by_psgc, "dpwh")
+
+
+def fetch_doh_spend(
+    provinces: dict,
+    normalize_name,
+    population_by_psgc: dict[str, int],
+) -> list[dict]:
+    """DOH-attributable contracts per (province, year), per capita."""
+    return _aggregate(_doh_filter, provinces, normalize_name, population_by_psgc, "doh")
+
+
+def fetch_infra_spend(
+    provinces: dict,
+    normalize_name,
+    population_by_psgc: dict[str, int],
+) -> list[dict]:
+    """Infra-tagged contracts (construction, road, bridge, flood, drainage, etc.) per capita."""
+    return _aggregate(_infra_filter, provinces, normalize_name, population_by_psgc, "infra")
 
 
 def fetch_all_spend(

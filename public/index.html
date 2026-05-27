@@ -70,11 +70,13 @@
     </section>
 
     <aside id="controls" aria-label="controls">
-      <div class="block" id="plot-picker">
+      <!-- Sidebar pickers retained for keyboard / screen-reader fallback,
+           but visually hidden. Primary affordance lives on the chart axes. -->
+      <div class="block sr-only" id="plot-picker" aria-label="indicator pickers (fallback)">
         <h2>Plot</h2>
-        <label class="hint" for="y-select">Y axis</label>
+        <label for="y-select">Y axis</label>
         <select id="y-select" aria-label="Y axis indicator"></select>
-        <label class="hint" for="x-select">X axis</label>
+        <label for="x-select">X axis</label>
         <select id="x-select" aria-label="X axis indicator"></select>
       </div>
 

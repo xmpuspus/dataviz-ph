@@ -445,7 +445,8 @@ footer .disclaimer {
   }
 }
 
-/* Axis info buttons: small "i" badges that overlay the chart axis labels. */
+/* Axis pickers: clickable pills with the indicator name + dropdown caret,
+   overlaid on the chart axis label region (Gapminder pattern). */
 #axis-info-layer {
   position: absolute;
   inset: 0;
@@ -453,32 +454,199 @@ footer .disclaimer {
   z-index: 5;
 }
 
+.axis-picker {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.axis-pick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.7rem;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  cursor: pointer;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.axis-pick-btn:hover {
+  border-color: var(--ink);
+  background: #fff;
+}
+
+.axis-pick-btn:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.axis-pick-name {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.axis-pick-caret {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.axis-pick-btn:hover .axis-pick-caret {
+  color: var(--ink);
+}
+
 .axis-info-btn {
   pointer-events: auto;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   padding: 0;
   border-radius: 50%;
-  border: 1px solid #c6c6c6;
-  background: #fff;
-  color: #595959;
-  font-size: 11px;
+  border: 1px solid var(--rule);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--muted);
+  font-size: 12px;
   font-weight: 700;
   font-style: italic;
   font-family: Georgia, "Times New Roman", serif;
   cursor: pointer;
-  line-height: 18px;
+  line-height: 20px;
   text-align: center;
 }
 
 .axis-info-btn:hover {
   border-color: var(--ink);
   color: var(--ink);
+  background: #fff;
 }
 
 .axis-info-btn:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
+}
+
+/* Indicator picker panel - slides in next to the clicked axis pill */
+.indicator-panel {
+  width: 340px;
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.14);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.ipanel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid var(--rule);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.ipanel-head strong {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.ipanel-close {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 22px;
+  border-radius: 4px;
+}
+
+.ipanel-close:hover {
+  background: var(--soft);
+  color: var(--ink);
+}
+
+.ipanel-search {
+  margin: 0.6rem 0.85rem 0.3rem;
+  padding: 0.5rem 0.65rem;
+  font: inherit;
+  font-size: 0.88rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--soft);
+}
+
+.ipanel-search:focus {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+  background: #fff;
+}
+
+.ipanel-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.3rem 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 120px;
+}
+
+.ipanel-item {
+  padding: 0.55rem 0.85rem;
+  cursor: pointer;
+  border-bottom: 1px solid #f4f4f4;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.ipanel-item:last-child { border-bottom: none; }
+.ipanel-item:hover { background: var(--soft); }
+.ipanel-item:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+.ipanel-item.active {
+  background: var(--ink);
+  color: #fff;
+}
+
+.ipanel-item.active .ipanel-meta { color: rgba(255, 255, 255, 0.75); }
+
+.ipanel-item.disabled {
+  color: #b4b4b4;
+  cursor: not-allowed;
+  background: #fafafa;
+}
+
+.ipanel-item.disabled:hover { background: #fafafa; }
+
+.ipanel-name {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.ipanel-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
 }
 
 #axis-popover {

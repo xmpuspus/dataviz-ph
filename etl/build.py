@@ -17,6 +17,73 @@ PANEL_YEARS = list(range(2014, 2025))  # 2014-2024 inclusive
 POVERTY_ANCHORS = [2018, 2021, 2023]
 GDP_PANEL_YEARS = [2022, 2023, 2024]
 GDP_ANCHORS = [2022, 2023, 2024]  # PSA publishes all three; no interpolation needed
+CPI_YOY_YEARS = list(range(2019, 2026))  # need year-prior so series starts at 2019
+
+
+def compute_dpwh_share(dpwh_spend: list[dict], all_spend: list[dict]) -> list[dict]:
+    """Per (province, year), DPWH share of all PhilGEPS spend, in percent."""
+    dpwh_by = {(r["psgc"], r["year"]): r["value"] for r in dpwh_spend}
+    all_by = {(r["psgc"], r["year"]): r["value"] for r in all_spend}
+    out = []
+    for key, all_v in all_by.items():
+        dpwh_v = dpwh_by.get(key)
+        if dpwh_v is None or all_v <= 0:
+            continue
+        pct = (dpwh_v / all_v) * 100
+        if pct > 100:  # numerical safety
+            pct = 100.0
+        out.append({"psgc": key[0], "year": key[1], "value": pct})
+    return out
+
+
+def compute_cpi_yoy(cpi: dict[int, float]) -> list[dict]:
+    """National year-on-year inflation. Returns one row per year with psgc='000000000'."""
+    years = sorted(cpi.keys())
+    out = []
+    for i in range(1, len(years)):
+        y, prev = years[i], years[i - 1]
+        if y - prev != 1:
+            continue
+        if cpi[prev] <= 0:
+            continue
+        pct = (cpi[y] - cpi[prev]) / cpi[prev] * 100
+        out.append({"psgc": "000000000", "year": y, "value": pct})
+    return out
+
+
+def compute_poverty_change(poverty_anchors: list[dict]) -> list[dict]:
+    """Per province, 2023 minus 2018 poverty incidence in percentage points.
+
+    Emitted as one row per (province, year) for every panel year so the picker
+    can plot it as a constant Y while X scrubs through years.
+    """
+    by = {}
+    for r in poverty_anchors:
+        by.setdefault(r["psgc"], {})[int(r["year"])] = r["value"]
+    out = []
+    for psgc, by_year in by.items():
+        if 2018 not in by_year or 2023 not in by_year:
+            continue
+        change = by_year[2023] - by_year[2018]
+        for year in PANEL_YEARS:
+            out.append({"psgc": psgc, "year": year, "value": change})
+    return out
+
+
+def expand_population(provinces_with_pop: dict, panel_years: list[int]) -> list[dict]:
+    """Emit one row per (province, year) with the 2020 Census population.
+
+    Population is a snapshot, but for the picker we repeat the value across the
+    panel so it can pair with year-varying X indicators on the bubble chart.
+    """
+    out = []
+    for psgc, info in provinces_with_pop.items():
+        pop = info.get("population_2020")
+        if not pop:
+            continue
+        for year in panel_years:
+            out.append({"psgc": psgc, "year": year, "value": pop})
+    return out
 
 
 def write_json(name: str, payload: object) -> None:
@@ -58,6 +125,14 @@ def main(no_cache: bool = False) -> None:
     all_spend = philgeps.fetch_all_spend(provinces, normalize_name, pop_by_psgc)
     validate.validate_all(all_spend, schema="peso_per_capita")
 
+    print(">> fetch DOH spend (PhilGEPS, org=DOH)")
+    doh_spend = philgeps.fetch_doh_spend(provinces, normalize_name, pop_by_psgc)
+    validate.validate_all(doh_spend, schema="peso_per_capita")
+
+    print(">> fetch infra-only spend (PhilGEPS, construction/road/bridge/etc.)")
+    infra_spend = philgeps.fetch_infra_spend(provinces, normalize_name, pop_by_psgc)
+    validate.validate_all(infra_spend, schema="peso_per_capita")
+
     print(">> fetch CPI annual averages (PSA 2M/PI/CPI, PHILIPPINES national)")
     cpi = psa_openstat.fetch_cpi_annual()
     cpi_2018 = cpi.get(2018, 100.0)
@@ -65,7 +140,7 @@ def main(no_cache: bool = False) -> None:
         raise RuntimeError("CPI 2018 base is zero, refusing to deflate")
     deflators = {y: cpi_2018 / cpi[y] for y in cpi if cpi[y] > 0}
 
-    for series in (dpwh_spend, all_spend):
+    for series in (dpwh_spend, all_spend, doh_spend, infra_spend):
         for r in series:
             d = deflators.get(r["year"])
             r["value_real"] = (r["value"] * d) if d is not None else None
@@ -85,12 +160,29 @@ def main(no_cache: bool = False) -> None:
         code: {**info, "population_2020": pop_by_psgc.get(code, 0)}
         for code, info in provinces.items()
     }
+
+    print(">> derive: DPWH share %, CPI YoY %, poverty change 2018-2023, population")
+    dpwh_share = compute_dpwh_share(dpwh_spend, all_spend)
+    validate.validate_all(dpwh_share, schema="share_pct")
+    cpi_yoy = compute_cpi_yoy(cpi)
+    validate.validate_all(cpi_yoy, schema="yoy_pct")
+    poverty_change = compute_poverty_change(poverty_anchors)
+    validate.validate_all(poverty_change, schema="delta_pp")
+    population_series = expand_population(provinces_out, PANEL_YEARS)
+    validate.validate_all(population_series, schema="population")
+
     write_json("provinces.json", provinces_out)
     write_json("poverty.json", poverty)
     write_json("dpwh_spend_per_capita.json", dpwh_spend)
     write_json("all_spend_per_capita.json", all_spend)
+    write_json("doh_spend_per_capita.json", doh_spend)
+    write_json("infra_spend_per_capita.json", infra_spend)
     write_json("gdp_per_capita.json", gdp)
     write_json("cpi.json", {str(y): v for y, v in cpi.items()})
+    write_json("dpwh_share_pct.json", dpwh_share)
+    write_json("cpi_yoy_pct.json", cpi_yoy)
+    write_json("poverty_change_pp.json", poverty_change)
+    write_json("population.json", population_series)
 
     indicators = [
         {
@@ -191,6 +283,129 @@ def main(no_cache: bool = False) -> None:
             "panel_years": GDP_PANEL_YEARS,
             "anchor_years": GDP_ANCHORS,
             "can_deflate": False,
+        },
+        {
+            "id": "doh_spend_per_capita",
+            "name": "DOH spend per capita",
+            "unit": "PHP per person per year",
+            "source": "PhilGEPS awards (Department of Health subset) / PSA 2020 Census",
+            "source_url": "https://github.com/csiiiv/philgeps-awards-dashboard",
+            "definition": (
+                "Sum of every PhilGEPS contract awarded to the Department of Health "
+                "that can be tied to a single province, divided by the 2020 Census "
+                "whole-province population."
+            ),
+            "vintage": (
+                "DOH-tagged awards 2014-2024, summed per province per year. Coverage "
+                "varies sharply year-on-year because DOH centralizes many procurements "
+                "and tags area_of_delivery inconsistently."
+            ),
+            "log_natural": True,
+            "panel_years": PANEL_YEARS,
+            "anchor_years": PANEL_YEARS,
+            "can_deflate": True,
+        },
+        {
+            "id": "infra_spend_per_capita",
+            "name": "Infra spend per capita",
+            "unit": "PHP per person per year",
+            "source": "PhilGEPS awards (construction/road/bridge/flood keywords) / PSA Census",
+            "source_url": "https://github.com/csiiiv/philgeps-awards-dashboard",
+            "definition": (
+                "Sum of every PhilGEPS contract whose title or category contains an "
+                "infra keyword (construction, road, bridge, flood, drainage, highway, "
+                "concreting, asphalt, rehabilitation), per capita."
+            ),
+            "vintage": (
+                "Free-text keyword filter on award_title, notice_title, and "
+                "business_category, 2014-2024. Picks up LGU-executed infra that DPWH "
+                "alone misses. Some over-tagging on rehabilitation (e.g. IT systems) "
+                "is unavoidable."
+            ),
+            "log_natural": True,
+            "panel_years": PANEL_YEARS,
+            "anchor_years": PANEL_YEARS,
+            "can_deflate": True,
+        },
+        {
+            "id": "dpwh_share_pct",
+            "name": "DPWH share of all spend",
+            "unit": "%",
+            "source": "Derived from dpwh_spend_per_capita / all_spend_per_capita",
+            "source_url": "",
+            "definition": (
+                "Percent of total province-attributable PhilGEPS spend that came from "
+                "DPWH in a given year. High share means roads dominate the contracting "
+                "mix in that province."
+            ),
+            "vintage": (
+                "Computed as dpwh / all_spend * 100 per province per year. Capped at "
+                "100 percent for numerical safety."
+            ),
+            "log_natural": False,
+            "panel_years": PANEL_YEARS,
+            "anchor_years": PANEL_YEARS,
+        },
+        {
+            "id": "population",
+            "name": "Population (2020 Census)",
+            "unit": "people",
+            "source": "PSA 2020 Census of Population and Housing",
+            "source_url": "https://psa.gov.ph/population-and-housing",
+            "definition": (
+                "Whole-province population from the 2020 Census, including Highly "
+                "Urbanized Cities rolled into their geographic parent province. NCR "
+                "is reported as the regional aggregate (16 cities)."
+            ),
+            "vintage": (
+                "Single 2020 snapshot, repeated across the panel so the picker can "
+                "plot it against year-varying indicators."
+            ),
+            "log_natural": True,
+            "panel_years": PANEL_YEARS,
+            "anchor_years": [2020],
+        },
+        {
+            "id": "poverty_change_pp",
+            "name": "Poverty change 2018 to 2023 (pp)",
+            "unit": "percentage points",
+            "source": "Derived from PSA 1E/FY Table 1a anchors",
+            "source_url": (
+                "https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1E__FY/"
+            ),
+            "definition": (
+                "Province-level poverty incidence in 2023 minus the same measure in "
+                "2018. Negative means poverty fell. Constant across panel years."
+            ),
+            "vintage": (
+                "Computed once from the two PSA anchor years, then repeated across "
+                "the panel so it pairs with year-varying X indicators."
+            ),
+            "log_natural": False,
+            "panel_years": PANEL_YEARS,
+            "anchor_years": [2018, 2023],
+        },
+        {
+            "id": "cpi_yoy_pct",
+            "name": "National inflation (CPI year-on-year)",
+            "unit": "%",
+            "source": "Derived from PSA OpenStat 2M/PI/CPI/2018NEW",
+            "source_url": (
+                "https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__2M__PI__CPI/"
+            ),
+            "definition": (
+                "Year-on-year change in the national CPI all-items index, 2018=100. "
+                "National series only; the bubble picker hides this indicator because "
+                "it has no per-province variation."
+            ),
+            "vintage": (
+                "(cpi_year - cpi_prev) / cpi_prev * 100. Series starts in 2019 since "
+                "year-prior is required."
+            ),
+            "log_natural": False,
+            "panel_years": CPI_YOY_YEARS,
+            "anchor_years": CPI_YOY_YEARS,
+            "national_only": True,
         },
     ]
     write_json("indicators.json", indicators)
@@ -300,8 +515,14 @@ def main(no_cache: bool = False) -> None:
             "poverty": len(poverty),
             "dpwh_spend_per_capita": len(dpwh_spend),
             "all_spend_per_capita": len(all_spend),
+            "doh_spend_per_capita": len(doh_spend),
+            "infra_spend_per_capita": len(infra_spend),
             "gdp_per_capita": len(gdp),
             "cpi": len(cpi),
+            "dpwh_share_pct": len(dpwh_share),
+            "cpi_yoy_pct": len(cpi_yoy),
+            "poverty_change_pp": len(poverty_change),
+            "population": len(population_series),
             "stories": len(stories),
             "indicators": len(indicators),
         },
@@ -315,9 +536,16 @@ def main(no_cache: bool = False) -> None:
     print(f"  poverty rows: {len(poverty)}  (interp={sum(1 for r in poverty if r['interp'])})")
     print(f"  dpwh spend rows: {len(dpwh_spend)}")
     print(f"  all spend rows: {len(all_spend)}")
+    print(f"  doh spend rows: {len(doh_spend)}")
+    print(f"  infra spend rows: {len(infra_spend)}")
     print(f"  gdp per capita rows: {len(gdp)}")
     print(f"  cpi years: {len(cpi)}")
+    print(f"  dpwh share rows: {len(dpwh_share)}")
+    print(f"  cpi yoy rows: {len(cpi_yoy)}")
+    print(f"  poverty change rows: {len(poverty_change)}")
+    print(f"  population rows: {len(population_series)}")
     print(f"  stories: {len(stories)}")
+    print(f"  indicators: {len(indicators)}")
     print(f"  manifest built_at: {manifest['built_at']}")
 
 
