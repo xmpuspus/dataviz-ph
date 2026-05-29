@@ -413,7 +413,7 @@ select:focus-visible {
   border-color: var(--ink);
 }
 
-#extrap-toggle.on {
+#controls #extrap-toggle.on {
   background: var(--ink);
   color: #fff;
   border-color: var(--ink);

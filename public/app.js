@@ -66,11 +66,16 @@ function makeView(state, data) {
   if (!panel_years.includes(default_year)) {
     default_year = panel_years[panel_years.length - 1];
   }
+  // For custom (picker-driven) views, look up a written-out headline for this
+  // pair before falling back to the generic "Y vs X / Custom view" template.
+  const pairMeta = isCustom ? pairHeadlineFor(xId, yId, data) : null;
   const headline = isCustom
-    ? `${yMeta.name} vs ${xMeta.name}`
+    ? (pairMeta ? pairMeta.headline : `${yMeta.name} vs ${xMeta.name}`)
     : state.story.headline;
   const tagline = isCustom
-    ? `Custom view. ${panel_years.length} years of overlap: ${panel_years[0]} to ${panel_years[panel_years.length - 1]}.`
+    ? (pairMeta
+        ? pairMeta.tagline
+        : `Custom view. ${panel_years.length} years of overlap: ${panel_years[0]} to ${panel_years[panel_years.length - 1]}.`)
     : state.story.tagline;
   return {
     ...state.story,
@@ -99,6 +104,7 @@ async function loadData() {
     population,
     indicators,
     stories,
+    pairHeadlines,
     manifest,
   ] = await Promise.all([
     fetchJson("data/provinces.json"),
@@ -114,6 +120,7 @@ async function loadData() {
     fetchJson("data/population.json").catch(() => []),
     fetchJson("data/indicators.json"),
     fetchJson("data/stories.json"),
+    fetchJson("data/pair_headlines.json").catch(() => ({})),
     fetchJson("data/manifest.json").catch(() => null),
   ]);
   return {
@@ -132,8 +139,17 @@ async function loadData() {
     },
     indicators: Object.fromEntries(indicators.map((i) => [i.id, i])),
     stories,
+    pairHeadlines,
     manifest,
   };
+}
+
+// Look up a per-pair headline + tagline by sorted indicator IDs.
+function pairHeadlineFor(xId, yId, data) {
+  const ph = data && data.pairHeadlines;
+  if (!ph) return null;
+  const key = [xId, yId].sort().join("|");
+  return ph[key] || null;
 }
 
 function renderFreshness(manifest) {
@@ -771,7 +787,7 @@ function buildBubbleOption(story, data, state) {
         playInterval: years.length <= 3 ? 1500 : 1100,
         loop: false,
         bottom: 14,
-        left: 70,
+        left: 90,
         right: 28,
         symbol: "none",
         lineStyle: { color: "#ccc" },
@@ -1021,6 +1037,7 @@ function buildBarOption(view, data, state) {
         label: {
           show: true,
           position: "right",
+          distance: 4,
           color: "#444",
           fontSize: 10,
           formatter: (p) => formatValue(p.value, yId),
@@ -1388,7 +1405,7 @@ function downloadCsv(story, data, state) {
 
 // ---------- axis pickers (Gapminder-style: click axis label, pick indicator) ----------
 
-function attachAxisInfoButtons(chart, view, data) {
+function attachAxisInfoButtons(chart, view, data, chartType) {
   // Overlay a clickable picker pill on each axis. The pill shows the current
   // indicator name + a "▼" affordance; clicking opens an indicator panel.
   // A small "i" badge alongside still opens the definition popover.
@@ -1439,18 +1456,28 @@ function attachAxisInfoButtons(chart, view, data) {
     layer.appendChild(group);
   };
 
-  // X picker pill: bottom-center, BELOW the X axis ticks but ABOVE the italic
-  // caption. The chart's grid.bottom reserves 200px down there.
-  place("x", view.x, view.y, {
-    left: "50%",
-    bottom: "126px",
-    transform: "translateX(-50%)",
-  });
-  // Y picker: top-left, horizontal text.
-  place("y", view.y, view.x, {
-    left: "12px",
-    top: "8px",
-  });
+  if (chartType === "bubbles") {
+    // X picker: bottom-center, below ticks, above the italic caption.
+    place("x", view.x, view.y, {
+      left: "50%",
+      bottom: "126px",
+      transform: "translateX(-50%)",
+    });
+    // Y picker: top-left, horizontal text.
+    place("y", view.y, view.x, { left: "12px", top: "8px" });
+  } else if (chartType === "line") {
+    // Line: X is year (locked). Only Y is choosable — top-left.
+    place("y", view.y, view.x, { left: "12px", top: "8px" });
+  } else if (chartType === "bar") {
+    // Bar (ranks): Y indicator is plotted on the horizontal axis; Y axis is
+    // the categorical province list (no picker). Put the picker bottom-center
+    // so it matches what the user is reading on the X axis.
+    place("y", view.y, view.x, {
+      left: "50%",
+      bottom: "10px",
+      transform: "translateX(-50%)",
+    });
+  }
 }
 
 // Indicator selection panel: list of all indicators, search, click to pick.
@@ -1816,18 +1843,14 @@ async function main() {
         b.classList.toggle("active", active);
         b.setAttribute("aria-pressed", active ? "true" : "false");
       });
-      // Big play button is bubble-only (no timeline in line / bar modes)
+      // Big play button: hidden only in line mode (X axis is already year).
+      // Bubbles and bar both benefit from year animation.
       const bp = document.getElementById("big-play");
-      if (bp) bp.hidden = state.chartType !== "bubbles";
+      if (bp) bp.hidden = state.chartType === "line";
       // Chart (notMerge:true so a fresh axis indicator triggers full re-render)
       chart.setOption(buildOption(view, data, state), { notMerge: true });
-      // Axis-label info buttons only make sense for the bubble chart layout
-      if (state.chartType === "bubbles") {
-        attachAxisInfoButtons(chart, view, data);
-      } else {
-        const layer = document.getElementById("axis-info-layer");
-        if (layer) layer.replaceChildren();
-      }
+      // Axis pickers: bubbles gets both, line gets Y only, bar gets Y only.
+      attachAxisInfoButtons(chart, view, data, state.chartType);
       // Selection chips
       renderSelChips(state, data, render);
       // SR mirror
@@ -1894,32 +1917,71 @@ async function main() {
     btn.addEventListener("click", () => {
       const t = btn.dataset.type;
       if (!t || t === state.chartType) return;
+      // Switching away from bubbles stops any running play loop.
+      if (t !== "bubbles" && typeof window.__plotph_stopPlay === "function") {
+        window.__plotph_stopPlay();
+      }
       state.chartType = t;
       render();
     });
   });
 
-  // Big yellow play button: drives the ECharts timeline.
+  // Big yellow play button: drives a self-managed setInterval that steps the
+  // year. ECharts' built-in timelinePlayChange action is unreliable when
+  // autoPlay is false and controls are hidden, so we run our own loop.
   const bigPlay = document.getElementById("big-play");
-  let isPlaying = false;
+  let playTimer = null;
   function setPlayingState(playing) {
-    isPlaying = playing;
     if (bigPlay) {
       bigPlay.classList.toggle("playing", playing);
       bigPlay.setAttribute("aria-pressed", playing ? "true" : "false");
       bigPlay.setAttribute("aria-label", playing ? "pause timeline" : "play timeline");
     }
   }
+  function stopPlay() {
+    if (playTimer) {
+      clearInterval(playTimer);
+      playTimer = null;
+    }
+    setPlayingState(false);
+  }
+  function startPlay() {
+    if (playTimer) return;
+    if (state.chartType === "line") return;
+    const panelYears = () =>
+      (state.view && state.view.panel_years) || state.story.panel_years;
+    // If we're sitting on the last year, rewind to the first so play means
+    // "watch the full animation" rather than "do nothing."
+    let ys = panelYears();
+    if (state.year === ys[ys.length - 1]) {
+      state.year = ys[0];
+      render();
+      ys = panelYears();
+    }
+    setPlayingState(true);
+    const interval = ys.length <= 3 ? 1500 : 1100;
+    playTimer = setInterval(() => {
+      const cur = panelYears();
+      const idx = cur.indexOf(state.year);
+      if (idx < 0 || idx >= cur.length - 1) {
+        stopPlay();
+        return;
+      }
+      state.year = cur[idx + 1];
+      render();
+    }, interval);
+  }
+  // Expose for the chart-type strip handler so switching away from bubbles
+  // stops the timer.
+  window.__plotph_stopPlay = stopPlay;
+  window.__plotph_startPlay = startPlay;
   if (bigPlay) {
     bigPlay.addEventListener("click", () => {
-      if (state.chartType !== "bubbles") return;
-      setPlayingState(!isPlaying);
-      chart.dispatchAction({ type: "timelinePlayChange", playState: isPlaying });
+      if (state.chartType === "line") return;
+      if (playTimer) stopPlay();
+      else startPlay();
     });
   }
-  chart.on("timelineplaychanged", (e) => {
-    setPlayingState(!!(e && e.playState));
-  });
 
   document.getElementById("png").addEventListener("click", () => {
     const url = chart.getDataURL({
@@ -1995,6 +2057,15 @@ async function main() {
     state.logX = next.logX;
     state.sel = next.sel;
     state.deflate = next.deflate;
+    // If chart type changes via URL nav, stop any running play loop so the
+    // year-stepper doesn't keep firing while the chart re-renders as a
+    // non-bubble view.
+    if (next.chartType !== state.chartType) {
+      if (typeof window.__plotph_stopPlay === "function") {
+        window.__plotph_stopPlay();
+      }
+      state.chartType = next.chartType;
+    }
     render();
   });
 
@@ -2012,7 +2083,9 @@ async function main() {
     state.year = panel.includes(safeFirstYear) ? safeFirstYear : panel[0];
     render();
     setTimeout(() => {
-      chart.dispatchAction({ type: "timelinePlayChange", playState: true });
+      if (typeof window.__plotph_startPlay === "function") {
+        window.__plotph_startPlay();
+      }
     }, 500);
   }
 }
