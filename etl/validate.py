@@ -24,3 +24,31 @@ def validate_all(rows: list[dict], schema: str) -> None:
             raise ValueError(f"Null value in {schema} row: {r}")
         if not (lo <= v <= hi):
             raise ValueError(f"Out-of-bounds {schema} value {v} (expected [{lo},{hi}]) in row: {r}")
+
+
+def validate_precision(rows: list[dict], tolerance: float = 0.25) -> None:
+    """Sanity-check the PSA measures of precision on rows that carry them.
+
+    For any row with a 95% CI, the published incidence must sit inside its own
+    interval (allowing a small tolerance for PSA's independent rounding of each
+    bound), the interval must be ordered lo <= hi, and the CV must be non-negative.
+    Raises ValueError on the first violation so a malformed precision pull fails
+    the build instead of silently shipping nonsense uncertainty bands.
+    """
+    for r in rows:
+        cv = r.get("cv")
+        if cv is not None and cv < 0:
+            raise ValueError(f"Negative coefficient of variation {cv} in row: {r}")
+        lo = r.get("ci_lo")
+        hi = r.get("ci_hi")
+        if lo is None and hi is None:
+            continue
+        if lo is None or hi is None:
+            raise ValueError(f"Half-open confidence interval in row: {r}")
+        if lo > hi:
+            raise ValueError(f"Inverted confidence interval [{lo}, {hi}] in row: {r}")
+        v = r["value"]
+        if not (lo - tolerance <= v <= hi + tolerance):
+            raise ValueError(
+                f"Incidence {v} falls outside its 95% CI [{lo}, {hi}] in row: {r}"
+            )

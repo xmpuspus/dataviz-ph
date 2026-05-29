@@ -86,6 +86,139 @@ def expand_population(provinces_with_pop: dict, panel_years: list[int]) -> list[
     return out
 
 
+def _rank(vals: list[float]) -> list[float]:
+    """Fractional (average-of-ties) ranks, 1-based. Used for Spearman's rho."""
+    order = sorted(range(len(vals)), key=lambda i: vals[i])
+    ranks = [0.0] * len(vals)
+    i = 0
+    while i < len(vals):
+        j = i
+        while j + 1 < len(vals) and vals[order[j + 1]] == vals[order[i]]:
+            j += 1
+        avg = (i + j) / 2.0 + 1.0
+        for k in range(i, j + 1):
+            ranks[order[k]] = avg
+        i = j + 1
+    return ranks
+
+
+def _pearson(xs: list[float], ys: list[float]) -> float | None:
+    """Pearson correlation. None if fewer than 3 points or a degenerate axis."""
+    n = len(xs)
+    if n < 3:
+        return None
+    mx = sum(xs) / n
+    my = sum(ys) / n
+    sxy = sum((x - mx) * (y - my) for x, y in zip(xs, ys, strict=False))
+    sxx = sum((x - mx) ** 2 for x in xs)
+    syy = sum((y - my) ** 2 for y in ys)
+    if sxx <= 0 or syy <= 0:
+        return None
+    return sxy / ((sxx * syy) ** 0.5)
+
+
+def _spearman(xs: list[float], ys: list[float]) -> float | None:
+    """Rank correlation: robust to the log/linear axis choice and to outliers."""
+    if len(xs) < 3:
+        return None
+    return _pearson(_rank(xs), _rank(ys))
+
+
+def _strength_word(rho: float) -> str:
+    a = abs(rho)
+    if a < 0.2:
+        return "no clear"
+    if a < 0.4:
+        return "a weak"
+    if a < 0.6:
+        return "a moderate"
+    if a < 0.8:
+        return "a strong"
+    return "a very strong"
+
+
+def _median(vals: list[float]) -> float:
+    s = sorted(vals)
+    n = len(s)
+    if n == 0:
+        return 0.0
+    mid = n // 2
+    return s[mid] if n % 2 else (s[mid - 1] + s[mid]) / 2.0
+
+
+def compute_story_finding(
+    story: dict, value_index: dict[str, dict[tuple[str, int], float]]
+) -> dict:
+    """Compute a data-grounded answer to the story's question at its default year.
+
+    Returns a finding dict with the Spearman rank correlation (robust to the
+    log axis the chart uses), the Pearson r, the province count, the actual year
+    used, and an off-diagonal quadrant count. The human sentence is assembled
+    here from the computed numbers (never hand-typed) so it can never drift from
+    the data. Every finding carries the correlation-not-causation caveat.
+    """
+    xid, yid, year = story["x"], story["y"], story["default_year"]
+    xmap = value_index.get(xid, {})
+    ymap = value_index.get(yid, {})
+    pairs = [
+        (xmap[(psgc, yr)], ymap[(psgc, yr)])
+        for (psgc, yr) in xmap
+        if yr == year and (psgc, yr) in ymap
+    ]
+    n = len(pairs)
+    if n < 3:
+        return {"available": False, "year": year, "n": n}
+    xs = [p[0] for p in pairs]
+    ys = [p[1] for p in pairs]
+    rho = _spearman(xs, ys)
+    r = _pearson(xs, ys)
+    # Off-diagonal count: provinces above the median on BOTH axes.
+    mx, my = _median(xs), _median(ys)
+    both_high = sum(1 for x, y in pairs if x > mx and y > my)
+
+    yname = {
+        "poverty": "poverty incidence",
+        "gdp_per_capita": "per-capita GDP",
+        "subsistence_incidence": "subsistence incidence",
+    }.get(yid, yid.replace("_", " "))
+    xname = {
+        "dpwh_spend_per_capita": "DPWH spend per capita",
+        "all_spend_per_capita": "all-government spend per capita",
+        "gdp_per_capita": "per-capita GDP",
+    }.get(xid, xid.replace("_", " "))
+
+    direction = "negative" if (rho is not None and rho < 0) else "positive"
+    strength = _strength_word(rho) if rho is not None else "no measurable"
+    rho_txt = f"{rho:+.2f}" if rho is not None else "n/a"
+    sentence = (
+        f"In {year}, across {n} provinces, the rank correlation between {xname} and "
+        f"{yname} is rho = {rho_txt}, showing {strength} {direction} link. "
+        f"{both_high} of {n} provinces sat above the median on both axes."
+    )
+    award_ids = {
+        "dpwh_spend_per_capita",
+        "all_spend_per_capita",
+        "doh_spend_per_capita",
+        "infra_spend_per_capita",
+    }
+    caveat = "Correlation, not causation."
+    if xid in award_ids or yid in award_ids:
+        caveat += (
+            " Spend here is PhilGEPS contract awards (money committed), not "
+            "verified disbursement or built outcomes."
+        )
+    return {
+        "available": True,
+        "year": year,
+        "n": n,
+        "spearman": round(rho, 3) if rho is not None else None,
+        "pearson": round(r, 3) if r is not None else None,
+        "both_above_median": both_high,
+        "sentence": sentence,
+        "caveat": caveat,
+    }
+
+
 def write_json(name: str, payload: object) -> None:
     PUBLIC_DATA.mkdir(parents=True, exist_ok=True)
     out = PUBLIC_DATA / name
@@ -113,13 +246,15 @@ def main(no_cache: bool = False) -> None:
     total_pop = sum(pop_by_psgc.values())
     print(f"   total covered pop: {total_pop:,} (PSA 2020 Census national = ~109,033,245)")
 
-    print(">> fetch poverty (PSA 1E/FY 1a, anchors 2018/2021/2023)")
+    print(">> fetch poverty (PSA 1E/FY 1a, anchors 2018/2021/2023, with 95% CI)")
     poverty_anchors = psa_openstat.fetch_poverty(provinces, normalize_name)
     validate.validate_all(poverty_anchors, schema="rate_pct")
+    validate.validate_precision(poverty_anchors)
 
-    print(">> fetch subsistence incidence (PSA 1E/FY 3a, anchors 2018/2021/2023)")
+    print(">> fetch subsistence incidence (PSA 1E/FY 3a, anchors 2018/2021/2023, with 95% CI)")
     subsistence_anchors = psa_openstat.fetch_subsistence(provinces, normalize_name)
     validate.validate_all(subsistence_anchors, schema="rate_pct")
+    validate.validate_precision(subsistence_anchors)
 
     print(">> fetch DPWH spend (PhilGEPS, 15 chunks)")
     dpwh_spend = philgeps.fetch_dpwh_spend(provinces, normalize_name, pop_by_psgc)
@@ -153,17 +288,28 @@ def main(no_cache: bool = False) -> None:
     gdp = psa_openstat.fetch_gdp_per_capita(provinces, normalize_name)
     validate.validate_all(gdp, schema="peso_per_capita_gdp")
 
-    print(">> linear-fill poverty across 2014-2024")
+    # Carry the 95% CI + CV through onto anchor years only (interpolated years are
+    # model estimates, not survey estimates, so they carry no precision).
+    precision_fields = ["cv", "se", "ci_lo", "ci_hi"]
+    print(">> linear-fill poverty across 2014-2024 (CI carried on anchor years)")
     poverty = interpolate.linear_fill(
-        poverty_anchors, anchor_years=POVERTY_ANCHORS, target_years=PANEL_YEARS
+        poverty_anchors,
+        anchor_years=POVERTY_ANCHORS,
+        target_years=PANEL_YEARS,
+        carry_fields=precision_fields,
     )
     validate.validate_all(poverty, schema="rate_pct")
+    validate.validate_precision(poverty)
 
-    print(">> linear-fill subsistence across 2014-2024")
+    print(">> linear-fill subsistence across 2014-2024 (CI carried on anchor years)")
     subsistence = interpolate.linear_fill(
-        subsistence_anchors, anchor_years=POVERTY_ANCHORS, target_years=PANEL_YEARS
+        subsistence_anchors,
+        anchor_years=POVERTY_ANCHORS,
+        target_years=PANEL_YEARS,
+        carry_fields=precision_fields,
     )
     validate.validate_all(subsistence, schema="rate_pct")
+    validate.validate_precision(subsistence)
 
     # provinces.json enriched with population
     provinces_out = {
@@ -213,11 +359,15 @@ def main(no_cache: bool = False) -> None:
                 "PSA Full-Year anchors at 2018, 2021, 2023. Years between anchors are "
                 "linearly interpolated; years before 2018 and after 2023 hold constant. "
                 "Maguindanao published as the pre-2022-split unit. NCR is the regional "
-                "aggregate (not a province)."
+                "aggregate (not a province). Each survey year carries PSA's published "
+                "95% confidence interval and coefficient of variation; estimates with "
+                "CV above 30% are flagged as imprecise."
             ),
             "log_natural": False,
             "panel_years": PANEL_YEARS,
             "anchor_years": POVERTY_ANCHORS,
+            "has_ci": True,
+            "cv_unreliable_above": 30,
         },
         {
             "id": "subsistence_incidence",
@@ -238,11 +388,15 @@ def main(no_cache: bool = False) -> None:
                 "PSA Full-Year anchors at 2018, 2021, 2023. Years between anchors are "
                 "linearly interpolated; years before 2018 and after 2023 hold constant. "
                 "Maguindanao published as the pre-2022-split unit. NCR is the regional "
-                "aggregate (not a province)."
+                "aggregate (not a province). Each survey year carries PSA's published "
+                "95% confidence interval and coefficient of variation; estimates with "
+                "CV above 30% are flagged as imprecise."
             ),
             "log_natural": False,
             "panel_years": PANEL_YEARS,
             "anchor_years": POVERTY_ANCHORS,
+            "has_ci": True,
+            "cv_unreliable_above": 30,
         },
         {
             "id": "dpwh_spend_per_capita",
@@ -319,6 +473,7 @@ def main(no_cache: bool = False) -> None:
             "panel_years": GDP_PANEL_YEARS,
             "anchor_years": GDP_ANCHORS,
             "can_deflate": False,
+            "coverage_label": "PSA publishes provincial GDP from 2022 only (3 years).",
         },
         {
             "id": "doh_spend_per_capita",
@@ -400,6 +555,8 @@ def main(no_cache: bool = False) -> None:
             "log_natural": True,
             "panel_years": PANEL_YEARS,
             "anchor_years": [2020],
+            "static_snapshot": True,
+            "snapshot_label": "2020 Census only. Does not vary by year.",
         },
         {
             "id": "poverty_change_pp",
@@ -420,6 +577,8 @@ def main(no_cache: bool = False) -> None:
             "log_natural": False,
             "panel_years": PANEL_YEARS,
             "anchor_years": [2018, 2023],
+            "static_snapshot": True,
+            "snapshot_label": "2018-to-2023 change. A single value, not a yearly series.",
         },
         {
             "id": "cpi_yoy_pct",
@@ -446,6 +605,18 @@ def main(no_cache: bool = False) -> None:
     ]
     write_json("indicators.json", indicators)
 
+    # Awards != disbursement. PhilGEPS publishes contract awards (money committed),
+    # not cash actually paid. Province-grain disbursement is not published anywhere
+    # public (COA's annual reports are PDF-only and tag the disbursing office, not
+    # the project's province; DPWH's portal carries awards, not cash). So awards are
+    # the closest available proxy, and every spend story says so up front.
+    AWARDS_CAVEAT = (
+        "Reads as contract awards, not cash spent. PhilGEPS publishes the value of "
+        "contracts awarded, which can sit unexecuted for years; actual disbursement "
+        "by province is not published anywhere public. Treat this as money committed, "
+        "not money proven spent or built."
+    )
+
     stories = [
         {
             "id": "spend-vs-poverty",
@@ -468,6 +639,7 @@ def main(no_cache: bool = False) -> None:
             "panel_years": PANEL_YEARS,
             "default_year": 2018,
             "default_log_x": True,
+            "awards_caveat": AWARDS_CAVEAT,
         },
         {
             "id": "all-spend-vs-poverty",
@@ -491,6 +663,7 @@ def main(no_cache: bool = False) -> None:
             "panel_years": PANEL_YEARS,
             "default_year": 2018,
             "default_log_x": True,
+            "awards_caveat": AWARDS_CAVEAT,
         },
         {
             "id": "all-spend-vs-gdp",
@@ -517,6 +690,7 @@ def main(no_cache: bool = False) -> None:
             "panel_years": GDP_PANEL_YEARS,
             "default_year": 2023,
             "default_log_x": True,
+            "awards_caveat": AWARDS_CAVEAT,
         },
         {
             "id": "gdp-vs-poverty",
@@ -542,6 +716,19 @@ def main(no_cache: bool = False) -> None:
             "default_log_x": True,
         },
     ]
+    # Compute a data-grounded finding per story so each question gets an answer
+    # on the page, not just a chart. Built from the same series the chart plots.
+    value_index = {
+        "poverty": {(r["psgc"], r["year"]): r["value"] for r in poverty},
+        "subsistence_incidence": {(r["psgc"], r["year"]): r["value"] for r in subsistence},
+        "dpwh_spend_per_capita": {(r["psgc"], r["year"]): r["value"] for r in dpwh_spend},
+        "all_spend_per_capita": {(r["psgc"], r["year"]): r["value"] for r in all_spend},
+        "doh_spend_per_capita": {(r["psgc"], r["year"]): r["value"] for r in doh_spend},
+        "infra_spend_per_capita": {(r["psgc"], r["year"]): r["value"] for r in infra_spend},
+        "gdp_per_capita": {(r["psgc"], r["year"]): r["value"] for r in gdp},
+    }
+    for s in stories:
+        s["finding"] = compute_story_finding(s, value_index)
     write_json("stories.json", stories)
 
     # Write manifest LAST so its sha256 covers every freshly-written file.

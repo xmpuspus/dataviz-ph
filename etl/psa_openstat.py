@@ -134,14 +134,39 @@ def _fetch_or_cache(name: str, fetch: callable) -> dict:
     return payload
 
 
-def fetch_poverty(provinces: dict, normalize_name) -> list[dict]:
-    """Poverty incidence among families (%), province-level, 2018/2021/2023.
+# Roles we pull from the "Threshold/Incidence/Parameters" dimension of PSA
+# Tables 1a/3a. The incidence measure is matched per-table; the four precision
+# measures share the same labels across both tables.
+_PRECISION_LABELS = {
+    "cv": "coefficient of variation",
+    "se": "standard error",
+    "ci_lo": "lower limit",
+    "ci_hi": "upper limit",
+}
 
-    normalize_name is injected from etl.psgc to keep this module focused.
-    Returns rows: [{psgc, year, value}].
+
+def _fetch_incidence_with_precision(
+    url: str,
+    meta_name: str,
+    data_name: str,
+    incidence_pred,
+    table_label: str,
+    provinces: dict,
+    normalize_name,
+) -> list[dict]:
+    """Pull an incidence rate plus its measures of precision from a PSA poverty table.
+
+    PSA Tables 1a (poverty) and 3a (subsistence) both expose, per province-year:
+    the incidence (%), its Coefficient of Variation (%), Standard Error, and the
+    95% Confidence Interval lower/upper limits. Earlier we kept only the incidence
+    and threw the precision away; this captures all of it so the UI can show how
+    trustworthy each estimate is.
+
+    Only the published survey years (2018/2021/2023) carry precision. Returns rows:
+    [{psgc, year, value, cv, se, ci_lo, ci_hi}] where the precision keys are
+    omitted when PSA reports them as missing.
     """
-    url = f"{API_BASE}/{POVERTY_PATH}"
-    meta = _fetch_or_cache("poverty_meta.json", lambda: _get_json(url))
+    meta = _fetch_or_cache(meta_name, lambda: _get_json(url))
 
     geo_var = next(v for v in meta["variables"] if v.get("code") == "Geolocation")
     measure_var = next(
@@ -149,16 +174,23 @@ def fetch_poverty(provinces: dict, normalize_name) -> list[dict]:
     )
     year_var = next(v for v in meta["variables"] if v.get("code") == "Year")
 
-    # Pick the "Poverty Incidence among Families (%)" measure (index 1 in our probe).
-    incidence_val = None
+    # Map each measure value-code to a role by reading its valueText.
+    measure_codes: dict[str, str] = {}
     for val, txt in zip(measure_var["values"], measure_var["valueTexts"], strict=False):
-        if "poverty incidence" in txt.lower() and "famil" in txt.lower():
-            incidence_val = val
-            break
-    if incidence_val is None:
-        raise RuntimeError(
-            "Could not locate 'Poverty Incidence among Families (%)' in PSA table 1a"
-        )
+        t = txt.lower()
+        if incidence_pred(t):
+            measure_codes["value"] = val
+            continue
+        for role, needle in _PRECISION_LABELS.items():
+            if needle in t:
+                measure_codes[role] = val
+                break
+    if "value" not in measure_codes:
+        raise RuntimeError(f"Could not locate the incidence measure in {table_label}")
+
+    wanted_roles = [r for r in ("value", "cv", "se", "ci_lo", "ci_hi") if r in measure_codes]
+    requested_codes = [measure_codes[r] for r in wanted_roles]
+    code_to_role = {measure_codes[r]: r for r in wanted_roles}
 
     query = {
         "query": [
@@ -168,7 +200,7 @@ def fetch_poverty(provinces: dict, normalize_name) -> list[dict]:
             },
             {
                 "code": measure_var["code"],
-                "selection": {"filter": "item", "values": [incidence_val]},
+                "selection": {"filter": "item", "values": requested_codes},
             },
             {
                 "code": "Year",
@@ -177,90 +209,21 @@ def fetch_poverty(provinces: dict, normalize_name) -> list[dict]:
         ],
         "response": {"format": "json"},
     }
-    payload = _fetch_or_cache("poverty_data.json", lambda: _post_json(url, query))
-
-    # Build geo_code -> label map so we can resolve from row key.
-    geo_label = dict(zip(geo_var["values"], geo_var["valueTexts"], strict=False))
-    year_label = dict(zip(year_var["values"], year_var["valueTexts"], strict=False))
-
-    rows: list[dict] = []
-    for entry in payload.get("data", []):
-        key = entry.get("key", [])
-        if len(key) < 3:
-            continue
-        geo_code, _measure_code, year_code = key[0], key[1], key[2]
-        raw_label = geo_label.get(geo_code, "")
-        clean = _clean_geo_text(raw_label)
-        psgc = normalize_name(clean, provinces)
-        if psgc is None or psgc not in provinces:
-            continue
-        try:
-            year = int(year_label.get(year_code, year_code))
-        except ValueError:
-            continue
-        value = _to_float(entry.get("values", [None])[0])
-        if value is None:
-            continue
-        rows.append({"psgc": psgc, "year": year, "value": value})
-    return rows
-
-
-def fetch_subsistence(provinces: dict, normalize_name) -> list[dict]:
-    """Subsistence incidence among families (%), province-level, 2018/2021/2023.
-
-    PSA Table 3a (food-threshold). Structural mirror of fetch_poverty: same
-    Geolocation/Year dimensions, measure index 1 is the subsistence rate.
-    Subsistence incidence is the share of families below the food threshold, so
-    it is always lower than poverty incidence (food < full poverty threshold).
-    Returns rows: [{psgc, year, value}].
-    """
-    url = f"{API_BASE}/{SUBSISTENCE_PATH}"
-    meta = _fetch_or_cache("subsistence_meta.json", lambda: _get_json(url))
-
-    geo_var = next(v for v in meta["variables"] if v.get("code") == "Geolocation")
-    measure_var = next(
-        v for v in meta["variables"] if "Threshold" in (v.get("code") or "")
-    )
-    year_var = next(v for v in meta["variables"] if v.get("code") == "Year")
-
-    incidence_val = None
-    for val, txt in zip(measure_var["values"], measure_var["valueTexts"], strict=False):
-        if "subsistence incidence" in txt.lower() and "famil" in txt.lower():
-            incidence_val = val
-            break
-    if incidence_val is None:
-        raise RuntimeError(
-            "Could not locate 'Subsistence Incidence among Families (%)' in PSA table 3a"
-        )
-
-    query = {
-        "query": [
-            {
-                "code": "Geolocation",
-                "selection": {"filter": "item", "values": geo_var["values"]},
-            },
-            {
-                "code": measure_var["code"],
-                "selection": {"filter": "item", "values": [incidence_val]},
-            },
-            {
-                "code": "Year",
-                "selection": {"filter": "item", "values": year_var["values"]},
-            },
-        ],
-        "response": {"format": "json"},
-    }
-    payload = _fetch_or_cache("subsistence_data.json", lambda: _post_json(url, query))
+    payload = _fetch_or_cache(data_name, lambda: _post_json(url, query))
 
     geo_label = dict(zip(geo_var["values"], geo_var["valueTexts"], strict=False))
     year_label = dict(zip(year_var["values"], year_var["valueTexts"], strict=False))
 
-    rows: list[dict] = []
+    # Assemble per (psgc, year): one record gathering value + precision roles.
+    rec: dict[tuple[str, int], dict[str, float]] = {}
     for entry in payload.get("data", []):
         key = entry.get("key", [])
         if len(key) < 3:
             continue
-        geo_code, _measure_code, year_code = key[0], key[1], key[2]
+        geo_code, measure_code, year_code = key[0], key[1], key[2]
+        role = code_to_role.get(measure_code)
+        if role is None:
+            continue
         clean = _clean_geo_text(geo_label.get(geo_code, ""))
         psgc = normalize_name(clean, provinces)
         if psgc is None or psgc not in provinces:
@@ -269,11 +232,55 @@ def fetch_subsistence(provinces: dict, normalize_name) -> list[dict]:
             year = int(year_label.get(year_code, year_code))
         except ValueError:
             continue
-        value = _to_float(entry.get("values", [None])[0])
-        if value is None:
+        rec.setdefault((psgc, year), {})[role] = _to_float(entry.get("values", [None])[0])
+
+    rows: list[dict] = []
+    for (psgc, year), m in rec.items():
+        if m.get("value") is None:
             continue
-        rows.append({"psgc": psgc, "year": year, "value": value})
+        row = {"psgc": psgc, "year": year, "value": m["value"]}
+        for role in ("cv", "se", "ci_lo", "ci_hi"):
+            if m.get(role) is not None:
+                row[role] = m[role]
+        rows.append(row)
     return rows
+
+
+def fetch_poverty(provinces: dict, normalize_name) -> list[dict]:
+    """Poverty incidence among families (%) + precision, province-level, 2018/2021/2023.
+
+    normalize_name is injected from etl.psgc to keep this module focused.
+    Returns rows: [{psgc, year, value, cv, se, ci_lo, ci_hi}] (precision on the
+    published survey years only).
+    """
+    return _fetch_incidence_with_precision(
+        f"{API_BASE}/{POVERTY_PATH}",
+        "poverty_full.json",  # meta is reused below; data cache is the precision pull
+        "poverty_full_data.json",
+        lambda t: "poverty incidence" in t and "famil" in t,
+        "PSA table 1a",
+        provinces,
+        normalize_name,
+    )
+
+
+def fetch_subsistence(provinces: dict, normalize_name) -> list[dict]:
+    """Subsistence incidence among families (%) + precision, 2018/2021/2023.
+
+    PSA Table 3a (food-threshold). Structural mirror of fetch_poverty. Subsistence
+    incidence is the share of families below the food threshold, so it is always
+    lower than poverty incidence (food < full poverty threshold).
+    Returns rows: [{psgc, year, value, cv, se, ci_lo, ci_hi}].
+    """
+    return _fetch_incidence_with_precision(
+        f"{API_BASE}/{SUBSISTENCE_PATH}",
+        "subsistence_full.json",
+        "subsistence_full_data.json",
+        lambda t: "subsistence incidence" in t and "famil" in t,
+        "PSA table 3a",
+        provinces,
+        normalize_name,
+    )
 
 
 def fetch_population_2020(

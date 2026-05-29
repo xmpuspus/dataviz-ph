@@ -227,6 +227,42 @@ main {
   #title-strip .story-why { display: none; }
 }
 
+/* The computed finding: the data-grounded answer to the story's question. Kept
+   visible at every width (it is the defensible core, not decoration). */
+#title-strip .story-finding {
+  color: var(--ink);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  margin: 0.5rem 0 0;
+  max-width: 92ch;
+  padding: 0.45rem 0.7rem;
+  background: var(--soft);
+  border-left: 3px solid var(--luzon);
+  border-radius: 3px;
+}
+#title-strip .story-finding[hidden] { display: none; }
+
+/* Axis caveats: awards-not-disbursement, single-snapshot, short-panel. Amber so
+   they read as honest limitations, not errors. */
+#title-strip .story-caveat {
+  margin: 0.4rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-width: 92ch;
+}
+#title-strip .story-caveat[hidden] { display: none; }
+.caveat-line {
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: #7a4a25;
+  padding: 0.3rem 0.55rem;
+  background: #fdf6ef;
+  border-left: 3px solid var(--mindanao);
+  border-radius: 3px;
+}
+.caveat-line strong { color: #6a3d1c; }
+
 /* --- Sidebar (controls) ------------------------------------------------- */
 
 #controls {

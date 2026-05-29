@@ -11,6 +11,7 @@ def linear_fill(
     rows: list[dict],
     anchor_years: list[int],
     target_years: list[int],
+    carry_fields: list[str] | None = None,
 ) -> list[dict]:
     """Per-psgc linear interpolation between anchor years.
 
@@ -19,13 +20,25 @@ def linear_fill(
     - anchor years: interp=False, extrap=False
     - between two anchors: interp=True, extrap=False
     - before first or after last anchor: interp=False, extrap=True (held constant)
+
+    carry_fields names extra source keys (e.g. confidence-interval bounds) to copy
+    through ONTO ANCHOR YEARS ONLY. Interpolated and extrapolated years are model
+    estimates, not survey estimates, so they deliberately carry no precision -- it
+    would be dishonest to attach a 95% CI to a year PSA never measured.
     """
     anchor_years = sorted(set(anchor_years))
     target_years = sorted(set(target_years))
+    carry_fields = carry_fields or []
 
     by_psgc: dict[str, dict[int, float]] = {}
+    extra_by_psgc: dict[str, dict[int, dict]] = {}
     for r in rows:
-        by_psgc.setdefault(r["psgc"], {})[int(r["year"])] = float(r["value"])
+        yr = int(r["year"])
+        by_psgc.setdefault(r["psgc"], {})[yr] = float(r["value"])
+        if carry_fields:
+            extra_by_psgc.setdefault(r["psgc"], {})[yr] = {
+                f: r[f] for f in carry_fields if r.get(f) is not None
+            }
 
     out: list[dict] = []
     for psgc, by_year in by_psgc.items():
@@ -34,15 +47,16 @@ def linear_fill(
             continue
         for ty in target_years:
             if ty in by_year and ty in anchor_years:
-                out.append(
-                    {
-                        "psgc": psgc,
-                        "year": ty,
-                        "value": by_year[ty],
-                        "interp": False,
-                        "extrap": False,
-                    }
-                )
+                row = {
+                    "psgc": psgc,
+                    "year": ty,
+                    "value": by_year[ty],
+                    "interp": False,
+                    "extrap": False,
+                }
+                if carry_fields:
+                    row.update(extra_by_psgc.get(psgc, {}).get(ty, {}))
+                out.append(row)
                 continue
             lower = max((y for y in present_anchors if y <= ty), default=None)
             upper = min((y for y in present_anchors if y >= ty), default=None)

@@ -211,6 +211,47 @@ function indicatorValue(row, indicatorId, state) {
   return row.value;
 }
 
+// PSA convention: poverty/subsistence estimates with a coefficient of variation
+// above 30% are too imprecise to rank. We flag and dim those bubbles.
+const CV_UNRELIABLE = 30;
+
+// Pull PSA's published 95% CI + CV off a row, or null if the row carries none
+// (only the survey anchor years do; interpolated years are model estimates).
+function precisionOf(row) {
+  if (!row || row.ci_lo === undefined || row.ci_lo === null) return null;
+  return { cv: row.cv, se: row.se, ci_lo: row.ci_lo, ci_hi: row.ci_hi };
+}
+
+// Global value extent for an indicator across ALL its panel years, deflate-aware.
+// Used by the map so a province's colour reflects real change between years, not
+// a min/max that silently rescales each frame. Cached per (indicator, currency).
+const _extentCache = new Map();
+function globalExtent(indicatorId, data, state) {
+  const key = `${indicatorId}|${state.deflate ? "real" : "nom"}`;
+  if (_extentCache.has(key)) return _extentCache.get(key);
+  const meta = data.indicators[indicatorId] || {};
+  const years = meta.panel_years || [];
+  let min = Infinity;
+  let max = -Infinity;
+  for (const psgc of Object.keys(data.provinces)) {
+    for (const y of years) {
+      const row = lookupRow(indicatorId, psgc, y, data);
+      const v = row ? indicatorValue(row, indicatorId, state) : null;
+      if (v === null || v === undefined) continue;
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+  }
+  if (!isFinite(min)) {
+    min = 0;
+    max = 1;
+  }
+  if (min === max) max = min + 1;
+  const ext = { min, max };
+  _extentCache.set(key, ext);
+  return ext;
+}
+
 // Indicator row lookup with national-only fallback: if the per-province row
 // is missing AND the indicator is flagged national_only, return the national
 // row (psgc='000000000') so every bubble gets the national value at that year.
@@ -313,6 +354,11 @@ function pointFor(psgc, year, story, data, state) {
     }
   }
   if (xVal === null || yVal === null) return null;
+  // Precision (95% CI + CV) attaches to whichever axis carries an indicator that
+  // PSA publishes with measures of precision (poverty / subsistence). Suppressed
+  // when the spend deflator is active (spend has no CI) or on non-anchor years.
+  const xPrec = state.deflate && DEFLATABLE_INDICATORS.has(story.x) ? null : precisionOf(xRow);
+  const yPrec = state.deflate && DEFLATABLE_INDICATORS.has(story.y) ? null : precisionOf(yRow);
   return {
     psgc,
     name: info.name,
@@ -324,6 +370,8 @@ function pointFor(psgc, year, story, data, state) {
     interp: !!yRow.interp,
     extrap: !!yRow.extrap,
     projected,
+    xPrec,
+    yPrec,
   };
 }
 
@@ -350,18 +398,28 @@ function buildSeriesData(year, story, data, state) {
     const color = PALETTE[p.island] || "#999";
     const isAnchor = !p.interp && !p.extrap;
     const isProjected = !!p.projected;
+    // Imprecise = PSA reports a CV above the reliability threshold on either axis.
+    // Such bubbles get an amber dashed ring + reduced opacity so a too-uncertain
+    // estimate never reads as a confident data point.
+    const cvY = p.yPrec && p.yPrec.cv;
+    const cvX = p.xPrec && p.xPrec.cv;
+    const imprecise =
+      (cvY != null && cvY > CV_UNRELIABLE) || (cvX != null && cvX > CV_UNRELIABLE);
+    const itemStyle = {
+      color,
+      opacity: imprecise ? 0.3 : isProjected ? 0.45 : isAnchor ? 0.88 : 0.55,
+      borderColor: imprecise ? "#c05621" : isProjected ? color : isAnchor ? "#fff" : color,
+      borderWidth: imprecise ? 1.6 : isProjected ? 2 : isAnchor ? 0.6 : 1.5,
+      borderType: imprecise || isProjected ? "dashed" : "solid",
+    };
     return {
       id: p.psgc,
       name: p.name,
       value: [p.x, p.y, p.pop, p.name, p.year, p.interp, p.island, p.extrap],
+      xPrec: p.xPrec,
+      yPrec: p.yPrec,
       symbolSize: sizeFor(p.pop),
-      itemStyle: {
-        color,
-        opacity: isProjected ? 0.45 : isAnchor ? 0.88 : 0.55,
-        borderColor: isProjected ? color : isAnchor ? "#fff" : color,
-        borderWidth: isProjected ? 2 : isAnchor ? 0.6 : 1.5,
-        borderType: isProjected ? "dashed" : "solid",
-      },
+      itemStyle,
       label: {
         show: showLabel,
         position: "right",
@@ -443,6 +501,47 @@ function buildTrails(year, story, data, state) {
   return trails;
 }
 
+// 95% CI whiskers for selected provinces at the current year (bubble chart only).
+// A vertical bar when the Y axis carries precision, horizontal when X does. Only
+// the survey anchor years have precision, so most years draw nothing -- which is
+// itself honest: PSA only measured those years.
+function ciWhisker(id, pts, color) {
+  return {
+    id,
+    type: "line",
+    name: id,
+    data: pts,
+    symbol: "none",
+    lineStyle: { color, width: 1.5, opacity: 0.7 },
+    tooltip: { show: false },
+    silent: true,
+    z: 3,
+    animationDurationUpdate: 300,
+  };
+}
+
+function buildErrorBars(year, story, data, state) {
+  const out = new Map();
+  for (const psgc of state.sel) {
+    const p = pointFor(psgc, year, story, data, state);
+    if (!p) continue;
+    const color = PALETTE[p.island] || "#999";
+    if (p.yPrec && p.yPrec.ci_lo != null) {
+      out.set(
+        `err_y_${psgc}`,
+        ciWhisker(`err_y_${psgc}`, [[p.x, p.yPrec.ci_lo], [p.x, p.yPrec.ci_hi]], color),
+      );
+    }
+    if (p.xPrec && p.xPrec.ci_lo != null) {
+      out.set(
+        `err_x_${psgc}`,
+        ciWhisker(`err_x_${psgc}`, [[p.xPrec.ci_lo, p.y], [p.xPrec.ci_hi, p.y]], color),
+      );
+    }
+  }
+  return out;
+}
+
 function unitFor(indicatorId, state) {
   if (DEFLATABLE_INDICATORS.has(indicatorId)) {
     return state.deflate ? "PHP per person (2018-real)" : "PHP per person (nominal)";
@@ -509,6 +608,23 @@ function shortAxisCaption(indicatorId, state) {
   if (indicatorId === "poverty_change_pp") return "percentage points, 2023 minus 2018";
   if (indicatorId === "cpi_yoy_pct") return "percent, national series only";
   return "";
+}
+
+// One tooltip line for a 95% CI + CV on a given axis, or "" if no precision.
+// Uses "to" (not an en/em dash) for the range per the project copy rules.
+function ciTooltipLine(label, prec, indicatorId) {
+  if (!prec || prec.ci_lo === undefined || prec.ci_lo === null) return "";
+  const lo = formatValue(prec.ci_lo, indicatorId);
+  const hi = formatValue(prec.ci_hi, indicatorId);
+  const cvTxt = prec.cv != null ? ` (CV ${PCT.format(prec.cv)}%)` : "";
+  const warn =
+    prec.cv != null && prec.cv > CV_UNRELIABLE
+      ? ' <span style="color:#a13b2d;font-weight:600">imprecise</span>'
+      : "";
+  return (
+    `<div style="color:#595959;font-size:11px">${escapeHtml(label)} 95% CI: ` +
+    `${escapeHtml(lo)} to ${escapeHtml(hi)}${escapeHtml(cvTxt)}${warn}</div>`
+  );
 }
 
 const IS_TOUCH =
@@ -600,11 +716,15 @@ function baseOption(story, data, state) {
             : `${yName} linearly interpolated between PSA anchors`;
           noteHtml = `<div style="color:#595959;font-size:11px;margin-top:6px;border-top:1px solid #eee;padding-top:4px">${escapeHtml(note)}</div>`;
         }
+        const xPrec = p.data && p.data.xPrec;
+        const yPrec = p.data && p.data.yPrec;
         return (
           `<div style="font-weight:600;margin-bottom:4px">${swatch}${escapeHtml(name)} · ${year}</div>` +
           `<div style="color:#595959;font-size:11px;margin-bottom:6px">${escapeHtml(ISLAND_LABEL[island] || island)}</div>` +
           `<div>${escapeHtml(shortAxisName(xIndicator, state))}: <b>${escapeHtml(formatValue(x, xIndicator))}</b></div>` +
+          ciTooltipLine(shortAxisName(xIndicator, state), xPrec, xIndicator) +
           `<div>${escapeHtml(shortAxisName(yIndicator, state))}: <b>${escapeHtml(formatValue(y, yIndicator))}</b></div>` +
+          ciTooltipLine(shortAxisName(yIndicator, state), yPrec, yIndicator) +
           `<div>Population (2020 Census): ${escapeHtml(COUNT.format(pop))}</div>` +
           noteHtml
         );
@@ -705,8 +825,6 @@ function buildMapOption(view, data, state) {
   const yMeta = data.indicators[yId] || {};
 
   const rows = [];
-  let min = Infinity;
-  let max = -Infinity;
   for (const psgc of Object.keys(data.provinces)) {
     const row = lookupRow(yId, psgc, state.year, data);
     const val = row ? indicatorValue(row, yId, state) : null;
@@ -714,16 +832,24 @@ function buildMapOption(view, data, state) {
     if (val === null || val === undefined) {
       rows.push({ name, value: null, psgc });
     } else {
-      rows.push({ name, value: val, psgc, selected: state.sel.has(psgc) });
-      if (val < min) min = val;
-      if (val > max) max = val;
+      const prec = state.deflate && DEFLATABLE_INDICATORS.has(yId) ? null : precisionOf(row);
+      const imprecise = prec && prec.cv != null && prec.cv > CV_UNRELIABLE;
+      rows.push({
+        name,
+        value: val,
+        psgc,
+        selected: state.sel.has(psgc),
+        prec,
+        // Amber outline marks provinces whose estimate is too imprecise to trust.
+        ...(imprecise
+          ? { itemStyle: { borderColor: "#c05621", borderWidth: 1.4, borderType: "dashed" } }
+          : {}),
+      });
     }
   }
-  if (!isFinite(min)) {
-    min = 0;
-    max = 1;
-  }
-  if (min === max) max = min + 1; // avoid a degenerate single-stop scale
+  // Fixed global min/max across ALL years so a province's colour reflects real
+  // change between years, not a scale that silently rescales each frame.
+  const { min, max } = globalExtent(yId, data, state);
 
   return {
     // Faint year watermark (like bubble mode). The indicator name lives in the
@@ -744,9 +870,11 @@ function buildMapOption(view, data, state) {
         const v = p.data && p.data.value;
         const vs =
           v === null || v === undefined ? "no data" : escapeHtml(formatValue(v, yId));
+        const prec = p.data && p.data.prec;
         return (
           `<div style="font-weight:600">${escapeHtml(p.name)}</div>` +
-          `<div>${escapeHtml(yMeta.name || yId)}: <b>${vs}</b></div>`
+          `<div>${escapeHtml(yMeta.name || yId)}: <b>${vs}</b></div>` +
+          ciTooltipLine(yMeta.name || yId, prec, yId)
         );
       },
     },
@@ -797,6 +925,9 @@ function buildBubbleOption(story, data, state) {
   const autoTrails =
     state.sel.size === 0 ? autoTrailProvinces(story, data) : [];
   const trailIds = [...state.sel, ...autoTrails];
+  // CI whisker ids: two per selected province (x + y); empty on non-anchor years.
+  const errIds = [];
+  for (const psgc of state.sel) errIds.push(`err_y_${psgc}`, `err_x_${psgc}`);
   const compareSeries = buildCompareSeries(story, data, state);
 
   const xDeflatable = DEFLATABLE_INDICATORS.has(story.x);
@@ -823,6 +954,10 @@ function buildBubbleOption(story, data, state) {
         stepSeries.push(c);
         allConnectorIds.add(c.id);
       }
+    }
+    const errBars = buildErrorBars(year, story, data, state);
+    for (const id of errIds) {
+      stepSeries.push(errBars.get(id) || { id, type: "line", data: [], symbol: "none" });
     }
     const titleBlocks = [
       {
@@ -928,6 +1063,14 @@ function buildBubbleOption(story, data, state) {
           },
         },
         ...baseTrailStubs,
+        ...errIds.map((id) => ({
+          id,
+          type: "line",
+          data: [],
+          symbol: "none",
+          silent: true,
+          z: 3,
+        })),
         ...(compareSeries ? [{ id: "compare", type: "scatter", data: [], silent: true, z: 0 }] : []),
         ...[...allConnectorIds].map((id) => ({
           id,
@@ -1087,10 +1230,12 @@ function buildBarOption(view, data, state) {
     if (!row) continue;
     const val = indicatorValue(row, yId, state);
     if (val === null) continue;
+    const prec = state.deflate && DEFLATABLE_INDICATORS.has(yId) ? null : precisionOf(row);
     rows.push({ psgc, name: data.provinces[psgc].name, value: val,
-      island: data.provinces[psgc].island_group });
+      island: data.provinces[psgc].island_group, prec });
   }
   rows.sort((a, b) => b.value - a.value);
+  const precByName = new Map(rows.map((r) => [r.name, r.prec]));
 
   return {
     grid: { left: 170, right: 80, top: 48, bottom: 40 },
@@ -1139,7 +1284,8 @@ function buildBarOption(view, data, state) {
         if (!Array.isArray(params) || !params.length) return "";
         const p = params[0];
         return `<div style="font-weight:600">${escapeHtml(p.name)}</div>` +
-          `<div>${escapeHtml(yMeta.name || yId)}: <b>${escapeHtml(formatValue(p.value, yId))}</b></div>`;
+          `<div>${escapeHtml(yMeta.name || yId)}: <b>${escapeHtml(formatValue(p.value, yId))}</b></div>` +
+          ciTooltipLine(yMeta.name || yId, precByName.get(p.name), yId);
       },
     },
     series: [
@@ -1360,6 +1506,35 @@ function stepYear(state, delta, render) {
   if (next === undefined) return;
   state.year = next;
   render();
+}
+
+// Award-based spend indicators: PhilGEPS awards, not disbursement.
+const AWARDS_INDICATORS = new Set([
+  "dpwh_spend_per_capita",
+  "all_spend_per_capita",
+  "doh_spend_per_capita",
+  "infra_spend_per_capita",
+]);
+
+// Axis-level caveats for the indicators actually plotted: the awards/disbursement
+// gap, single-snapshot indicators that don't vary by year, and short panels.
+// Returned as {tag, text} so the renderer can bold the tag.
+function activeCaveats(view, data, state) {
+  const ids = state.chartType === "bubbles" ? [view.x, view.y] : [view.y];
+  const out = [];
+  if (ids.some((id) => AWARDS_INDICATORS.has(id))) {
+    const txt = (data.stories.find((s) => s.awards_caveat) || {}).awards_caveat;
+    if (txt) out.push({ tag: "Awards, not disbursement", text: txt });
+  }
+  for (const id of ids) {
+    const m = data.indicators[id] || {};
+    if (m.static_snapshot && m.snapshot_label) {
+      out.push({ tag: m.name, text: m.snapshot_label });
+    } else if (m.coverage_label) {
+      out.push({ tag: m.name, text: m.coverage_label });
+    }
+  }
+  return out;
 }
 
 // ---------- story switcher UI ----------
@@ -1984,6 +2159,35 @@ async function main() {
         } else {
           srcEl.hidden = true;
         }
+      }
+      // Computed finding: the data-grounded answer to the story's question.
+      // Preset views only (custom picks have no precomputed correlation).
+      const findingEl = document.getElementById("story-finding");
+      if (findingEl) {
+        const f = !view.isCustom ? view.finding : null;
+        if (f && f.available && f.sentence) {
+          findingEl.textContent = `What the data shows. ${f.sentence} ${f.caveat || ""}`;
+          findingEl.hidden = false;
+        } else {
+          findingEl.textContent = "";
+          findingEl.hidden = true;
+        }
+      }
+      // Axis caveats: awards-not-disbursement, single-snapshot, short-panel.
+      const caveatEl = document.getElementById("story-caveat");
+      if (caveatEl) {
+        const cavs = activeCaveats(view, data, state);
+        caveatEl.replaceChildren();
+        for (const c of cavs) {
+          const line = document.createElement("div");
+          line.className = "caveat-line";
+          const tag = document.createElement("strong");
+          tag.textContent = `${c.tag}: `;
+          line.appendChild(tag);
+          line.appendChild(document.createTextNode(c.text));
+          caveatEl.appendChild(line);
+        }
+        caveatEl.hidden = cavs.length === 0;
       }
       // Deflate toggle: keys off the indicator actually plotted. Bubbles put the
       // spend axis on X; line/bar/map all foreground the Y indicator.
