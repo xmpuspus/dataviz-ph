@@ -726,11 +726,14 @@ function buildMapOption(view, data, state) {
   if (min === max) max = min + 1; // avoid a degenerate single-stop scale
 
   return {
+    // Faint year watermark (like bubble mode). The indicator name lives in the
+    // picker pill top-left, so a centered title here would just collide with it
+    // on narrow screens — the watermark carries the year without overlapping.
     title: {
-      text: `${yMeta.name || yId}, ${state.year}`,
+      text: `${state.year}`,
       left: "center",
-      top: 10,
-      textStyle: { fontSize: 13, fontWeight: 600, color: "#444" },
+      top: "middle",
+      textStyle: { fontSize: 64, fontWeight: 700, color: "rgba(0,0,0,0.05)" },
     },
     tooltip: {
       trigger: "item",
@@ -1121,10 +1124,10 @@ function buildBarOption(view, data, state) {
       axisLabel: { color: "#444", fontSize: 11 },
     },
     title: {
-      text: `${yMeta.name || yId}, ${state.year}, ranked`,
+      text: `${state.year}`,
       left: "center",
-      top: 10,
-      textStyle: { fontSize: 13, fontWeight: 600, color: "#444" },
+      top: "middle",
+      textStyle: { fontSize: 64, fontWeight: 700, color: "rgba(0,0,0,0.05)" },
     },
     tooltip: {
       trigger: "axis",
@@ -1147,16 +1150,22 @@ function buildBarOption(view, data, state) {
           value: r.value,
           itemStyle: { color: PALETTE[r.island] || "#999", opacity: 0.92 },
         })),
-        barWidth: 12,
-        label: {
-          show: true,
-          position: "right",
-          distance: 4,
-          color: "#444",
-          fontSize: 10,
-          formatter: (p) => formatValue(p.value, yId),
+        // No fixed barWidth: let ECharts size bars to fit all 82 provinces in
+        // the column (a fixed 12px overflowed and clipped the bottom ~37).
+        // Per-bar value labels are off (82 would overlap illegibly); the value
+        // shows on hover via the axis tooltip, and bar length encodes it.
+        label: { show: false },
+        emphasis: {
+          itemStyle: { opacity: 1 },
+          label: {
+            show: true,
+            position: "right",
+            distance: 4,
+            color: "#444",
+            fontSize: 11,
+            formatter: (p) => formatValue(p.value, yId),
+          },
         },
-        emphasis: { itemStyle: { opacity: 1 } },
       },
     ],
   };
@@ -1620,14 +1629,9 @@ function attachAxisInfoButtons(chart, view, data, chartType) {
     // Line: X is year (locked). Only Y is choosable — top-left.
     place("y", view.y, view.x, { left: "12px", top: "8px" });
   } else if (chartType === "bar") {
-    // Bar (ranks): Y indicator is plotted on the horizontal axis; Y axis is
-    // the categorical province list (no picker). Put the picker bottom-center
-    // so it matches what the user is reading on the X axis.
-    place("y", view.y, view.x, {
-      left: "50%",
-      bottom: "10px",
-      transform: "translateX(-50%)",
-    });
+    // Bar (ranks): only Y is choosable. Top-left (like line/map) so it never
+    // collides with the X-axis caption at the bottom on narrow screens.
+    place("y", view.y, view.x, { left: "12px", top: "8px" });
   } else if (chartType === "map") {
     // Map colours a single indicator (the Y) across provinces. Picker top-left.
     place("y", view.y, view.x, { left: "12px", top: "8px" });
@@ -2021,6 +2025,18 @@ async function main() {
         b.classList.toggle("active", active);
         b.setAttribute("aria-pressed", active ? "true" : "false");
       });
+      // Island-group legend only applies to the views coloured by island
+      // (bubbles/line/bar). Map is coloured by the value scale, so hide it there
+      // to avoid implying the map colours mean island groups.
+      const islandLegend = document.getElementById("island-legend");
+      if (islandLegend) islandLegend.hidden = state.chartType === "map";
+      const selHint = document.getElementById("selected-hint");
+      if (selHint) {
+        selHint.textContent =
+          state.chartType === "map"
+            ? "Click a province to keep it labeled."
+            : "Click a bubble to keep it labeled.";
+      }
       // Big play button: hidden only in line mode (X axis is already year).
       // Bubbles and bar both benefit from year animation.
       const bp = document.getElementById("big-play");
