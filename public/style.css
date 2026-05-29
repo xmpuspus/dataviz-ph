@@ -73,7 +73,7 @@ body {
   padding: 0.4rem 0.7rem;
   border-radius: 6px;
   cursor: pointer;
-  min-height: 36px;
+  min-height: 44px;
 }
 
 .story-btn:hover { color: var(--ink); background: var(--soft); }
@@ -159,7 +159,7 @@ body {
   border: 1px solid var(--rule);
   border-radius: 6px;
   cursor: pointer;
-  min-height: 36px;
+  min-height: 44px;
 }
 
 .chart-type-btn:hover { border-color: var(--ink); color: var(--ink); }
@@ -379,8 +379,16 @@ select:focus-visible {
 
 .year-stepper {
   display: flex;
+  align-items: center;
   gap: 0.35rem;
   margin: 0.35rem 0 0.5rem;
+}
+
+.year-range {
+  flex: 2 1 auto;
+  min-width: 60px;
+  accent-color: var(--luzon);
+  cursor: pointer;
 }
 
 .year-stepper button {

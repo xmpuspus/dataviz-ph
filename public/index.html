@@ -65,6 +65,10 @@
         <span class="ct-icon" aria-hidden="true">▥</span>
         <span class="ct-label">Ranks</span>
       </button>
+      <button type="button" class="chart-type-btn" data-type="map" aria-pressed="false" title="Map">
+        <span class="ct-icon" aria-hidden="true">◍</span>
+        <span class="ct-label">Map</span>
+      </button>
     </nav>
   </section>
 
@@ -147,13 +151,14 @@
         <h2>Year <span id="year-display"></span></h2>
         <div class="year-stepper">
           <button id="year-prev" type="button" aria-label="previous year">&#9664;</button>
+          <input type="range" id="year-range" class="year-range" min="0" step="1" value="0" aria-label="year">
           <button id="year-next" type="button" aria-label="next year">&#9654;</button>
         </div>
         <label class="hint" for="compare-select">Compare with year</label>
         <select id="compare-select" aria-label="compare with year"></select>
       </div>
 
-      <div class="block">
+      <div class="block" id="log-block">
         <h2>Axis</h2>
         <button id="log-toggle" type="button">X: log</button>
       </div>
@@ -178,8 +183,12 @@
     </aside>
   </main>
 
-  <section id="sr-data" aria-label="text version of current chart" aria-live="polite">
+  <section id="sr-data" aria-label="text version of current chart">
     <h2 class="sr-only">Text version of current chart</h2>
+    <!-- Only this one-line summary is announced on year change; the full table
+         below is the static text alternative (announcing 82 rows per scrub
+         floods screen readers). -->
+    <p id="sr-summary" class="sr-only" role="status" aria-live="polite"></p>
     <div id="chart-sr-table" class="sr-only"></div>
   </section>
 

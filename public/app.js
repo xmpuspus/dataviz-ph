@@ -93,6 +93,7 @@ async function loadData() {
   const [
     provinces,
     poverty,
+    subsistence,
     spend,
     allSpend,
     dohSpend,
@@ -109,6 +110,7 @@ async function loadData() {
   ] = await Promise.all([
     fetchJson("data/provinces.json"),
     fetchJson("data/poverty.json"),
+    fetchJson("data/subsistence.json").catch(() => []),
     fetchJson("data/dpwh_spend_per_capita.json"),
     fetchJson("data/all_spend_per_capita.json"),
     fetchJson("data/doh_spend_per_capita.json").catch(() => []),
@@ -127,6 +129,7 @@ async function loadData() {
     provinces,
     indicatorRows: {
       poverty: indexRows(poverty),
+      subsistence_incidence: indexRows(subsistence),
       dpwh_spend_per_capita: indexRows(spend),
       all_spend_per_capita: indexRows(allSpend),
       doh_spend_per_capita: indexRows(dohSpend),
@@ -529,7 +532,7 @@ function baseOption(story, data, state) {
       name: shortAxisCaption(xIndicator, state) + (logX ? " · log scale" : " · linear"),
       nameLocation: "middle",
       nameGap: 100,
-      nameTextStyle: { fontSize: 11, color: "#8a8a8a", fontStyle: "italic" },
+      nameTextStyle: { fontSize: 11, color: "#6b6b6b", fontStyle: "italic" },
       min: logX ? undefined : 0,
       axisLine: { lineStyle: { color: "#ccc" } },
       axisTick: { show: false },
@@ -669,7 +672,116 @@ function buildCompareConnectors(year, story, data, state) {
 function buildOption(view, data, state) {
   if (state.chartType === "line") return buildLineOption(view, data, state);
   if (state.chartType === "bar") return buildBarOption(view, data, state);
+  if (state.chartType === "map") return buildMapOption(view, data, state);
   return buildBubbleOption(view, data, state);
+}
+
+// Lazily-loaded province polygons, registered with ECharts once on first map use.
+let PROVINCE_GEO = null;
+let _mapLoading = false;
+function ensureProvinceMap(onReady, onFail) {
+  if (PROVINCE_GEO) {
+    onReady();
+    return;
+  }
+  if (_mapLoading) return;
+  _mapLoading = true;
+  fetchJson("data/ph-provinces.geojson")
+    .then((geo) => {
+      PROVINCE_GEO = geo;
+      echarts.registerMap("ph-provinces", geo);
+      _mapLoading = false;
+      onReady();
+    })
+    .catch((e) => {
+      _mapLoading = false;
+      console.error("province map failed to load", e);
+      if (onFail) onFail();
+    });
+}
+
+function buildMapOption(view, data, state) {
+  const yId = view.y;
+  const yMeta = data.indicators[yId] || {};
+
+  const rows = [];
+  let min = Infinity;
+  let max = -Infinity;
+  for (const psgc of Object.keys(data.provinces)) {
+    const row = lookupRow(yId, psgc, state.year, data);
+    const val = row ? indicatorValue(row, yId, state) : null;
+    const name = data.provinces[psgc].name;
+    if (val === null || val === undefined) {
+      rows.push({ name, value: null, psgc });
+    } else {
+      rows.push({ name, value: val, psgc, selected: state.sel.has(psgc) });
+      if (val < min) min = val;
+      if (val > max) max = val;
+    }
+  }
+  if (!isFinite(min)) {
+    min = 0;
+    max = 1;
+  }
+  if (min === max) max = min + 1; // avoid a degenerate single-stop scale
+
+  return {
+    title: {
+      text: `${yMeta.name || yId}, ${state.year}`,
+      left: "center",
+      top: 10,
+      textStyle: { fontSize: 13, fontWeight: 600, color: "#444" },
+    },
+    tooltip: {
+      trigger: "item",
+      backgroundColor: "rgba(255,255,255,0.97)",
+      borderColor: "#ddd",
+      textStyle: { color: "#111" },
+      formatter: (p) => {
+        const v = p.data && p.data.value;
+        const vs =
+          v === null || v === undefined ? "no data" : escapeHtml(formatValue(v, yId));
+        return (
+          `<div style="font-weight:600">${escapeHtml(p.name)}</div>` +
+          `<div>${escapeHtml(yMeta.name || yId)}: <b>${vs}</b></div>`
+        );
+      },
+    },
+    visualMap: {
+      min,
+      max,
+      calculable: true,
+      left: 12,
+      bottom: 30,
+      orient: "vertical",
+      itemHeight: 140,
+      text: [formatValue(max, yId), formatValue(min, yId)],
+      inRange: { color: ["#eaf1f8", "#2b6cb0", "#c05621"] },
+      textStyle: { color: "#595959", fontSize: 11 },
+    },
+    series: [
+      {
+        id: "map",
+        type: "map",
+        map: "ph-provinces",
+        nameProperty: "name",
+        roam: true,
+        // Fit the (tall) archipelago inside the container instead of sizing by
+        // width, which would overflow the chart vertically.
+        layoutCenter: ["54%", "50%"],
+        layoutSize: "96%",
+        scaleLimit: { min: 1, max: 8 },
+        selectedMode: "multiple",
+        data: rows,
+        itemStyle: { areaColor: "#eee", borderColor: "#fff", borderWidth: 0.5 },
+        emphasis: { label: { show: false }, itemStyle: { areaColor: "#f6c453" } },
+        select: {
+          label: { show: false },
+          itemStyle: { borderColor: "#111", borderWidth: 1.5, areaColor: null },
+        },
+      },
+    ],
+  };
 }
 
 function buildBubbleOption(story, data, state) {
@@ -901,14 +1013,14 @@ function buildLineOption(view, data, state) {
       name: "Year",
       nameLocation: "middle",
       nameGap: 28,
-      nameTextStyle: { fontSize: 11, color: "#8a8a8a", fontStyle: "italic" },
+      nameTextStyle: { fontSize: 11, color: "#6b6b6b", fontStyle: "italic" },
     },
     yAxis: {
       type: "value",
       name: shortAxisCaption(yId, state),
       nameLocation: "middle",
       nameGap: 56,
-      nameTextStyle: { fontSize: 11, color: "#8a8a8a", fontStyle: "italic" },
+      nameTextStyle: { fontSize: 11, color: "#6b6b6b", fontStyle: "italic" },
       scale: yId === "poverty_change_pp",
       axisLabel: {
         color: "#595959",
@@ -942,7 +1054,7 @@ function buildLineOption(view, data, state) {
           html += `<div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color};margin-right:6px;vertical-align:middle"></span>${escapeHtml(p.seriesName)}: <b>${escapeHtml(formatValue(p.value, yId))}</b></div>`;
         }
         if (params.length > visible.length) {
-          html += `<div style="color:#888;font-size:11px;margin-top:4px">... ${params.length - visible.length} more</div>`;
+          html += `<div style="color:#6b6b6b;font-size:11px;margin-top:4px">... ${params.length - visible.length} more</div>`;
         }
         return html;
       },
@@ -982,7 +1094,7 @@ function buildBarOption(view, data, state) {
       name: shortAxisCaption(yId, state),
       nameLocation: "middle",
       nameGap: 28,
-      nameTextStyle: { fontSize: 11, color: "#8a8a8a", fontStyle: "italic" },
+      nameTextStyle: { fontSize: 11, color: "#6b6b6b", fontStyle: "italic" },
       scale: yId === "poverty_change_pp",
       axisLabel: {
         color: "#595959",
@@ -1063,7 +1175,7 @@ function parseHash(stories) {
   const xParam = params.get("x");
   const yParam = params.get("y");
   const ctParam = (params.get("ct") || "bubbles").toLowerCase();
-  const chartType = ["bubbles", "line", "bar"].includes(ctParam) ? ctParam : "bubbles";
+  const chartType = ["bubbles", "line", "bar", "map"].includes(ctParam) ? ctParam : "bubbles";
   const extrap = params.get("extrap");
   return {
     story,
@@ -1188,6 +1300,24 @@ function renderYearControls(state, view, render) {
   const display = document.getElementById("year-display");
   if (display) display.textContent = String(state.year);
 
+  // Native range slider: an AT-accessible year control (real slider role +
+  // aria-valuetext), mirroring the stepper buttons and arrow-key scrubbing.
+  const range = document.getElementById("year-range");
+  if (range) {
+    const years = view.panel_years;
+    const idx = Math.max(0, years.indexOf(state.year));
+    range.max = String(Math.max(0, years.length - 1));
+    range.value = String(idx);
+    range.setAttribute("aria-valuetext", String(state.year));
+    range.oninput = () => {
+      const y = years[parseInt(range.value, 10)];
+      if (y !== undefined && y !== state.year) {
+        state.year = y;
+        render();
+      }
+    };
+  }
+
   const select = document.getElementById("compare-select");
   if (!select) return;
   const current = state.compareYear || "";
@@ -1267,6 +1397,7 @@ function renderIndicatorPickers(state, view, data, render) {
     // so Playwright (and screen readers) don't see flickering DOM children.
     if (select.options.length === 0) {
       for (const ind of allIndicators) {
+        if (ind.national_only) continue; // no per-province variation; not an axis choice
         const opt = document.createElement("option");
         opt.value = ind.id;
         opt.textContent = ind.name;
@@ -1300,6 +1431,24 @@ function renderSrTable(story, data, state) {
     if (p) rows.push(p);
   }
   rows.sort((a, b) => a.name.localeCompare(b.name));
+
+  // Concise live summary (the only part announced on year change). Highest/
+  // lowest are by the Y indicator the chart foregrounds.
+  const summary = document.getElementById("sr-summary");
+  if (summary) {
+    const yName = data.indicators[story.y] ? data.indicators[story.y].name : story.y;
+    if (rows.length) {
+      const byY = [...rows].sort((a, b) => b.y - a.y);
+      const hi = byY[0];
+      const lo = byY[byY.length - 1];
+      summary.textContent =
+        `${state.year}: ${yName}, ${rows.length} provinces. ` +
+        `Highest ${hi.name} ${formatValue(hi.y, story.y)}, ` +
+        `lowest ${lo.name} ${formatValue(lo.y, story.y)}.`;
+    } else {
+      summary.textContent = `${state.year}: no data for this combination.`;
+    }
+  }
 
   const tbl = document.createElement("table");
   const cap = document.createElement("caption");
@@ -1477,15 +1626,20 @@ function attachAxisInfoButtons(chart, view, data, chartType) {
       bottom: "10px",
       transform: "translateX(-50%)",
     });
+  } else if (chartType === "map") {
+    // Map colours a single indicator (the Y) across provinces. Picker top-left.
+    place("y", view.y, view.x, { left: "12px", top: "8px" });
   }
 }
 
 // Indicator selection panel: list of all indicators, search, click to pick.
 let _indicatorPanelOpenFor = null;
+let _indicatorPanelTrigger = null;
 
 function showIndicatorPanel(anchorBtn, kind, currentId, otherId, data) {
   closeIndicatorPanel();
   _indicatorPanelOpenFor = kind;
+  _indicatorPanelTrigger = anchorBtn;
   const root = document.getElementById("chart");
   if (!root) return;
   const panel = document.createElement("div");
@@ -1525,7 +1679,9 @@ function showIndicatorPanel(anchorBtn, kind, currentId, otherId, data) {
     list.replaceChildren();
     const q = filter.trim().toLowerCase();
     const filtered = allIndicators.filter(
-      (i) => !q || i.name.toLowerCase().includes(q) || (i.unit || "").toLowerCase().includes(q),
+      (i) =>
+        !i.national_only &&
+        (!q || i.name.toLowerCase().includes(q) || (i.unit || "").toLowerCase().includes(q)),
     );
     for (const ind of filtered) {
       const li = document.createElement("li");
@@ -1604,13 +1760,23 @@ function closeIndicatorPanel() {
   _indicatorPanelOpenFor = null;
   document.removeEventListener("click", _outsideIndicatorClick, { capture: true });
   document.removeEventListener("keydown", _escIndicatorClose);
+  // Restore focus to the picker pill that opened the panel (WCAG 2.4.3).
+  // No-op if it was detached by a re-render after a selection.
+  if (_indicatorPanelTrigger && document.contains(_indicatorPanelTrigger)) {
+    _indicatorPanelTrigger.focus();
+  }
+  _indicatorPanelTrigger = null;
 }
 
 // Bound from main() so the panel has access to render() + state mutation.
 let _indicatorPickHandler = () => {};
 
+// Restore focus here when the definition popover closes (WCAG 2.4.3).
+let _axisPopoverTrigger = null;
+
 function showAxisPopover(anchorBtn, info) {
   closeAxisPopover();
+  _axisPopoverTrigger = anchorBtn;
   const root = document.getElementById("chart");
   if (!root) return;
   const pop = document.createElement("div");
@@ -1676,6 +1842,10 @@ function closeAxisPopover() {
   if (pop) pop.remove();
   document.removeEventListener("click", _outsideAxisClick, { capture: true });
   document.removeEventListener("keydown", _escAxisClose);
+  if (_axisPopoverTrigger && document.contains(_axisPopoverTrigger)) {
+    _axisPopoverTrigger.focus();
+  }
+  _axisPopoverTrigger = null;
 }
 
 // ---------- last-tapped panel (mobile) ----------
@@ -1809,16 +1979,22 @@ async function main() {
           srcEl.hidden = true;
         }
       }
-      // Deflate toggle visibility + label
+      // Deflate toggle: keys off the indicator actually plotted. Bubbles put the
+      // spend axis on X; line/bar/map all foreground the Y indicator.
+      const deflateIndicator =
+        state.chartType === "bubbles" ? xIndicator : data.indicators[view.y];
       const deflateBlock = document.getElementById("deflate-block");
       const deflateBtn = document.getElementById("deflate-toggle");
-      if (xIndicator && xIndicator.can_deflate) {
+      if (deflateIndicator && deflateIndicator.can_deflate) {
         deflateBlock.hidden = false;
         deflateBtn.textContent = state.deflate ? "PHP, 2018-real" : "PHP, nominal";
       } else {
         deflateBlock.hidden = true;
       }
-      // Log toggle label
+      // Log toggle only governs the bubble X axis; hide it elsewhere (it was a
+      // dead control in line/bar/map).
+      const logBlock = document.getElementById("log-block");
+      if (logBlock) logBlock.hidden = state.chartType !== "bubbles";
       document.getElementById("log-toggle").textContent = state.logX
         ? "X: log"
         : "X: linear";
@@ -1847,8 +2023,27 @@ async function main() {
       // Bubbles and bar both benefit from year animation.
       const bp = document.getElementById("big-play");
       if (bp) bp.hidden = state.chartType === "line";
-      // Chart (notMerge:true so a fresh axis indicator triggers full re-render)
-      chart.setOption(buildOption(view, data, state), { notMerge: true });
+      // Chart (notMerge:true so a fresh axis indicator triggers full re-render).
+      // Map mode needs the province polygons registered first; lazy-load them
+      // on first use and re-render once ready (fall back to bubbles on failure).
+      if (state.chartType === "map" && !PROVINCE_GEO) {
+        chart.showLoading({
+          text: "Loading map…",
+          color: "#2b6cb0",
+          textColor: "#595959",
+          maskColor: "rgba(255,255,255,0.85)",
+        });
+        ensureProvinceMap(
+          () => render(),
+          () => {
+            state.chartType = "bubbles";
+            render();
+          },
+        );
+      } else {
+        chart.hideLoading();
+        chart.setOption(buildOption(view, data, state), { notMerge: true });
+      }
       // Axis pickers: bubbles gets both, line gets Y only, bar gets Y only.
       attachAxisInfoButtons(chart, view, data, state.chartType);
       // Selection chips
@@ -1872,7 +2067,14 @@ async function main() {
   let lastTapPsgc = null;
   let lastTapAt = 0;
   chart.on("click", (params) => {
-    if (params.componentType !== "series" || params.seriesId !== "bubbles") return;
+    if (params.componentType !== "series") return;
+    // Map mode: click a province to pin/unpin it (round-trips with bubble select).
+    if (params.seriesId === "map") {
+      const mpsgc = params.data && params.data.psgc;
+      if (mpsgc) toggleSel(mpsgc, state, render);
+      return;
+    }
+    if (params.seriesId !== "bubbles") return;
     const psgc = params.data && params.data.id;
     if (!psgc) return;
     renderLastTapPanel(params.data, state);
@@ -2082,11 +2284,18 @@ async function main() {
         : panel[0];
     state.year = panel.includes(safeFirstYear) ? safeFirstYear : panel[0];
     render();
-    setTimeout(() => {
-      if (typeof window.__plotph_startPlay === "function") {
-        window.__plotph_startPlay();
-      }
-    }, 500);
+    // Respect prefers-reduced-motion: don't autoplay the bubble animation. The
+    // play button stays available for anyone who wants it.
+    const reduceMotion =
+      window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!reduceMotion) {
+      setTimeout(() => {
+        if (typeof window.__plotph_startPlay === "function") {
+          window.__plotph_startPlay();
+        }
+      }, 500);
+    }
   }
 }
 

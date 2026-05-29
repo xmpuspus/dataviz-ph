@@ -10,7 +10,7 @@
     "tagline": "All PhilGEPS spend per capita against per capita GDP. Three years of provincial GDP data, 2022 to 2024."
   },
   "dpwh_spend_per_capita|poverty": {
-    "headline": "Twelve years, two trillion in roads. Did poverty improve?",
+    "headline": "Eleven years, five trillion in roads. Did poverty improve?",
     "tagline": "DPWH spend per capita against poverty incidence. 82 provinces. 2014 to 2024. Hit play, or use the arrow keys."
   },
   "gdp_per_capita|poverty": {
@@ -152,5 +152,22 @@
   "population|poverty_change_pp": {
     "headline": "Did poverty fall faster in big provinces or small ones?",
     "tagline": "Population against the 2018-to-2023 poverty change."
+  },
+
+  "poverty|subsistence_incidence": {
+    "headline": "Poor, or going hungry? The two poverty lines.",
+    "tagline": "Poverty incidence against subsistence incidence. Subsistence counts families below the food threshold, so it always sits lower."
+  },
+  "dpwh_spend_per_capita|subsistence_incidence": {
+    "headline": "Did road money reach the provinces going hungry?",
+    "tagline": "DPWH spend per capita against subsistence incidence. 2014 to 2024."
+  },
+  "all_spend_per_capita|subsistence_incidence": {
+    "headline": "All government spending and the families below the food line.",
+    "tagline": "All PhilGEPS spend per capita against subsistence incidence."
+  },
+  "gdp_per_capita|subsistence_incidence": {
+    "headline": "Do richer provinces still have families going hungry?",
+    "tagline": "Per capita GDP against subsistence incidence. Three years of provincial GDP data, 2022 to 2024."
   }
 }

@@ -1,0 +1,21 @@
+# Cloudflare Pages headers. Applied to the static deploy of public/.
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), interest-cohort=()
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'; object-src 'none'
+
+# Vendored ECharts is version-pinned + SRI-checked: cache hard.
+/vendor/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Data is rebuilt on each ETL run: cache briefly, always revalidate.
+/data/*
+  Cache-Control: public, max-age=3600, must-revalidate
+
+# App shell: short cache so fixes ship without a hard refresh.
+/app.js
+  Cache-Control: public, max-age=300
+/style.css
+  Cache-Control: public, max-age=300

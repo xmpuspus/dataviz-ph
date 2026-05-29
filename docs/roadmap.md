@@ -140,3 +140,98 @@ Honorable mentions that pair well: rebuild only changed timeline steps not all 1
 4. **Domain `plot.ph` is "pending" per the user memory but README does not say what is blocking. Are we waiting on dotPH registrar paperwork, DNS provider choice, or Cloudflare zone setup?** Without that, the ship-blocker work has no destination to land on.
 
 5. **Should plot.ph adopt the "All data sourced from public records" disclaimer block standard across the civic-tech PH cluster (per the scoped-rules `civic-tech-ph` doc)?** Today the methodology section is rich and honest but doesn't carry the standard disclaimer phrasing. Adopting it makes plot.ph defensible if a province ever pushes back on a published number. Yes / no.
+
+---
+
+# 2026-05-29 re-audit + data-coverage matrix + Gapminder-parity pass
+
+Second full pass after the gapminder layout restructure (`bc6431d`, `dd0b60f`) landed on top of the 2026-05-27 work. Every claim below was verified against current source (file:line) or recomputed from the shipped data; agent findings that did not survive verification were dropped and are listed at the bottom. The 2026-05-27 ship-blockers all held through the restructure — but the restructure introduced new data-integrity gaps of its own.
+
+## Scores (weighted: Reliability + Security 1.5x, Feature Gaps 0.75x)
+
+| Dimension | Score | vs 2026-05-27 |
+|-----------|-------|----------------|
+| UX | 74 | — |
+| Intelligence | 74 | — |
+| Reliability | 78 | up (TTL + retry + 35 tests held) |
+| Performance | 74 | — |
+| Observability | 66 | — |
+| Security | 88 | up (SRI present, no XSS path) |
+| Operational | 62 | flat (deploy still unwired) |
+| Feature Gaps | 58 | — (no map view yet) |
+| Accessibility | 58 | new lens |
+| Responsive | 74 | new lens |
+| **Overall** | **~73** | up from 65 baseline |
+
+## NEW since the restructure — verified data-integrity / ship-blockers (fix before any public share)
+
+1. **DPWH flagship headline understates the plotted total ~2.5x.** "Twelve years, two trillion in roads" ([public/data/stories.json:1](public/data/stories.json#L1), [public/data/pair_headlines.json:13](public/data/pair_headlines.json#L13)). Recomputed from the 876 rows the chart actually plots (`dpwh_spend_per_capita` per-capita x `population.json`): **PHP 5.04 trillion** nominal over **11 years (2014–2024, not twelve)**. Effort **S**. Fix: correct the copy to ~5 trillion / 11 years AND compute the figure in [etl/build.py](etl/build.py) so it can never drift again (data-integrity rule: interpolate constants, don't hardcode prose).
+2. **The build manifest — the single stale-deploy detector — is itself stale.** `manifest.json` records `stories.json` sha256 `8ac8de1a…` but the file on disk is `cd47659e…`, and `pair_headlines.json` is **absent from the manifest entirely**. The restructure hand-edited stories.json and added pair_headlines.json without re-running `build_manifest()`. Effort **S**. Fix: re-run `python -m etl.build`; add a pre-commit/CI check that recomputes every `public/data/*.json` sha256 against the manifest and fails on drift.
+3. **A single 404 on any of 7 core data files kills the whole page silently.** [public/app.js:110-122](public/app.js#L110): `provinces, poverty, dpwh, all_spend, gdp, indicators, stories` are fetched with no `.catch()` (8 others are guarded). Effort **S**. Fix: guard all 15 with a visible "couldn't load data" state instead of an uncaught throw.
+4. **Deploy is not wired — there is no destination.** No `wrangler.toml` / `_headers` / `netlify.toml` / `vercel.json` / `.github/workflows/`, and `git remote -v` is empty; canonical/OG meta point at `plot.ph` which resolves to nothing. Effort **M**. Fix: `wrangler.toml` + `public/_headers` (CSP + caching) + a deploy workflow; resolve the domain (open question 4 from the prior section).
+
+## High-impact UX / accessibility (verified against source)
+
+| Finding | Severity | Evidence | Effort |
+|---------|----------|----------|--------|
+| `prefers-reduced-motion` not honored; autoplay + 700ms tweens fire 500ms after load regardless | High | 0 matches in app.js/style.css; autoplay [app.js:2074](public/app.js#L2074), tween [app.js:610](public/app.js#L610) | S |
+| Axis caption `#8a8a8a` (3.45:1) and tooltip "N more" `#888` (3.54:1) fail WCAG AA | High | [app.js:532](public/app.js#L532), [app.js:945](public/app.js#L945) | S |
+| Touch targets 36px (<44px AA): story tabs, chart-type strip | High | [style.css:76](public/style.css#L76), [style.css:162](public/style.css#L162) | S |
+| Island group encoded by color only; Visayas-green / Mindanao-orange are a color-blind confusion pair | High | `PALETTE` [app.js:4](public/app.js#L4) | M |
+| `aria-live` region dumps all 82 table rows on every year scrub — floods screen readers | High | [index.html:181](public/index.html#L181) | M |
+| `cpi_yoy_pct` (national_only) is selectable on either bubble axis and collapses 82 bubbles to a vertical line; three sources claim the picker "hides" it but it only labels it "· national only" | Medium | picker [app.js:1545](public/app.js#L1545); false claim in [indicators.json](public/data/indicators.json), [etl/build.py](etl/build.py), copied into coverage notes | S |
+| No empty-state when a custom X/Y pair has zero overlapping years — blank canvas, no message | Medium | `makeView` never checks empty intersection | S |
+| GDP/Spend-vs-GDP stories say "82 provinces" but structurally render 81 (Maguindanao omitted) | Low | [stories.json](public/data/stories.json) taglines | S |
+
+## Gapminder / Vizabi / OWID feature parity (ranked, file-level)
+
+Shipped already (verified): X/Y picker, chart-type strip (bubbles/line/bar), play/pause + year timeline, log toggle, deflate toggle, trails, select+compare-with-year, CSV + PNG export, copy-link deep state, axis-label definition popovers, mobile tap tooltip. Missing/partial, ranked by value-to-effort:
+
+1. **Play-speed control** (S) — interval hardcoded at [app.js:1963](public/app.js#L1963); add `state.playSpeed` 0.5x/1x/2x near the play button.
+2. **Axis min/max lock** (S) — cheap legibility win; stop axes from rescaling every frame so motion reads as real movement.
+3. **"Dim others" on select** (S) — fade unselected bubbles when one is picked (bubble mode).
+4. **Zoom / pan** (M) — no `dataZoom`; the 82-bubble log-X cloud crowds the bottom-left. Add to `baseOption` [app.js:516](public/app.js#L516).
+5. **Embed iframe** (M) — only copy-link today ([app.js:2009](public/app.js#L2009)); add an `embed=1` chrome-less mode in `parseHash` [app.js:1053](public/app.js#L1053) for journalists' CMSs.
+6. **Color-by selector** (L) — color is hardwired to island group; let color encode a metric.
+7. **Size-by selector** (L) — bubble size locked to static 2020 population (`sizeFor` [app.js:185](public/app.js#L185)); size never animates.
+8. **AT-accessible native year slider** (M) — the ECharts timeline canvas exposes no `slider` role; add a real `<input type=range>` mirror.
+
+## Data-coverage matrix vs ph-civic-data-mcp (28 tools, source-verified)
+
+Full matrix: `tmp/audit-20260529T005415Z/09-coverage-matrix.md`. Today plot.ph visualizes **4 of 28 tools, all partial** (population, poverty, national CPI, and a provincial GDP cut — note plot.ph's GDP is PSA 2A/PPA at [etl/build.py:149](etl/build.py#L149), *not* the World Bank tool). **"All data possible" is scoped, not literal**, in three honest buckets:
+
+### Bucket A — fits today's bubble/line/bar views, needs only ETL + a story (NO new view type)
+
+| Source (file:line) | Shape | Why it fits / caveat | Effort |
+|--------------------|-------|----------------------|--------|
+| **Subsistence incidence** — `get_poverty_stats` ([psa.py:238](../../ph-civic-data-mcp/src/ph_civic_data_mcp/sources/psa.py#L238)) | provincial, panel | **The only true new 82-province bubble indicator.** Already fetched alongside poverty; just ship the column. | **S** |
+| World Bank national macro — `get_world_bank_indicator` ([world_bank.py:60](../../ph-civic-data-mcp/src/ph_civic_data_mcp/sources/world_bank.py#L60)) | national, annual | gini, life-expectancy, urbanization, debt%GDP. **National = one line, not an 82-province cloud** — fits the chart *type*, not the province-comparison the product is built on. | S/indicator |
+| Regional inflation — `get_inflation_stats` ([psa.py:535](../../ph-civic-data-mcp/src/ph_civic_data_mcp/sources/psa.py#L535)) | regional, monthly | PSA CPI is region-level; needs a region→province broadcast or a region-mode toggle. Replaces today's national-only CPI. | M |
+| National labor (LFS) — `get_labor_stats` ([psa.py:668](../../ph-civic-data-mcp/src/ph_civic_data_mcp/sources/psa.py#L668)) | national | LFPR / unemployment — single national line only. | M |
+| National health — `get_health_indicators` ([psa.py:870](../../ph-civic-data-mcp/src/ph_civic_data_mcp/sources/psa.py#L870)) | national | maternal mortality, fertility — national annual line; PSA 1D has no province grain. | M |
+
+Plus the already-scoped PhilGEPS story variants from the prior roadmap section (infra-only filter, DOH-spend + a paired outcome) — same pipeline, filter swaps.
+
+### Bucket B — needs a new choropleth / map view to be honest (do NOT force into a bubble chart)
+
+A province **choropleth view** (Effort **L**, PSGC polygons from psgc.gitlab.io) is the single biggest unlock: it lets readers see *where* the existing 10 indicators are, AND becomes the only honest home for 8 geo/event sources that have no province×year panel shape — earthquakes (`phivolcs.py:115`, `usgs.py:68`), volcano alert levels (`phivolcs.py:330`), historical typhoon tracks (`ibtracs.py:75`), NDVI (`modis_ndvi.py:61`), solar/climate (`nasa_power.py:45`), air quality (`open_meteo_aq.py:58`). These are point/track/raster data; they belong on a basemap, never in a bubble.
+
+### Bucket C — out of scope for plot.ph (14 tools)
+
+Live procurement notices with no cost/province (`philgeps.py:88/155`, `infra.py:415` — the awards-mirror per-capita panels already cover procurement better), real-time weather/hazard feeds (`pagasa.py`, `cross_source.py:117`), single-record detail lookups (`infra.py:354`, `phivolcs.py:160`), PSGC geo-reference utilities (useful only as ETL geocoders, no metric to plot), and mixed-grain composites (`autostitch.py:54`, `cross_source.py:214`).
+
+## Prioritized next actions (impact-to-effort)
+
+1. **Fix the four verified data-integrity / ship-blocker items above** (3x S + 1x M). Nothing should be shared publicly while the flagship headline is 2.5x wrong and the freshness manifest lies.
+2. **a11y quick wins** (4x S): reduced-motion guard, two contrast bumps, 44px touch targets, empty-state. Each is a few lines; together they move Accessibility 58→~75.
+3. **Subsistence incidence indicator** (S) — the only zero-new-view data win that preserves the 82-province signature. One ETL column + one story/preset.
+4. **Gapminder S-tier polish** (play-speed, axis lock, dim-others) — cheap, visibly "more modern."
+5. **Province choropleth view** (L) — the headline feature lift; unlocks geographic reading + the entire hazard/enviro source bucket. Biggest single bet.
+6. Then the M-effort national series (World Bank / labor / health) and regional inflation — valuable but they render as single lines, so frame them as a companion "national context" mode, not as province bubbles.
+
+## Agent claims dropped in adversarial verification (did not survive source check)
+
+- "`escapeHtml()` is dead/unused code" (Security agent) — **false**; used in 10+ tooltip sites ([app.js:598-1025](public/app.js#L598)). No change needed.
+- "Live chart is effectively unannounced to screen readers" (a11y agent, graded Critical) — **overstated**; an `aria-live` SR text region exists ([index.html:181](public/index.html#L181)). Regraded to the High "flooding" finding above.
+- "reduced-motion ignored = Critical" — **regraded High**; a pause control exists, satisfying WCAG 2.2.2, so it is not a hard-A failure.
+- "Actions dropped during the 700ms tween" (carried from 2026-05-27 memory) — **misread**; the reentrancy guard is per-synchronous-call, not per-tween.

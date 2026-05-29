@@ -117,6 +117,10 @@ def main(no_cache: bool = False) -> None:
     poverty_anchors = psa_openstat.fetch_poverty(provinces, normalize_name)
     validate.validate_all(poverty_anchors, schema="rate_pct")
 
+    print(">> fetch subsistence incidence (PSA 1E/FY 3a, anchors 2018/2021/2023)")
+    subsistence_anchors = psa_openstat.fetch_subsistence(provinces, normalize_name)
+    validate.validate_all(subsistence_anchors, schema="rate_pct")
+
     print(">> fetch DPWH spend (PhilGEPS, 15 chunks)")
     dpwh_spend = philgeps.fetch_dpwh_spend(provinces, normalize_name, pop_by_psgc)
     validate.validate_all(dpwh_spend, schema="peso_per_capita")
@@ -155,6 +159,12 @@ def main(no_cache: bool = False) -> None:
     )
     validate.validate_all(poverty, schema="rate_pct")
 
+    print(">> linear-fill subsistence across 2014-2024")
+    subsistence = interpolate.linear_fill(
+        subsistence_anchors, anchor_years=POVERTY_ANCHORS, target_years=PANEL_YEARS
+    )
+    validate.validate_all(subsistence, schema="rate_pct")
+
     # provinces.json enriched with population
     provinces_out = {
         code: {**info, "population_2020": pop_by_psgc.get(code, 0)}
@@ -173,6 +183,7 @@ def main(no_cache: bool = False) -> None:
 
     write_json("provinces.json", provinces_out)
     write_json("poverty.json", poverty)
+    write_json("subsistence.json", subsistence)
     write_json("dpwh_spend_per_capita.json", dpwh_spend)
     write_json("all_spend_per_capita.json", all_spend)
     write_json("doh_spend_per_capita.json", doh_spend)
@@ -197,6 +208,31 @@ def main(no_cache: bool = False) -> None:
                 "Share of families whose per-capita income falls below the official "
                 "poverty threshold for their province, as published by the PSA in Table "
                 "1a of the Full-Year Official Poverty Statistics."
+            ),
+            "vintage": (
+                "PSA Full-Year anchors at 2018, 2021, 2023. Years between anchors are "
+                "linearly interpolated; years before 2018 and after 2023 hold constant. "
+                "Maguindanao published as the pre-2022-split unit. NCR is the regional "
+                "aggregate (not a province)."
+            ),
+            "log_natural": False,
+            "panel_years": PANEL_YEARS,
+            "anchor_years": POVERTY_ANCHORS,
+        },
+        {
+            "id": "subsistence_incidence",
+            "name": "Subsistence incidence among families",
+            "unit": "%",
+            "source": "PSA OpenStat 1E/FY Table 3a",
+            "source_url": (
+                "https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1E__FY/"
+            ),
+            "definition": (
+                "Share of families whose per-capita income falls below the official "
+                "food (subsistence) threshold for their province, as published by the "
+                "PSA in Table 3a of the Full-Year Official Poverty Statistics. These "
+                "are families who cannot afford even a basic nutritionally-adequate "
+                "diet, so the rate is always lower than poverty incidence."
             ),
             "vintage": (
                 "PSA Full-Year anchors at 2018, 2021, 2023. Years between anchors are "
@@ -414,7 +450,7 @@ def main(no_cache: bool = False) -> None:
         {
             "id": "spend-vs-poverty",
             "tab_label": "DPWH vs poverty",
-            "headline": "Twelve years, two trillion in roads. Did poverty move?",
+            "headline": "Eleven years, five trillion in roads. Did poverty improve?",
             "tagline": (
                 "DPWH spend per capita against poverty incidence. 82 provinces. "
                 "2014 to 2024. Hit play, or use the arrow keys."
@@ -459,7 +495,7 @@ def main(no_cache: bool = False) -> None:
         {
             "id": "all-spend-vs-gdp",
             "tab_label": "Spend vs GDP",
-            "headline": "Where the money goes, where the wealth lives.",
+            "headline": "Does spending follow wealth, or chase poverty?",
             "tagline": (
                 "82 provinces. 2022 to 2024. All government contracts per capita "
                 "against per-capita GDP."
@@ -509,10 +545,21 @@ def main(no_cache: bool = False) -> None:
     write_json("stories.json", stories)
 
     # Write manifest LAST so its sha256 covers every freshly-written file.
+    dpwh_total = compute_dpwh_attributed_total(dpwh_spend, pop_by_psgc)
     manifest = build_manifest(
+        derived={
+            "dpwh_attributed_php_total": dpwh_total,
+            "dpwh_attributed_php_note": (
+                "Sum of per-capita DPWH spend x 2020 province population over the "
+                "attributed subset the chart plots (2014-2024, 11 years). About 20% of "
+                "DPWH award value is unattributable and excluded, so this is a floor. "
+                "Rounds to ~5 trillion PHP nominal; cited by the DPWH story headline."
+            ),
+        },
         row_counts={
             "provinces": len(provinces_out),
             "poverty": len(poverty),
+            "subsistence": len(subsistence),
             "dpwh_spend_per_capita": len(dpwh_spend),
             "all_spend_per_capita": len(all_spend),
             "doh_spend_per_capita": len(doh_spend),
@@ -549,7 +596,26 @@ def main(no_cache: bool = False) -> None:
     print(f"  manifest built_at: {manifest['built_at']}")
 
 
-def build_manifest(row_counts: dict[str, int]) -> dict:
+def compute_dpwh_attributed_total(
+    dpwh_spend: list[dict], pop_by_psgc: dict[str, int]
+) -> int:
+    """Reconstruct the attributed DPWH peso total the chart actually plots.
+
+    Each dpwh row is per-capita PHP; multiply by the province population and sum.
+    This is the figure the DPWH headline cites, so it is computed here (not
+    hardcoded as prose) and stored in the manifest as the citable source.
+    """
+    total = 0.0
+    for r in dpwh_spend:
+        pc = r.get("value")
+        pop = pop_by_psgc.get(r["psgc"])
+        if pc is None or pop is None:
+            continue
+        total += pc * pop
+    return round(total)
+
+
+def build_manifest(row_counts: dict[str, int], derived: dict | None = None) -> dict:
     """Build a manifest of every JSON in public/data/ with sha256 + row count.
 
     Run AFTER all data files are written. Excludes manifest.json itself.
@@ -572,9 +638,57 @@ def build_manifest(row_counts: dict[str, int]) -> dict:
             "psgc": "psgc.gitlab.io community mirror",
         },
         "row_counts": row_counts,
+        "derived": derived or {},
         "file_bytes": sizes,
         "sha256_per_file": sha,
     }
+
+
+def _count_rows(payload: object) -> int:
+    """Row count for a data file: list length, or dict keys minus self-doc."""
+    if isinstance(payload, list):
+        return len(payload)
+    if isinstance(payload, dict):
+        return len([k for k in payload if k != "_description"])
+    return 1
+
+
+def refresh_manifest() -> None:
+    """Rebuild manifest.json from the files currently on disk. No network.
+
+    Use after editing any editorial data file by hand (stories.json,
+    pair_headlines.json) so the recorded sha256 + row counts stop drifting from
+    what actually ships. This is the cheap counterpart to a full `main()` build.
+    """
+    files = sorted(p for p in PUBLIC_DATA.glob("*.json") if p.name != "manifest.json")
+    row_counts = {}
+    for f in files:
+        try:
+            row_counts[f.stem] = _count_rows(json.loads(f.read_text()))
+        except json.JSONDecodeError:
+            row_counts[f.stem] = -1
+
+    derived = {}
+    dpwh_path = PUBLIC_DATA / "dpwh_spend_per_capita.json"
+    prov_path = PUBLIC_DATA / "provinces.json"
+    if dpwh_path.exists() and prov_path.exists():
+        dpwh = json.loads(dpwh_path.read_text())
+        provinces = json.loads(prov_path.read_text())
+        pop_by_psgc = {code: info.get("population_2020", 0) for code, info in provinces.items()}
+        total = compute_dpwh_attributed_total(dpwh, pop_by_psgc)
+        derived["dpwh_attributed_php_total"] = total
+        derived["dpwh_attributed_php_note"] = (
+            "Sum of per-capita DPWH spend x 2020 province population over the "
+            "attributed subset the chart plots (2014-2024, 11 years). About 20% of "
+            "DPWH award value is unattributable and excluded, so this is a floor. "
+            "Rounds to ~5 trillion PHP nominal; cited by the DPWH story headline."
+        )
+
+    manifest = build_manifest(row_counts=row_counts, derived=derived)
+    write_json("manifest.json", manifest)
+    print(f"refreshed manifest over {len(files)} files; built_at {manifest['built_at']}")
+    if derived:
+        print(f"  dpwh attributed total: PHP {derived['dpwh_attributed_php_total']:,}")
 
 
 if __name__ == "__main__":
@@ -584,5 +698,14 @@ if __name__ == "__main__":
         action="store_true",
         help="Ignore on-disk caches; refetch every upstream source.",
     )
+    parser.add_argument(
+        "--manifest-only",
+        action="store_true",
+        help="Rebuild manifest.json from files on disk (no network). Use after "
+        "hand-editing editorial data files so the manifest stops drifting.",
+    )
     args = parser.parse_args()
-    main(no_cache=args.no_cache)
+    if args.manifest_only:
+        refresh_manifest()
+    else:
+        main(no_cache=args.no_cache)
