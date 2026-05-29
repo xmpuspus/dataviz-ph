@@ -889,7 +889,11 @@ function buildMapOption(view, data, state) {
       orient: "vertical",
       itemHeight: 140,
       text: [formatValue(max, yId), formatValue(min, yId)],
-      inRange: { color: ["#eaf1f8", "#2b6cb0", "#c05621"] },
+      // Single-hue sequential ramp (light to dark blue). The mapped indicators
+      // (poverty %, subsistence %, per-capita spend/GDP) are sequential magnitudes
+      // with no meaningful zero-midpoint, so a diverging two-hue ramp would imply
+      // a neutral centre that does not exist. Dark = more, light = less.
+      inRange: { color: ["#e6eef7", "#9ec1e0", "#2b6cb0", "#103a66"] },
       textStyle: { color: "#595959", fontSize: 11 },
     },
     series: [
