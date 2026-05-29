@@ -192,6 +192,44 @@ main {
   padding: 0;
 }
 
+/* First-read scaffold: one low-weight line above the chart, bubble mode only,
+   dismissible. Tells a novice what a bubble is before the motion starts. */
+#chart-howto {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.3rem 0.6rem 0.3rem 0.85rem;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--muted);
+  background: var(--soft);
+  border-bottom: 1px solid var(--rule);
+}
+
+#chart-howto[hidden] { display: none; }
+
+#chart-howto-text { flex: 1 1 auto; }
+
+#chart-howto-dismiss {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  line-height: 1;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#chart-howto-dismiss:hover { color: var(--ink); background: var(--soft2); }
+#chart-howto-dismiss:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+
 #chart {
   width: 100%;
   height: 720px;
@@ -412,6 +450,42 @@ select:focus-visible {
 .legend-list .dot[data-group="mindanao"] { background: var(--mindanao); }
 .legend-list .dot[data-group="ncr"] { background: var(--ncr); }
 .legend-list .dot[data-group="barmm"] { background: var(--barmm); }
+
+/* --- Bubble-size legend (sidebar, bubble mode only) -------------------- */
+
+#size-legend[hidden] { display: none; }
+
+/* Circles sit on a shared baseline so size reads as growth, not float.
+   Sized in JS from the exact sizeFor() the chart uses, so the key can never
+   diverge from the encoding. Colour is neutral steel: size, not island. */
+.size-legend-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.6rem;
+  min-height: 40px;
+  padding: 0.1rem 0 0.15rem;
+}
+
+.size-legend-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.size-legend-circle {
+  border-radius: 50%;
+  background: rgba(120, 134, 150, 0.55);
+  border: 1px solid #6b7785;
+}
+
+.size-legend-label {
+  font-size: 0.7rem;
+  color: var(--muted);
+  line-height: 1;
+}
+
+.size-legend-cap { margin: 0.4rem 0 0; }
 
 .year-stepper {
   display: flex;

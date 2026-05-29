@@ -76,6 +76,10 @@
 
   <main>
     <section id="chart-wrap">
+      <p id="chart-howto" hidden>
+        <span id="chart-howto-text"></span>
+        <button type="button" id="chart-howto-dismiss" aria-label="dismiss how-to-read hint">&times;</button>
+      </p>
       <div
         id="chart"
         role="img"
@@ -147,6 +151,16 @@
           <li><span class="dot" data-group="ncr"></span>NCR</li>
           <li><span class="dot" data-group="barmm"></span>BARMM</li>
         </ul>
+      </div>
+
+      <div class="block" id="size-legend" hidden>
+        <h2>Bubble size</h2>
+        <div class="size-legend-row" id="size-legend-row" aria-hidden="true"></div>
+        <p class="hint size-legend-cap">Population (2020 Census)</p>
+        <p class="sr-only">
+          Bigger circles mark more populous areas, by 2020 Census population:
+          from roughly 100 thousand people to 13 million in Metro Manila.
+        </p>
       </div>
 
       <div class="block">

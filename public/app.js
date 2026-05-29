@@ -192,6 +192,56 @@ function sizeFor(pop) {
   return Math.max(6, Math.min(36, px));
 }
 
+// Reference circles for the size key. Each px is the exact diameter sizeFor()
+// gives a province of that population, so the legend can never drift from the
+// encoding. Spans the real PH range: small province ~100k to Metro Manila ~13M.
+const SIZE_LEGEND_REFS = [
+  { pop: 100000, label: "100k" },
+  { pop: 1000000, label: "1M" },
+  { pop: 10000000, label: "10M" },
+];
+
+let _sizeLegendDrawn = false;
+function renderSizeLegend() {
+  if (_sizeLegendDrawn) return;
+  const row = document.getElementById("size-legend-row");
+  if (!row) return;
+  row.replaceChildren();
+  for (const ref of SIZE_LEGEND_REFS) {
+    const d = Math.round(sizeFor(ref.pop));
+    const item = document.createElement("div");
+    item.className = "size-legend-item";
+    const circle = document.createElement("span");
+    circle.className = "size-legend-circle";
+    circle.style.width = `${d}px`;
+    circle.style.height = `${d}px`;
+    const label = document.createElement("span");
+    label.className = "size-legend-label";
+    label.textContent = ref.label;
+    item.append(circle, label);
+    row.appendChild(item);
+  }
+  _sizeLegendDrawn = true;
+}
+
+// First-read scaffold dismissal persists so a returning reader is not nagged.
+// localStorage can throw (private mode / disabled storage); fail open to shown.
+const HOWTO_KEY = "plotph_howto_dismissed";
+function readHowtoDismissed() {
+  try {
+    return localStorage.getItem(HOWTO_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function persistHowtoDismissed() {
+  try {
+    localStorage.setItem(HOWTO_KEY, "1");
+  } catch {
+    /* storage unavailable: dismissal lasts for this session only */
+  }
+}
+
 const DEFLATABLE_INDICATORS = new Set([
   "dpwh_spend_per_capita",
   "all_spend_per_capita",
@@ -2117,6 +2167,7 @@ async function main() {
     deflate: initial.deflate,
     extrapolate: initial.extrapolate,
     view: null,
+    howtoDismissed: readHowtoDismissed(),
   };
 
   const chart = echarts.init(root, null, { renderer: "canvas" });
@@ -2238,6 +2289,28 @@ async function main() {
       // to avoid implying the map colours mean island groups.
       const islandLegend = document.getElementById("island-legend");
       if (islandLegend) islandLegend.hidden = state.chartType === "map";
+      // Size key: only bubbles encode the 4th variable (population) as area.
+      // Line/bar/map drop it, so the key would be a lie there.
+      const sizeLegend = document.getElementById("size-legend");
+      if (sizeLegend) {
+        const showSize = state.chartType === "bubbles";
+        sizeLegend.hidden = !showSize;
+        if (showSize) renderSizeLegend();
+      }
+      // First-read scaffold: one plain-language line above the chart for the
+      // novice landing on a 4-D moving scatter. Bubble mode only (the other
+      // views are read differently), and stays gone once dismissed.
+      const howto = document.getElementById("chart-howto");
+      if (howto) {
+        const showHowto = state.chartType === "bubbles" && !state.howtoDismissed;
+        howto.hidden = !showHowto;
+        if (showHowto) {
+          const yrs = view.panel_years;
+          const span = yrs && yrs.length ? `${yrs[0]}→${yrs[yrs.length - 1]}` : "the years";
+          document.getElementById("chart-howto-text").textContent =
+            `Each bubble is a province or Metro Manila. Size = population. Press play to watch ${span}.`;
+        }
+      }
       const selHint = document.getElementById("selected-hint");
       if (selHint) {
         selHint.textContent =
@@ -2334,6 +2407,13 @@ async function main() {
   document.getElementById("extrap-toggle").addEventListener("click", () => {
     state.extrapolate = !state.extrapolate;
     render();
+  });
+
+  document.getElementById("chart-howto-dismiss").addEventListener("click", () => {
+    state.howtoDismissed = true;
+    persistHowtoDismissed();
+    const howto = document.getElementById("chart-howto");
+    if (howto) howto.hidden = true;
   });
 
   document.getElementById("csv").addEventListener("click", () => {
