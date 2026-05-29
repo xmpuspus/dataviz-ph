@@ -3,7 +3,7 @@
 
   "all_spend_per_capita|poverty": {
     "headline": "All government spending. Does it reach the poor?",
-    "tagline": "Every province-attributable PhilGEPS contract per capita against poverty incidence. 82 provinces, 2014 to 2024."
+    "tagline": "Every province-attributable PhilGEPS contract per capita against poverty incidence. 81 provinces and Metro Manila, 2014 to 2024."
   },
   "all_spend_per_capita|gdp_per_capita": {
     "headline": "Does spending follow wealth, or chase poverty?",
@@ -11,7 +11,7 @@
   },
   "dpwh_spend_per_capita|poverty": {
     "headline": "Eleven years, five trillion in roads. Did poverty improve?",
-    "tagline": "DPWH spend per capita against poverty incidence. 82 provinces. 2014 to 2024. Hit play, or use the arrow keys."
+    "tagline": "DPWH spend per capita against poverty incidence. 81 provinces and Metro Manila. 2014 to 2024. Hit play, or use the arrow keys."
   },
   "gdp_per_capita|poverty": {
     "headline": "Wealthier provinces, lower poverty?",

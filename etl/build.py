@@ -191,9 +191,9 @@ def compute_story_finding(
     strength = _strength_word(rho) if rho is not None else "no measurable"
     rho_txt = f"{rho:+.2f}" if rho is not None else "n/a"
     sentence = (
-        f"In {year}, across {n} provinces, the rank correlation between {xname} and "
+        f"In {year}, across {n} areas, the rank correlation between {xname} and "
         f"{yname} is rho = {rho_txt}, showing {strength} {direction} link. "
-        f"{both_high} of {n} provinces sat above the median on both axes."
+        f"{both_high} of {n} areas sat above the median on both axes."
     )
     award_ids = {
         "dpwh_spend_per_capita",
@@ -347,9 +347,7 @@ def main(no_cache: bool = False) -> None:
             "name": "Poverty incidence among families",
             "unit": "%",
             "source": "PSA OpenStat 1E/FY Table 1a",
-            "source_url": (
-                "https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1E__FY/"
-            ),
+            "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1E__FY/"),
             "definition": (
                 "Share of families whose per-capita income falls below the official "
                 "poverty threshold for their province, as published by the PSA in Table "
@@ -374,9 +372,7 @@ def main(no_cache: bool = False) -> None:
             "name": "Subsistence incidence among families",
             "unit": "%",
             "source": "PSA OpenStat 1E/FY Table 3a",
-            "source_url": (
-                "https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1E__FY/"
-            ),
+            "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1E__FY/"),
             "definition": (
                 "Share of families whose per-capita income falls below the official "
                 "food (subsistence) threshold for their province, as published by the "
@@ -453,9 +449,7 @@ def main(no_cache: bool = False) -> None:
             "name": "Per capita GDP",
             "unit": "PHP per person per year (constant 2018 prices)",
             "source": "PSA OpenStat 2A/PPA/2025 Table 9 (Per Capita GDP, constant 2018 prices)",
-            "source_url": (
-                "https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__2A__PPA/"
-            ),
+            "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__2A__PPA/"),
             "definition": (
                 "Total provincial economic output divided by population, expressed in "
                 "PHP at constant 2018 prices so values across years are directly "
@@ -563,9 +557,7 @@ def main(no_cache: bool = False) -> None:
             "name": "Poverty change 2018 to 2023 (pp)",
             "unit": "percentage points",
             "source": "Derived from PSA 1E/FY Table 1a anchors",
-            "source_url": (
-                "https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1E__FY/"
-            ),
+            "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1E__FY/"),
             "definition": (
                 "Province-level poverty incidence in 2023 minus the same measure in "
                 "2018. Negative means poverty fell. Constant across panel years."
@@ -585,9 +577,7 @@ def main(no_cache: bool = False) -> None:
             "name": "National inflation (CPI year-on-year)",
             "unit": "%",
             "source": "Derived from PSA OpenStat 2M/PI/CPI/2018NEW",
-            "source_url": (
-                "https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__2M__PI__CPI/"
-            ),
+            "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__2M__PI__CPI/"),
             "definition": (
                 "Year-on-year change in the national CPI all-items index, 2018=100. "
                 "National series only; the bubble picker hides this indicator because "
@@ -623,8 +613,8 @@ def main(no_cache: bool = False) -> None:
             "tab_label": "DPWH vs poverty",
             "headline": "Eleven years, five trillion in roads. Did poverty improve?",
             "tagline": (
-                "DPWH spend per capita against poverty incidence. 82 provinces. "
-                "2014 to 2024. Hit play, or use the arrow keys."
+                "DPWH spend per capita against poverty incidence. 81 provinces "
+                "and Metro Manila. 2014 to 2024. Hit play, or use the arrow keys."
             ),
             "why": (
                 "DPWH is the single largest PhilGEPS-tracked spend by agency. If "
@@ -647,7 +637,8 @@ def main(no_cache: bool = False) -> None:
             "headline": "All government spending. Does it reach the poor?",
             "tagline": (
                 "Every province-attributable PhilGEPS contract per capita against "
-                "poverty incidence. 82 provinces, 2014 to 2024. Scrub the years."
+                "poverty incidence. 81 provinces and Metro Manila, 2014 to 2024. "
+                "Scrub the years."
             ),
             "why": (
                 "DPWH alone is too narrow. This widens the lens to every PhilGEPS "
@@ -670,8 +661,8 @@ def main(no_cache: bool = False) -> None:
             "tab_label": "Spend vs GDP",
             "headline": "Does spending follow wealth, or chase poverty?",
             "tagline": (
-                "82 provinces. 2022 to 2024. All government contracts per capita "
-                "against per-capita GDP."
+                "81 provinces and Metro Manila. 2022 to 2024. All government "
+                "contracts per capita against per-capita GDP."
             ),
             "why": (
                 "DPWH-vs-poverty and all-spend-vs-poverty both ask whether money "
@@ -681,9 +672,7 @@ def main(no_cache: bool = False) -> None:
                 "GDP isn't. Both indicators are already shipped, so this preset "
                 "needed zero new data."
             ),
-            "source_url": (
-                "https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__2A__PPA/"
-            ),
+            "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__2A__PPA/"),
             "x": "all_spend_per_capita",
             "y": "gdp_per_capita",
             "size": "population_2020",
@@ -783,9 +772,7 @@ def main(no_cache: bool = False) -> None:
     print(f"  manifest built_at: {manifest['built_at']}")
 
 
-def compute_dpwh_attributed_total(
-    dpwh_spend: list[dict], pop_by_psgc: dict[str, int]
-) -> int:
+def compute_dpwh_attributed_total(dpwh_spend: list[dict], pop_by_psgc: dict[str, int]) -> int:
     """Reconstruct the attributed DPWH peso total the chart actually plots.
 
     Each dpwh row is per-capita PHP; multiply by the province population and sum.

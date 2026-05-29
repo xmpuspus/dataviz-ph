@@ -1296,7 +1296,7 @@ function buildBarOption(view, data, state) {
           value: r.value,
           itemStyle: { color: PALETTE[r.island] || "#999", opacity: 0.92 },
         })),
-        // No fixed barWidth: let ECharts size bars to fit all 82 provinces in
+        // No fixed barWidth: let ECharts size bars to fit all 82 areas in
         // the column (a fixed 12px overflowed and clipped the bottom ~37).
         // Per-bar value labels are off (82 would overlap illegibly); the value
         // shows on hover via the axis tooltip, and bar length encodes it.
@@ -1628,7 +1628,7 @@ function renderSrTable(story, data, state) {
       const hi = byY[0];
       const lo = byY[byY.length - 1];
       summary.textContent =
-        `${state.year}: ${yName}, ${rows.length} provinces. ` +
+        `${state.year}: ${yName}, ${rows.length} areas. ` +
         `Highest ${hi.name} ${formatValue(hi.y, story.y)}, ` +
         `lowest ${lo.name} ${formatValue(lo.y, story.y)}.`;
     } else {
@@ -1638,7 +1638,7 @@ function renderSrTable(story, data, state) {
 
   const tbl = document.createElement("table");
   const cap = document.createElement("caption");
-  cap.textContent = `${story.headline} Year ${state.year}, ${rows.length} provinces.`;
+  cap.textContent = `${story.headline} Year ${state.year}, ${rows.length} areas.`;
   tbl.appendChild(cap);
   const thead = document.createElement("thead");
   const trh = document.createElement("tr");
