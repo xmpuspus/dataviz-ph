@@ -751,8 +751,10 @@ function buildMapOption(view, data, state) {
       min,
       max,
       calculable: true,
-      left: 12,
-      bottom: 30,
+      // Right edge, vertically centered: clear of the play button (bottom-left),
+      // the indicator picker (top-left), and the title (top-center).
+      right: 16,
+      top: "middle",
       orient: "vertical",
       itemHeight: 140,
       text: [formatValue(max, yId), formatValue(min, yId)],
@@ -767,8 +769,8 @@ function buildMapOption(view, data, state) {
         nameProperty: "name",
         roam: true,
         // Fit the (tall) archipelago inside the container instead of sizing by
-        // width, which would overflow the chart vertically.
-        layoutCenter: ["54%", "50%"],
+        // width. Nudged left so the legend has the right margin to itself.
+        layoutCenter: ["44%", "50%"],
         layoutSize: "96%",
         scaleLimit: { min: 1, max: 8 },
         selectedMode: "multiple",
