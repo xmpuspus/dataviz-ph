@@ -34,7 +34,7 @@
   <!-- Slim top bar: brand on the left, preset tabs in the middle, source link on the right -->
   <header id="topbar">
     <a class="brand" href="/">dataviz.<span class="brand-tld">ph</span></a>
-    <nav id="story-switcher" aria-label="story switcher" role="tablist"></nav>
+    <nav id="story-switcher" aria-label="story switcher"></nav>
     <div class="topbar-right">
       <a id="story-source" href="#" target="_blank" rel="noopener" hidden>Source</a>
       <a class="topbar-link" href="#methodology">Methodology</a>
@@ -46,7 +46,7 @@
   </noscript>
 
   <!-- Compact title strip: one-line headline + chart-type strip on the right -->
-  <section id="title-strip">
+  <section id="title-strip" aria-label="current story">
     <div class="title-text">
       <h1 id="story-headline"></h1>
       <p class="tagline" id="story-tagline"></p>
@@ -82,7 +82,8 @@
       </p>
       <div
         id="chart"
-        role="img"
+        role="group"
+        aria-roledescription="interactive chart"
         aria-labelledby="story-headline"
         aria-describedby="chart-instructions chart-sr-table"
         tabindex="0"
@@ -116,12 +117,12 @@
     <aside id="controls" aria-label="controls">
       <!-- Sidebar pickers retained for keyboard / screen-reader fallback,
            but visually hidden. Primary affordance lives on the chart axes. -->
-      <div class="block sr-only" id="plot-picker" aria-label="indicator pickers (fallback)">
+      <div class="block sr-only" id="plot-picker" role="group" aria-label="indicator pickers (fallback)">
         <h2>Plot</h2>
         <label for="y-select">Y axis</label>
-        <select id="y-select" aria-label="Y axis indicator"></select>
+        <select id="y-select" tabindex="-1" aria-label="Y axis indicator"></select>
         <label for="x-select">X axis</label>
-        <select id="x-select" aria-label="X axis indicator"></select>
+        <select id="x-select" tabindex="-1" aria-label="X axis indicator"></select>
       </div>
 
       <div class="block">

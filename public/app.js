@@ -30,6 +30,14 @@ const COUNT = new Intl.NumberFormat("en-PH");
 
 const OUTLIER_TOP_N = 3;
 
+// True while the play loop is auto-stepping years. Used to silence the sr-only
+// live summary so a screen reader is not flooded with one announcement per frame.
+let IS_AUTOPLAYING = false;
+
+const REDUCE_MOTION = !!(
+  window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+);
+
 function escapeHtml(s) {
   if (s === null || s === undefined) return "";
   return String(s).replace(/[&<>"']/g, (c) => ({
@@ -1445,13 +1453,24 @@ function wireSearch(input, data, state, render) {
     list.replaceChildren();
     for (const m of ms) {
       const li = document.createElement("li");
-      li.textContent = m.name + (state.sel.has(m.psgc) ? "  ✓" : "");
+      const selected = state.sel.has(m.psgc);
+      li.textContent = m.name + (selected ? "  ✓" : "");
       li.dataset.psgc = m.psgc;
       li.tabIndex = 0;
-      li.addEventListener("click", () => {
+      li.setAttribute("role", "option");
+      li.setAttribute("aria-selected", selected ? "true" : "false");
+      const choose = () => {
         toggleSel(m.psgc, state, render);
         input.value = "";
         list.replaceChildren();
+        input.focus();
+      };
+      li.addEventListener("click", choose);
+      li.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          choose();
+        }
       });
       list.appendChild(li);
     }
@@ -1602,8 +1621,7 @@ function renderStorySwitcher(stories, state, view, render) {
   for (const s of stories) {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.role = "tab";
-    btn.setAttribute("aria-selected", s.id === activeId ? "true" : "false");
+    btn.setAttribute("aria-pressed", s.id === activeId ? "true" : "false");
     btn.className = "story-btn" + (s.id === activeId ? " active" : "");
     btn.textContent = s.tab_label || s.headline.split(".")[0];
     btn.addEventListener("click", () => {
@@ -1674,8 +1692,11 @@ function renderSrTable(story, data, state) {
 
   // Concise live summary (the only part announced on year change). Highest/
   // lowest are by the Y indicator the chart foregrounds.
+  // Skip the live announcement while autoplay is running: one polite message
+  // per ~1.1s frame floods a screen reader. The final/paused frame is announced
+  // when the loop stops (stopPlay calls render with the flag cleared).
   const summary = document.getElementById("sr-summary");
-  if (summary) {
+  if (summary && !IS_AUTOPLAYING) {
     const yName = data.indicators[story.y] ? data.indicators[story.y].name : story.y;
     if (rows.length) {
       const byY = [...rows].sort((a, b) => b.y - a.y);
@@ -2341,7 +2362,11 @@ async function main() {
         );
       } else {
         chart.hideLoading();
-        chart.setOption(buildOption(view, data, state), { notMerge: true });
+        const opt = buildOption(view, data, state);
+        // Honor prefers-reduced-motion for manual scrubbing too, not just the
+        // initial autoplay: snap to the new frame instead of tweening positions.
+        if (REDUCE_MOTION) opt.animation = false;
+        chart.setOption(opt, { notMerge: true });
       }
       // Axis pickers: bubbles gets both, line gets Y only, bar gets Y only.
       attachAxisInfoButtons(chart, view, data, state.chartType);
@@ -2447,11 +2472,17 @@ async function main() {
     }
   }
   function stopPlay() {
+    const wasPlaying = playTimer !== null;
     if (playTimer) {
       clearInterval(playTimer);
       playTimer = null;
     }
+    IS_AUTOPLAYING = false;
     setPlayingState(false);
+    // Announce the year we landed on (suppressed during the run). render() is
+    // synchronous, so a render() that immediately follows in the same handler
+    // supersedes this one before paint, no flicker.
+    if (wasPlaying) render();
   }
   function startPlay() {
     if (playTimer) return;
@@ -2467,6 +2498,7 @@ async function main() {
       ys = panelYears();
     }
     setPlayingState(true);
+    IS_AUTOPLAYING = true;
     const interval = ys.length <= 3 ? 1500 : 1100;
     playTimer = setInterval(() => {
       const cur = panelYears();
