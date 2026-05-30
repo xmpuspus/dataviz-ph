@@ -623,6 +623,7 @@ select:focus-visible {
 
 .axis-info-btn {
   pointer-events: auto;
+  position: relative;
   width: 22px;
   height: 22px;
   padding: 0;
@@ -638,6 +639,18 @@ select:focus-visible {
   line-height: 20px;
   text-align: center;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+/* Keep the visible badge at 22px but stretch the touch target to the WCAG 44px
+   minimum with a transparent, centered overlay (clicks on it count as the button). */
+.axis-info-btn::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
 }
 
 .axis-info-btn:hover {
@@ -909,15 +922,41 @@ footer .disclaimer {
   #chart { height: 540px; }
   #controls { padding: 0.8rem 1rem 1rem; }
   .story-why { margin: 0.4rem 1rem 0.6rem; }
+
+  /* WCAG 2.5.5: every touch target reaches 44px on small screens. */
+  #controls button[type="button"]:not(.year-stepper button),
+  #search,
+  #compare-select { min-height: 44px; }
+  .year-stepper button { min-height: 44px; }
+  .year-range { height: 44px; }
+  #topbar a.brand,
+  .topbar-right a { min-height: 44px; display: inline-flex; align-items: center; }
+
+  /* Trim the title strip so the chart sits closer to the fold on a phone. */
+  #title-strip .story-finding { margin-top: 0.4rem; padding: 0.4rem 0.6rem; font-size: 0.8rem; }
+  #title-strip .story-caveat { margin-top: 0.3rem; }
+
+  /* On-chart axis picker pills reach 44px on touch screens. */
+  .axis-pick-btn { min-height: 44px; }
 }
 
 @media (max-width: 520px) {
   #topbar { gap: 0.6rem; }
-  #story-switcher { width: 100%; order: 3; overflow-x: auto; flex-wrap: nowrap; }
+  #story-switcher {
+    width: 100%;
+    order: 3;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    /* Fade the right edge so the row reads as scrollable (more tabs offscreen). */
+    -webkit-mask-image: linear-gradient(90deg, #000 90%, transparent);
+    mask-image: linear-gradient(90deg, #000 90%, transparent);
+  }
   #story-switcher::-webkit-scrollbar { display: none; }
   .story-btn { white-space: nowrap; flex-shrink: 0; }
   #title-strip { flex-direction: column; align-items: stretch; gap: 0.5rem; }
-  #chart-type-strip { justify-content: flex-start; flex-wrap: wrap; }
+  /* Four chart-type buttons as a tidy 2x2 block instead of a lopsided wrap. */
+  #chart-type-strip { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; }
+  .chart-type-btn { justify-content: center; }
   .chart-type-btn .ct-label { display: inline; }
   #chart { height: 460px; }
   #story-headline { font-size: 1.05rem; }

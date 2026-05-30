@@ -38,6 +38,22 @@ const REDUCE_MOTION = !!(
   window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
 );
 
+// Pick black or white text for a solid color background so labels stay legible.
+// The lighter island hues (Visayas green, Mindanao amber) fail 4.5:1 against
+// white, so chips on those get dark text instead.
+function readableInk(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
+  if (!m) return "#fff";
+  const n = parseInt(m[1], 16);
+  const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((c) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  const lum = 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+  // Contrast vs white is (1.05)/(lum+0.05); use dark ink when that drops below 4.5.
+  return 1.05 / (lum + 0.05) >= 4.5 ? "#fff" : "#111";
+}
+
 function escapeHtml(s) {
   if (s === null || s === undefined) return "";
   return String(s).replace(/[&<>"']/g, (c) => ({
@@ -1507,12 +1523,15 @@ function renderSelChips(state, data, render) {
     const info = data.provinces[psgc];
     if (!info) continue;
     const color = PALETTE[info.island_group] || "#999";
+    const ink = readableInk(color);
     const chip = document.createElement("span");
     chip.className = "chip";
     chip.style.background = color;
+    chip.style.color = ink;
     chip.appendChild(document.createTextNode(info.name + " "));
     const btn = document.createElement("button");
     btn.setAttribute("aria-label", `remove ${info.name}`);
+    btn.style.color = ink;
     btn.textContent = "×";
     btn.addEventListener("click", () => {
       state.sel.delete(psgc);
