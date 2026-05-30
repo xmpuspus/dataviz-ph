@@ -5,8 +5,8 @@
   --bg: #fff;
   --soft: #f7f7f8;
   --soft2: #f0f0f2;
-  --accent: #ffb347;
-  --accent-hot: #f49021;
+  --brand: #0e7c86;
+  --brand-hot: #0a5f67;
   --luzon: #2b6cb0;
   --visayas: #38a169;
   --mindanao: #d97706;
@@ -19,17 +19,49 @@
 html, body {
   margin: 0;
   padding: 0;
-  background: var(--bg);
   color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 16px;
   line-height: 1.45;
 }
 
+/* Tint the page chrome a hair off-white so the white content column reads as a
+   sheet on wide screens instead of bleeding into the viewport. */
+html { background: #fafafa; }
+
 body {
   max-width: 1320px;
   margin: 0 auto;
   padding: 0;
+  background: var(--bg);
+  box-shadow: 0 0 0 1px var(--rule);
+}
+
+/* Micro-motion on interactive chrome: 150ms eases and a press nudge, so state
+   changes read as deliberate rather than a hard cut. */
+.story-btn,
+.chart-type-btn,
+#controls button[type="button"],
+.year-stepper button,
+.axis-pick-btn,
+.topbar-right a {
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.story-btn:active,
+.chart-type-btn:active,
+#controls button[type="button"]:active,
+.year-stepper button:active {
+  transform: translateY(1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .story-btn,
+  .chart-type-btn,
+  #controls button[type="button"],
+  .year-stepper button,
+  .axis-pick-btn,
+  .topbar-right a { transition: none; }
 }
 
 /* --- Slim top bar -------------------------------------------------------- */
@@ -52,7 +84,7 @@ body {
   text-decoration: none;
 }
 
-.brand-tld { color: var(--accent-hot); }
+.brand-tld { color: var(--brand-hot); }
 
 #story-switcher {
   display: flex;
@@ -124,10 +156,12 @@ body {
 .title-text { flex: 1 1 auto; min-width: 0; }
 
 #story-headline {
-  font-size: 1.25rem;
+  font-family: Georgia, "Iowan Old Style", Palatino, "Times New Roman", serif;
+  font-size: 1.6rem;
+  font-weight: 600;
   margin: 0;
-  letter-spacing: -0.015em;
-  line-height: 1.25;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
 }
 
 #title-strip .tagline {
@@ -165,9 +199,9 @@ body {
 .chart-type-btn:hover { border-color: var(--ink); color: var(--ink); }
 
 .chart-type-btn.active {
-  background: var(--ink);
+  background: var(--brand);
   color: #fff;
-  border-color: var(--ink);
+  border-color: var(--brand);
 }
 
 .ct-icon { font-size: 0.95rem; line-height: 1; }
@@ -190,6 +224,9 @@ main {
 #chart-wrap {
   position: relative;
   padding: 0;
+  margin: 0.75rem 1.25rem;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
 }
 
 /* First-read scaffold: one low-weight line above the chart, bubble mode only,
@@ -205,6 +242,7 @@ main {
   color: var(--muted);
   background: var(--soft);
   border-bottom: 1px solid var(--rule);
+  border-radius: 9px 9px 0 0;
 }
 
 #chart-howto[hidden] { display: none; }
@@ -245,6 +283,25 @@ main {
   color: var(--muted);
   font-size: 0.9rem;
   background: var(--soft);
+  border-radius: 10px;
+}
+
+/* Spinner on the initial load only (role=status); the error state is role=alert. */
+#loading[role="status"]::before {
+  content: "";
+  width: 18px;
+  height: 18px;
+  margin-right: 10px;
+  border: 2px solid var(--rule);
+  border-top-color: var(--brand);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  #loading[role="status"]::before { animation: none; }
 }
 
 /* The "why" paragraph sits below the tagline in the title-strip. Small,
@@ -253,7 +310,7 @@ main {
   color: var(--muted);
   font-size: 0.78rem;
   margin: 0.25rem 0 0;
-  max-width: 84ch;
+  max-width: 68ch;
   line-height: 1.45;
 }
 
@@ -272,11 +329,11 @@ main {
   font-size: 0.82rem;
   line-height: 1.5;
   margin: 0.5rem 0 0;
-  max-width: 92ch;
+  max-width: 68ch;
   padding: 0.45rem 0.7rem;
   background: var(--soft);
   border-left: 3px solid var(--luzon);
-  border-radius: 3px;
+  border-radius: 6px;
 }
 #title-strip .story-finding[hidden] { display: none; }
 
@@ -287,7 +344,7 @@ main {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  max-width: 92ch;
+  max-width: 68ch;
 }
 #title-strip .story-caveat[hidden] { display: none; }
 .caveat-line {
@@ -297,7 +354,7 @@ main {
   padding: 0.3rem 0.55rem;
   background: #fdf6ef;
   border-left: 3px solid var(--mindanao);
-  border-radius: 3px;
+  border-radius: 6px;
 }
 .caveat-line strong { color: #6a3d1c; }
 
@@ -532,9 +589,9 @@ select:focus-visible {
 }
 
 #controls #extrap-toggle.on {
-  background: var(--ink);
+  background: var(--brand);
   color: #fff;
-  border-color: var(--ink);
+  border-color: var(--brand);
 }
 
 /* Download buttons in a row */
@@ -736,7 +793,7 @@ select:focus-visible {
 
 .ipanel-item:last-child { border-bottom: none; }
 .ipanel-item:hover { background: var(--soft); }
-.ipanel-item.active { background: var(--ink); color: #fff; }
+.ipanel-item.active { background: var(--brand); color: #fff; }
 .ipanel-item.active .ipanel-meta { color: rgba(255, 255, 255, 0.75); }
 .ipanel-item.disabled { color: #b4b4b4; cursor: not-allowed; background: #fafafa; }
 .ipanel-item.disabled:hover { background: #fafafa; }
@@ -787,8 +844,8 @@ select:focus-visible {
   padding: 0;
   border: none;
   border-radius: 50%;
-  background: var(--accent);
-  color: #1a1a1a;
+  background: var(--brand);
+  color: #fff;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -799,13 +856,13 @@ select:focus-visible {
   transition: transform 0.12s ease, background 0.12s ease;
 }
 
-#big-play:hover { background: var(--accent-hot); transform: scale(1.05); }
+#big-play:hover { background: var(--brand-hot); transform: scale(1.05); }
 #big-play:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
 
 #big-play .bp-pause { display: none; font-size: 14px; letter-spacing: 1px; }
 #big-play.playing .bp-play { display: none; }
 #big-play.playing .bp-pause { display: inline; }
-#big-play.playing { background: var(--accent-hot); }
+#big-play.playing { background: var(--brand-hot); }
 
 #big-play[hidden] { display: none !important; }
 
@@ -917,7 +974,7 @@ footer .disclaimer {
 @media (max-width: 879px) {
   #topbar { padding: 0.55rem 1rem; }
   #title-strip { padding: 0.7rem 1rem 0.4rem; }
-  #story-headline { font-size: 1.1rem; }
+  #story-headline { font-size: 1.35rem; }
   #title-strip .tagline { font-size: 0.78rem; }
   #chart { height: 540px; }
   #controls { padding: 0.8rem 1rem 1rem; }
@@ -959,7 +1016,7 @@ footer .disclaimer {
   .chart-type-btn { justify-content: center; }
   .chart-type-btn .ct-label { display: inline; }
   #chart { height: 460px; }
-  #story-headline { font-size: 1.05rem; }
+  #story-headline { font-size: 1.25rem; }
   .axis-pick-btn { font-size: 0.78rem; max-width: 200px; }
   .axis-pick-name { max-width: 160px; }
 }
