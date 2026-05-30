@@ -9,3 +9,5 @@ dist/
 .DS_Store
 tmp/
 /private/tmp/
+.vercel/
+.claude/
