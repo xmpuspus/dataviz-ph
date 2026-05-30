@@ -715,7 +715,7 @@ function baseOption(story, data, state) {
     yAxis: {
       type: "value",
       // Y indicator name lives in the HTML picker pill at top-left of the chart.
-      // We deliberately don't put a canvas Y axis name here — it overlaps the
+      // We deliberately don't put a canvas Y axis name here; it overlaps the
       // tick labels at the chart's left edge and the pill already names it.
       name: "",
       nameLocation: "middle",
@@ -904,7 +904,7 @@ function buildMapOption(view, data, state) {
   return {
     // Faint year watermark (like bubble mode). The indicator name lives in the
     // picker pill top-left, so a centered title here would just collide with it
-    // on narrow screens — the watermark carries the year without overlapping.
+    // on narrow screens, so the watermark carries the year without overlapping.
     title: {
       text: `${state.year}`,
       left: "center",
@@ -1855,7 +1855,7 @@ function attachAxisInfoButtons(chart, view, data, chartType) {
     // Y picker: top-left, horizontal text.
     place("y", view.y, view.x, { left: "12px", top: "8px" });
   } else if (chartType === "line") {
-    // Line: X is year (locked). Only Y is choosable — top-left.
+    // Line: X is year (locked). Only Y is choosable, top-left.
     place("y", view.y, view.x, { left: "12px", top: "8px" });
   } else if (chartType === "bar") {
     // Bar (ranks): only Y is choosable. Top-left (like line/map) so it never
@@ -2327,7 +2327,7 @@ async function main() {
       // on first use and re-render once ready (fall back to bubbles on failure).
       if (state.chartType === "map" && !PROVINCE_GEO) {
         chart.showLoading({
-          text: "Loading map…",
+          text: "Loading map...",
           color: "#2b6cb0",
           textColor: "#595959",
           maskColor: "rgba(255,255,255,0.85)",

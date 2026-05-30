@@ -53,7 +53,7 @@
   },
   "dpwh_spend_per_capita|infra_spend_per_capita": {
     "headline": "Is DPWH the whole infrastructure story?",
-    "tagline": "DPWH per capita against all infrastructure-tagged spend per capita. Gaps mean non-DPWH infra is moving the needle."
+    "tagline": "DPWH per capita against all infrastructure-tagged spend per capita. A gap means non-DPWH agencies are building infrastructure DPWH alone misses."
   },
   "dpwh_share_pct|dpwh_spend_per_capita": {
     "headline": "Big DPWH spenders. Are they DPWH-dominant overall?",
