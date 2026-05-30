@@ -1,0 +1,6 @@
+# Static deploy: only public/ (the outputDirectory) and vercel.json ship.
+# Everything else (the 600MB+ .etl_cache parquet, .venv, tmp scratch, the
+# Python ETL, tests, docs) is build-time only and must not be uploaded.
+/*
+!/public
+!/vercel.json
