@@ -114,6 +114,11 @@
       </button>
     </section>
 
+    <!-- On phones the finding + caveat get moved here (by JS, below the chart)
+         so the chart lands at the fold instead of being pushed a screen down.
+         Empty and display:none on desktop, where they stay in the title strip. -->
+    <div id="mobile-detail-slot"></div>
+
     <aside id="controls" aria-label="controls">
       <!-- Sidebar pickers retained for keyboard / screen-reader fallback,
            but visually hidden. Primary affordance lives on the chart axes. -->

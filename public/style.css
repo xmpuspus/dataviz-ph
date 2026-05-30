@@ -221,6 +221,16 @@ main {
   }
 }
 
+/* Mobile-only home for the finding + caveat (moved here by JS below the chart).
+   Empty on desktop, so it collapses out of the grid. */
+#mobile-detail-slot:empty { display: none; }
+
+@media (max-width: 879px) {
+  #mobile-detail-slot { padding: 0 1rem 0.2rem; }
+  #mobile-detail-slot .story-finding { margin-top: 0.7rem; }
+  #mobile-detail-slot .story-caveat { margin-top: 0.5rem; }
+}
+
 #chart-wrap {
   position: relative;
   padding: 0;
@@ -324,7 +334,7 @@ main {
 
 /* The computed finding: the data-grounded answer to the story's question. Kept
    visible at every width (it is the defensible core, not decoration). */
-#title-strip .story-finding {
+.story-finding {
   color: var(--ink);
   font-size: 0.82rem;
   line-height: 1.5;
@@ -335,18 +345,18 @@ main {
   border-left: 3px solid var(--luzon);
   border-radius: 6px;
 }
-#title-strip .story-finding[hidden] { display: none; }
+.story-finding[hidden] { display: none; }
 
 /* Axis caveats: awards-not-disbursement, single-snapshot, short-panel. Amber so
    they read as honest limitations, not errors. */
-#title-strip .story-caveat {
+.story-caveat {
   margin: 0.4rem 0 0;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
   max-width: 68ch;
 }
-#title-strip .story-caveat[hidden] { display: none; }
+.story-caveat[hidden] { display: none; }
 .caveat-line {
   font-size: 0.74rem;
   line-height: 1.45;
@@ -990,8 +1000,8 @@ footer .disclaimer {
   .topbar-right a { min-height: 44px; display: inline-flex; align-items: center; }
 
   /* Trim the title strip so the chart sits closer to the fold on a phone. */
-  #title-strip .story-finding { margin-top: 0.4rem; padding: 0.4rem 0.6rem; font-size: 0.8rem; }
-  #title-strip .story-caveat { margin-top: 0.3rem; }
+  .story-finding { margin-top: 0.4rem; padding: 0.4rem 0.6rem; font-size: 0.8rem; }
+  .story-caveat { margin-top: 0.3rem; }
 
   /* On-chart axis picker pills reach 44px on touch screens. */
   .axis-pick-btn { min-height: 44px; }

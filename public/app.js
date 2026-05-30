@@ -1515,6 +1515,26 @@ function toggleSel(psgc, state, render) {
   render();
 }
 
+// On phones, move the finding + caveat below the chart so the chart lands at
+// the fold instead of a screenful of text first. Desktop keeps them in the
+// title strip. The elements are populated by id, so relocating them is safe.
+function syncDetailPlacement() {
+  const finding = document.getElementById("story-finding");
+  const caveat = document.getElementById("story-caveat");
+  const slot = document.getElementById("mobile-detail-slot");
+  const titleText = document.querySelector(".title-text");
+  if (!finding || !caveat || !slot || !titleText) return;
+  const wantSlot = window.matchMedia("(max-width: 879px)").matches;
+  const inSlot = finding.parentElement === slot;
+  if (wantSlot && !inSlot) {
+    slot.appendChild(finding);
+    slot.appendChild(caveat);
+  } else if (!wantSlot && inSlot) {
+    titleText.appendChild(finding);
+    titleText.appendChild(caveat);
+  }
+}
+
 function renderSelChips(state, data, render) {
   const root = document.getElementById("selected-chips");
   const hint = document.getElementById("selected-hint");
@@ -2399,6 +2419,8 @@ async function main() {
       renderSrTable(view, data, state);
       // URL hash
       writeHash(state, view);
+      // Keep the finding/caveat on the correct side of the chart for this width.
+      syncDetailPlacement();
     } finally {
       rendering = false;
     }
@@ -2610,6 +2632,8 @@ async function main() {
   });
 
   window.addEventListener("resize", () => chart.resize());
+  // Re-place the finding/caveat when crossing the mobile breakpoint (rotate/resize).
+  window.matchMedia("(max-width: 879px)").addEventListener("change", syncDetailPlacement);
   window.addEventListener("hashchange", () => {
     const next = parseHash(data.stories);
     state.story = next.story;
