@@ -4,11 +4,24 @@ Animated bubble charts of Philippine public data. Pick a story, hit play.
 
 ![demo](docs/demo.gif)
 
-## What it shows
+*In motion: DPWH spend vs poverty has no pattern, GDP vs poverty does, then the map. 2014 to 2024.*
 
-Ten indicators, free pick on either axis:
+## What the data shows
+
+Joining procurement with outcomes on one set of axes lets you ask whether public money tracked need, and see that it mostly did not. Every figure below is computed by the pipeline (and recomputed live in the page) from the sources further down, not hand-typed.
+
+- **DPWH contract awards attributed to provinces total PHP 5.04 trillion over 2014 to 2024**, and the yearly figure climbed from about PHP 210 billion a year in 2014 to 2016 to PHP 926 billion in 2024, roughly 3.7 times higher.
+- **That spending shows no clear link to poverty.** Across 81 provinces plus Metro Manila, the rank correlation between DPWH spend per capita and poverty incidence is about +0.12; for all-government spend it is about -0.07. No pattern either way.
+- **Economic output does track it.** Per-capita GDP against poverty is about -0.53: wealthier provinces are clearly less poor. So the spend-vs-poverty cloud is shapeless while GDP-vs-poverty is a clean downward diagonal.
+
+These are contract *awards* (money committed), not verified disbursement; the gap between the two is exactly what province-level reporting does not publish. Correlation, not causation. The disclaimer at the end applies.
+
+## Indicators and views
+
+Eleven indicators, free pick on either axis:
 
 - **Poverty incidence among families** (PSA Full-Year, 2018/2021/2023 anchors, linear-filled to 2014 to 2024)
+- **Subsistence incidence among families** (PSA, families below the food threshold; same 2018/2021/2023 anchors, always lower than the poverty line)
 - **DPWH spend per capita** (PhilGEPS DPWH-tagged contracts over 2020 Census population, 2014 to 2024, PHP nominal or PHP 2018-real)
 - **All PhilGEPS spend per capita** (every province-attributable contract, same shape as DPWH)
 - **DOH spend per capita** (PhilGEPS contracts tagged to the Department of Health, sparse coverage)
@@ -19,19 +32,20 @@ Ten indicators, free pick on either axis:
 - **Poverty change 2018 to 2023** (percentage points, negative means poverty fell)
 - **National inflation (CPI year-on-year)** (single national series, useful in line and rank views)
 
-Three chart types live in a strip below the chart:
+Four chart types in the strip by the title:
 
 - **Bubbles**: x-y scatter with year animation, bubble size = population, color = island group.
 - **Lines**: the Y indicator over time, one line per province, selected and auto-trail provinces drawn bold with end labels, others faded for context.
 - **Ranks**: a horizontal bar chart of the Y indicator at the current year, sorted descending, colored by island group.
+- **Map**: a choropleth of the Y indicator across the provinces, single-hue sequential ramp (light = low, dark = high), with the same year animation.
 
 Pick any indicator for X and any for Y by clicking the pill on the axis label itself. A panel slides in with a search box and the full indicator list, with the currently-selected one highlighted and the same-as-other-axis one greyed out.
 
-Four presets are wired as quick-start tabs: DPWH vs poverty, All gov vs poverty, Spend vs GDP, GDP vs poverty. Click a preset, both axis pills snap to it. Change a pill, the tab strip shows a "Custom" pill. Every meaningful indicator pair (36 of them) ships with a hand-written headline and tagline, so picker-driven views read like real stories rather than `X vs Y`.
+Four presets are wired as quick-start tabs: DPWH vs poverty, All gov vs poverty, Spend vs GDP, GDP vs poverty. Click a preset, both axis pills snap to it. Change a pill, the tab strip shows a "Custom" pill. Every meaningful indicator pair (40 of them) ships with a hand-written headline and tagline, so picker-driven views read like real stories rather than `X vs Y`.
 
 Years past the last PSA anchor are held constant by default. Toggle "Project past anchors" in the sidebar and those years switch to a linear projection from the slope of the two nearest anchors. Projected bubbles render with a dashed border so a reader can see at a glance which values are inferred rather than published.
 
-Every view shares the same UI: island-group color, log or linear X, the 3 most-moved provinces auto-trail by default, click a bubble to pin its own trail, search a province, step through years, overlay a second year for compare, save the chart as PNG, download the current year as CSV, copy a deep link that round-trips every state. Big yellow play button bottom-left of the chart starts the year animation.
+Every view shares the same UI: island-group color, log or linear X, the 3 most-moved provinces auto-trail by default, click a bubble to pin its own trail, search a province, step through years, overlay a second year for compare, save the chart as PNG, download the current year as CSV, copy a deep link that round-trips every state. A teal play button bottom-left of the chart starts the year animation.
 
 ## How it works
 
@@ -60,7 +74,7 @@ open http://localhost:8765/
 etl/         Python pipeline
 public/      Static site, pre-baked JSON, vendored ECharts, OG card
 tests/       pytest
-docs/        Roadmap, demo GIF
+docs/        Roadmap, demo GIF, OG card source + demo recorder
 LICENSE      MIT
 ```
 
@@ -83,8 +97,8 @@ All under `public/data/`. Every file is regenerated by `python -m etl.build`.
 | `poverty_change_pp.json` | `[{psgc, year, value}]` | Derived: 2023 minus 2018 poverty incidence in percentage points, repeated across the panel. |
 | `population.json` | `[{psgc, year, value}]` | 2020 Census population repeated across the panel so it pairs with year-varying X indicators. |
 | `indicators.json` | List of indicator metadata. | Each carries `name`, `unit`, `source`, `source_url`, `definition`, `vintage`. |
-| `stories.json` | List of story definitions. | Each carries `headline`, `tagline`, `why`, `source_url`, `x`, `y`, `panel_years`, `default_year`. |
-| `pair_headlines.json` | Per-pair headlines for picker-driven views. | Keyed by the two indicator IDs sorted alphabetically and joined with `\|`. 36 entries, one per useful pair. The 4 preset pairs are included so picker-reconstructed views match preset tab views. |
+| `stories.json` | List of story definitions. | Each carries `headline`, `tagline`, `why`, `finding` (the computed Spearman answer surfaced in the chart), `source_url`, `x`, `y`, `panel_years`, `default_year`. |
+| `pair_headlines.json` | Per-pair headlines for picker-driven views. | Keyed by the two indicator IDs sorted alphabetically and joined with `\|`. 40 entries, one per useful pair. The 4 preset pairs are included so picker-reconstructed views match preset tab views. |
 | `manifest.json` | Build manifest. | `built_at`, `source_vintages`, `row_counts`, `sha256_per_file`. The footer reads this so a journalist can tell how fresh the data is. |
 
 ## Sources
