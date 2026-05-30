@@ -49,6 +49,4 @@ def validate_precision(rows: list[dict], tolerance: float = 0.25) -> None:
             raise ValueError(f"Inverted confidence interval [{lo}, {hi}] in row: {r}")
         v = r["value"]
         if not (lo - tolerance <= v <= hi + tolerance):
-            raise ValueError(
-                f"Incidence {v} falls outside its 95% CI [{lo}, {hi}] in row: {r}"
-            )
+            raise ValueError(f"Incidence {v} falls outside its 95% CI [{lo}, {hi}] in row: {r}")

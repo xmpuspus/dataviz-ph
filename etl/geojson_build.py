@@ -133,8 +133,10 @@ def main() -> None:
     if meta["missing_units"]:
         print(f"  MISSING ({len(meta['missing_units'])}):", meta["missing_units"])
     if meta["unmatched_source_features"]:
-        print(f"  UNMATCHED source ({len(meta['unmatched_source_features'])}):",
-              meta["unmatched_source_features"])
+        print(
+            f"  UNMATCHED source ({len(meta['unmatched_source_features'])}):",
+            meta["unmatched_source_features"],
+        )
 
 
 if __name__ == "__main__":

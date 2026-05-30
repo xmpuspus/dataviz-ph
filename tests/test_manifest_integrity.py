@@ -28,8 +28,7 @@ def test_every_data_file_is_in_manifest_with_matching_hash() -> None:
         assert f.name in shas, f"{f.name} ships but is absent from manifest.sha256_per_file"
         actual = hashlib.sha256(f.read_bytes()).hexdigest()
         assert actual == shas[f.name], (
-            f"{f.name} sha256 drifted from manifest: "
-            f"run `python -m etl.build --manifest-only`"
+            f"{f.name} sha256 drifted from manifest: run `python -m etl.build --manifest-only`"
         )
 
 

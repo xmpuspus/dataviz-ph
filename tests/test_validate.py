@@ -52,9 +52,7 @@ def test_peso_per_capita_accepts_zero():
 def test_peso_per_capita_rejects_implausible_high():
     """Anything over PHP 200_000/cap is almost certainly a join bug."""
     with pytest.raises(ValueError, match="Out-of-bounds"):
-        validate_all(
-            [{"psgc": "X", "year": 2020, "value": 250_000}], schema="peso_per_capita"
-        )
+        validate_all([{"psgc": "X", "year": 2020, "value": 250_000}], schema="peso_per_capita")
 
 
 def test_population_accepts_full_range():

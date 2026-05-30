@@ -72,9 +72,7 @@ def _aggregate(
     frames: list[pd.DataFrame] = []
     for i in range(1, N_CHUNKS + 1):
         if not _chunk_path(i).exists():
-            raise FileNotFoundError(
-                f"Missing PhilGEPS chunk {i}. Pre-fetch the chunks first."
-            )
+            raise FileNotFoundError(f"Missing PhilGEPS chunk {i}. Pre-fetch the chunks first.")
         df = _read_chunk(i)
         if org_filter is not None:
             df = org_filter(df)

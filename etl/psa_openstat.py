@@ -169,9 +169,7 @@ def _fetch_incidence_with_precision(
     meta = _fetch_or_cache(meta_name, lambda: _get_json(url))
 
     geo_var = next(v for v in meta["variables"] if v.get("code") == "Geolocation")
-    measure_var = next(
-        v for v in meta["variables"] if "Threshold" in (v.get("code") or "")
-    )
+    measure_var = next(v for v in meta["variables"] if "Threshold" in (v.get("code") or ""))
     year_var = next(v for v in meta["variables"] if v.get("code") == "Year")
 
     # Map each measure value-code to a role by reading its valueText.
@@ -434,9 +432,7 @@ def fetch_cpi_annual() -> dict[int, float]:
     meta = _fetch_or_cache("cpi_meta.json", lambda: _get_json(url))
 
     geo_var = next(v for v in meta["variables"] if v.get("code") == "Geolocation")
-    commodity_var = next(
-        v for v in meta["variables"] if v.get("code") == "Commodity Description"
-    )
+    commodity_var = next(v for v in meta["variables"] if v.get("code") == "Commodity Description")
     year_var = next(v for v in meta["variables"] if v.get("code") == "Year")
     period_var = next(v for v in meta["variables"] if v.get("code") == "Period")
 
