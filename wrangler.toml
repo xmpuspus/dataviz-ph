@@ -1,6 +1,0 @@
-# Cloudflare Pages config for plot.ph. Static site: the build output IS public/.
-# Local preview:  npx wrangler pages dev public
-# One-shot deploy: npx wrangler pages deploy public --project-name=plot-ph
-name = "plot-ph"
-compatibility_date = "2025-05-29"
-pages_build_output_dir = "public"
