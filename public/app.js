@@ -917,7 +917,7 @@ function buildMapOption(view, data, state) {
       text: `${state.year}`,
       left: "center",
       top: "middle",
-      textStyle: { fontSize: 64, fontWeight: 700, color: "rgba(0,0,0,0.05)" },
+      textStyle: { fontSize: 64, fontWeight: 700, color: "rgba(0,0,0,0.07)" },
     },
     tooltip: {
       trigger: "item",
@@ -951,7 +951,7 @@ function buildMapOption(view, data, state) {
       // (poverty %, subsistence %, per-capita spend/GDP) are sequential magnitudes
       // with no meaningful zero-midpoint, so a diverging two-hue ramp would imply
       // a neutral centre that does not exist. Dark = more, light = less.
-      inRange: { color: ["#e6eef7", "#9ec1e0", "#2b6cb0", "#103a66"] },
+      inRange: { color: ["#dce8f5", "#7fa9d4", "#2b6cb0", "#08306b"] },
       textStyle: { color: "#595959", fontSize: 11 },
     },
     series: [
@@ -964,7 +964,7 @@ function buildMapOption(view, data, state) {
         // Fit the (tall) archipelago inside the container instead of sizing by
         // width. Nudged left so the legend has the right margin to itself.
         layoutCenter: ["44%", "50%"],
-        layoutSize: "96%",
+        layoutSize: "100%",
         scaleLimit: { min: 1, max: 8 },
         selectedMode: "multiple",
         data: rows,
@@ -1026,7 +1026,7 @@ function buildBubbleOption(story, data, state) {
         text: compareSeries ? `${year} vs ${state.compareYear}` : `${year}`,
         left: "center",
         top: 10,
-        textStyle: { fontSize: 48, fontWeight: 700, color: "rgba(0,0,0,0.06)" },
+        textStyle: { fontSize: 48, fontWeight: 700, color: "rgba(0,0,0,0.08)" },
       },
     ];
     if (compareSeries) {
@@ -1188,7 +1188,7 @@ function buildLineOption(view, data, state) {
       lineStyle: {
         color,
         width: isHi ? 2.2 : 1,
-        opacity: isHi ? 0.85 : 0.18,
+        opacity: isHi ? 0.85 : 0.26,
       },
       itemStyle: { color, opacity: isHi ? 0.95 : 0.4 },
       emphasis: {
@@ -1334,7 +1334,7 @@ function buildBarOption(view, data, state) {
       text: `${state.year}`,
       left: "center",
       top: "middle",
-      textStyle: { fontSize: 64, fontWeight: 700, color: "rgba(0,0,0,0.05)" },
+      textStyle: { fontSize: 64, fontWeight: 700, color: "rgba(0,0,0,0.07)" },
     },
     tooltip: {
       trigger: "axis",
@@ -2310,6 +2310,10 @@ async function main() {
       // to avoid implying the map colours mean island groups.
       const islandLegend = document.getElementById("island-legend");
       if (islandLegend) islandLegend.hidden = state.chartType === "map";
+      // In line mode most provinces are faint context, so the saturated island
+      // key over-promises. The note tells the reader what bold vs faint means.
+      const islandNote = document.getElementById("island-legend-note");
+      if (islandNote) islandNote.hidden = state.chartType !== "line";
       // Size key: only bubbles encode the 4th variable (population) as area.
       // Line/bar/map drop it, so the key would be a lie there.
       const sizeLegend = document.getElementById("size-legend");
