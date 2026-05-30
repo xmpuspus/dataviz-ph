@@ -124,9 +124,8 @@ All data sourced from public records (PSA OpenStat, PhilGEPS, PSA Census). This 
 
 - A screen-reader user can read the data table, use the year buttons, and operate the X/Y indicator dropdowns, but cannot click individual bubbles to pin trails.
 - Auto-play kicks in on the first visit (no hash). Shared links with a hash skip it.
-- The OG card at `public/og.png` is hand-designed (1200x630). Per-view OG images would need a Vercel Edge Function.
+- The OG card at `public/og.png` (1200x630) is rendered from `docs/og.html`: open it at a 1200x630 viewport (2x for crisp text), screenshot, downscale to 1200x630. Keep its headline in sync with the default story.
 - Compare-with-year is a same-chart overlay. A side-by-side split view is not implemented.
-- No choropleth (map) view yet.
 
 ## License
 

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  :root{
+    --ink:#111; --muted:#595959; --rule:#e6e6e6; --brand:#0e7c86;
+    --luzon:#2b6cb0; --visayas:#38a169; --mindanao:#d97706; --ncr:#6b46c1; --barmm:#c53030;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:1200px;height:630px;background:#fff;
+    font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial,sans-serif;
+    color:var(--ink);-webkit-font-smoothing:antialiased}
+  .card{width:1200px;height:630px;display:flex;padding:54px 60px}
+  /* Left column */
+  .left{width:600px;display:flex;flex-direction:column}
+  .brand{font-size:25px;font-weight:700;letter-spacing:-0.02em}
+  .brand .tld{color:var(--brand)}
+  h1{font-family:Georgia,"Iowan Old Style",Palatino,"Times New Roman",serif;
+     font-weight:600;font-size:52px;line-height:1.12;letter-spacing:-0.01em;
+     margin-top:46px;max-width:560px}
+  .sub{color:var(--muted);font-size:23px;line-height:1.45;margin-top:24px;max-width:540px}
+  .foot{margin-top:auto;color:var(--muted);font-size:18px;line-height:1.5}
+  /* Right column: mini chart panel */
+  .right{width:480px;margin-left:20px;position:relative;
+    border:1px solid var(--rule);border-radius:12px;padding:18px 18px 14px}
+  .yaxis{font-size:15px;color:var(--muted)}
+  .year{position:absolute;right:26px;top:70px;font-size:96px;font-weight:700;color:rgba(0,0,0,0.06);
+    letter-spacing:-0.02em}
+  .plot{position:relative;height:330px;margin-top:6px}
+  .bub{position:absolute;border-radius:50%;opacity:0.92}
+  .xcap{text-align:center;font-size:14px;color:var(--muted);font-style:italic;margin-top:6px}
+  .legend{display:flex;gap:16px;margin-top:12px;font-size:14px;color:var(--ink);align-items:center;flex-wrap:wrap}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend i{width:11px;height:11px;border-radius:50%;display:inline-block}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="left">
+      <div class="brand">dataviz.<span class="tld">ph</span></div>
+      <h1>Eleven years, five trillion in roads. Did poverty improve?</h1>
+      <p class="sub">DPWH spend per capita against poverty incidence. 81 provinces and Metro Manila. Animated, 2014 to 2024.</p>
+      <div class="foot">
+        Sources: PSA OpenStat &middot; PhilGEPS &middot; PSA 2020 Census<br>
+        MIT license &middot; dataviz.ph
+      </div>
+    </div>
+    <div class="right">
+      <div class="yaxis">poverty %</div>
+      <div class="year">2023</div>
+      <div class="plot" id="plot"></div>
+      <div class="xcap">spend per capita (log)</div>
+      <div class="legend">
+        <span><i style="background:var(--luzon)"></i>Luzon</span>
+        <span><i style="background:var(--visayas)"></i>Visayas</span>
+        <span><i style="background:var(--mindanao)"></i>Mindanao</span>
+        <span><i style="background:var(--ncr)"></i>NCR</span>
+        <span><i style="background:var(--barmm)"></i>BARMM</span>
+      </div>
+    </div>
+  </div>
+  <script>
+    // Decorative bubble cluster evoking the scatter: high-poverty BARMM/Mindanao
+    // top-left, wealthier low-poverty Luzon/NCR lower-right. Not data-exact.
+    const C={luzon:'#2b6cb0',visayas:'#38a169',mindanao:'#d97706',ncr:'#6b46c1',barmm:'#c53030'};
+    // x%, y% (0 top), diameter px, island
+    const B=[
+      [12,8,30,'barmm'],[22,5,40,'barmm'],[8,30,26,'barmm'],
+      [40,18,52,'mindanao'],[46,12,42,'mindanao'],[58,30,30,'mindanao'],[72,40,46,'mindanao'],
+      [36,44,40,'visayas'],[60,55,64,'visayas'],[78,62,30,'visayas'],
+      [50,58,54,'luzon'],[64,66,40,'luzon'],[82,72,34,'luzon'],[88,55,26,'luzon'],
+      [56,70,78,'ncr'],
+    ];
+    const plot=document.getElementById('plot');
+    const w=plot.clientWidth||444, h=330;
+    for(const [x,y,d,isl] of B){
+      const el=document.createElement('div');el.className='bub';
+      el.style.width=d+'px';el.style.height=d+'px';el.style.background=C[isl];
+      el.style.left=(x/100*w - d/2)+'px';el.style.top=(y/100*h - d/2)+'px';
+      plot.appendChild(el);
+    }
+  </script>
+</body>
+</html>
