@@ -866,7 +866,7 @@ def refresh_manifest() -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="plot.ph ETL build")
+    parser = argparse.ArgumentParser(description="dataviz.ph ETL build")
     parser.add_argument(
         "--no-cache",
         action="store_true",

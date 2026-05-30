@@ -1,13 +1,13 @@
-# plot.ph roadmap
+# dataviz.ph roadmap
 
-Generated 2026-05-27. Source docs in /tmp/plot-ph-roadmap/:
+Generated 2026-05-27. Source docs in /tmp/dataviz-ph-roadmap/:
 
 - `gapminder-gaps.md`: 34-feature gap table vs Gapminder Tools / Vizabi / OWID Grapher
 - `psa-openstat-catalog.md`: 20-table PSA OpenStat inventory, top 5 story candidates ranked
 - `non-psa-catalog.md`: 12 non-PSA sources (PhilGEPS, PHIVOLCS, PAGASA, NASA POWER, etc.) ranked
 - `product-audit.md`: consolidated 8-dimension product audit (overall 65/100; 4 Criticals)
 
-## Ship blockers (before plot.ph publishes under a public domain)
+## Ship blockers (before dataviz.ph publishes under a public domain)
 
 These are tagged Critical in `product-audit.md`. Land them before deploy.
 
@@ -25,7 +25,7 @@ Ordered by impact-to-effort ratio. All concrete; no new data required for #1, #2
 | # | Feature | User value | Effort | File to edit | Acceptance check |
 |---|---------|------------|--------|--------------|------------------|
 | 1 | Tap tooltip on touch + persistent last-tap panel under chart on <600px | Half the audience is on mobile. Today tap toggles selection without showing the value. | S | [public/app.js:270](public/app.js#L270) tooltip config; [public/app.js:776](public/app.js#L776) click handler; [public/style.css](public/style.css) for the panel | Open on real iPhone Safari: first tap on bubble shows tooltip; second tap on same bubble toggles trail-pin. Panel below chart shows last-tapped value persistently. |
-| 2 | PNG snapshot button next to CSV / Copy link | Journalists need an image they can drop into a CMS, not just a link. | S | [public/index.html:115](public/index.html#L115) add button; [public/app.js:801](public/app.js#L801) wire `chart.getDataURL({type:'png', pixelRatio:2, backgroundColor:'#fff'})` | Click "Save PNG", file `plot-ph-DPWH-2018.png` downloads at 2x density with white background; opens in macOS Preview without artifacts. |
+| 2 | PNG snapshot button next to CSV / Copy link | Journalists need an image they can drop into a CMS, not just a link. | S | [public/index.html:115](public/index.html#L115) add button; [public/app.js:801](public/app.js#L801) wire `chart.getDataURL({type:'png', pixelRatio:2, backgroundColor:'#fff'})` | Click "Save PNG", file `dataviz-ph-DPWH-2018.png` downloads at 2x density with white background; opens in macOS Preview without artifacts. |
 | 3 | Indicator definitions on axis-label hover or click | "Poverty incidence among families" is jargon. `indicators.json` already carries 200-char vintage strings; today they are unused on axis. | S | [public/app.js:235](public/app.js#L235) wrap axis name as a `<button>` overlay; popover backed by `data.indicators[id].vintage` | Hover the Y axis label "Poverty incidence among families": a popover shows the PSA Table 1a definition and source link. Click to pin. Keyboard accessible. |
 | 4 | Indicator picker (free choice of X / Y) | Three hard-coded stories under-use the data. A `<select>` per axis multiplies exploration surface from 3 to 12 valid pairs with no new ETL. | M | [public/index.html:84](public/index.html#L84) two `<select>`s; [public/app.js:580](public/app.js#L580) bind to `state.x`/`state.y` not `story.x`/`story.y`; [public/data/indicators.json](public/data/indicators.json) add `pickable: true` | Pick X=all_spend Y=gdp_per_capita: chart renders 2022-2024 panel, log toggle works, deflate hidden, CSV reflects the chosen pair. Story tabs become "presets" that pre-fill the selects. |
 | 5 | Province choropleth view tab (bubble / map / rank / line) | Civic-tech readers think geographically first. The single biggest UX unlock per Gapminder gap doc. | L | New `public/data/ph-provinces.geojson` from psgc.gitlab.io polygons; new `public/map.js` or extend `app.js` with `viewMode` state; [public/index.html:45](public/index.html#L45) add tab nav above the chart | Click "Map" tab: PH outline renders with 82 provinces colored by current Y indicator; click a province pins it (round-trips with bubble view); year-stepper still works; mobile usable at 375px. |
@@ -36,7 +36,7 @@ Smaller wins also worth tucking in: per-frame URL hash already round-trips most 
 
 ## Top 3 new stories from PSA OpenStat
 
-Ranked from `psa-openstat-catalog.md` after correcting for plot.ph's existing capability: plot.ph already uses provincial poverty (the catalog said regional-only because the MCP only wired the regional table; plot.ph's `etl/psa_openstat.py` wired provincial).
+Ranked from `psa-openstat-catalog.md` after correcting for dataviz.ph's existing capability: dataviz.ph already uses provincial poverty (the catalog said regional-only because the MCP only wired the regional table; dataviz.ph's `etl/psa_openstat.py` wired provincial).
 
 ### Story 1: `all-spend-vs-gdp` (do this first; zero new data)
 
@@ -46,7 +46,7 @@ Ranked from `psa-openstat-catalog.md` after correcting for plot.ph's existing ca
 - Y: gdp_per_capita (already in `public/data/gdp_per_capita.json`)
 - Panel: 2022, 2023, 2024 (GDP coverage)
 - Data caveat: Only 3 years (limited by GDP series start at 2022). Both indicators provincial-level. Population sizing as default. Zero new ETL.
-- Why this matters: This pair answers a different question than the existing 3 stories. Today plot.ph shows spend-against-poverty and gdp-against-poverty, but never spend-against-wealth. Pairing the two already-shipped indicators reveals whether procurement money flows to higher-GDP provinces (already-rich-get-served) or to lower-GDP provinces (pro-poor allocation). A useful counterpoint to the DPWH headline. Add as a 4th preset in `etl/build.py:159` story dict; the picker (Top 5 feature #4) makes it native.
+- Why this matters: This pair answers a different question than the existing 3 stories. Today dataviz.ph shows spend-against-poverty and gdp-against-poverty, but never spend-against-wealth. Pairing the two already-shipped indicators reveals whether procurement money flows to higher-GDP provinces (already-rich-get-served) or to lower-GDP provinces (pro-poor allocation). A useful counterpoint to the DPWH headline. Add as a 4th preset in `etl/build.py:159` story dict; the picker (Top 5 feature #4) makes it native.
 
 ### Story 2: `inflation-vs-poverty` (regional)
 
@@ -72,7 +72,7 @@ Ranked from `psa-openstat-catalog.md` after correcting for plot.ph's existing ca
 
 ## Top 3 new stories from non-PSA sources
 
-Ranked from `non-psa-catalog.md` after correcting for plot.ph's existing capability: the agent assumed PhilGEPS = the live MCP tool (~100 latest notices), but plot.ph uses the csiiiv parquet mirror with full multi-year coverage already in `etl/philgeps.py`. PhilGEPS variant filters are therefore feasible for plot.ph despite what that doc implies.
+Ranked from `non-psa-catalog.md` after correcting for dataviz.ph's existing capability: the agent assumed PhilGEPS = the live MCP tool (~100 latest notices), but dataviz.ph uses the csiiiv parquet mirror with full multi-year coverage already in `etl/philgeps.py`. PhilGEPS variant filters are therefore feasible for dataviz.ph despite what that doc implies.
 
 ### Story 1: `infra-spend-vs-poverty` (PhilGEPS line-item filter, no upstream change)
 
@@ -98,12 +98,12 @@ Ranked from `non-psa-catalog.md` after correcting for plot.ph's existing capabil
 
 - Headline: "Forty years of Philippine GDP and the poverty line."
 - Tagline: "One country, one bubble. 1985 to 2025. World Bank data."
-- X: World Bank `NY.GDP.MKTP.CD` GDP current USD (via existing `get_world_bank_indicator` in ph-civic-data-mcp; mirror locally to `etl/world_bank.py` since plot.ph is static and shouldn't call live MCP)
+- X: World Bank `NY.GDP.MKTP.CD` GDP current USD (via existing `get_world_bank_indicator` in ph-civic-data-mcp; mirror locally to `etl/world_bank.py` since dataviz.ph is static and shouldn't call live MCP)
 - Y: World Bank `SI.POV.NAHC` poverty headcount ratio at national line
 - Bubble size: World Bank `SP.POP.TOTL` population
 - Panel: 1985 to most recent (40+ years annual)
 - Data caveat: 1-unit national bubble; not a true 82-province plot. Lives as a companion story showing macro-scale context, not as a swap-in for the existing provincial stories. World Bank publishes with 1-2 year lag.
-- Why this matters: Plot.ph's three stories cover a 2014-2024 window. A national companion that goes back to Aquino-Marcos-Ramos era contextualizes recent provincial movement against decade-scale national trajectory. Ranked #1 in the non-PSA catalog. Caveat is the 1-bubble shape which feels under-used; consider rendering this story as a Line view (Top 5 feature #5 cousin) rather than as a 1-bubble animated panel.
+- Why this matters: Dataviz.ph's three stories cover a 2014-2024 window. A national companion that goes back to Aquino-Marcos-Ramos era contextualizes recent provincial movement against decade-scale national trajectory. Ranked #1 in the non-PSA catalog. Caveat is the 1-bubble shape which feels under-used; consider rendering this story as a Line view (Top 5 feature #5 cousin) rather than as a 1-bubble animated panel.
 
 ---
 
@@ -135,11 +135,11 @@ Honorable mentions that pair well: rebuild only changed timeline steps not all 1
 
 2. **For the 4th preset story: ship `all-spend-vs-gdp` as a fixed 4th tab, OR ship the indicator-picker first and let the user discover the pair themselves?** The first is S effort and one new line in stories.json. The second is M effort but ships 12 valid pairs at once. Both are good; only one is "first".
 
-3. **Choropleth view vs indicator picker vs PNG snapshot, which one first?** Each is the headline lift for a different reader: choropleth for LGU staff who think geographically, indicator picker for researchers who want to compose, PNG snapshot for journalists who need an asset. Picking one signals plot.ph's primary persona.
+3. **Choropleth view vs indicator picker vs PNG snapshot, which one first?** Each is the headline lift for a different reader: choropleth for LGU staff who think geographically, indicator picker for researchers who want to compose, PNG snapshot for journalists who need an asset. Picking one signals dataviz.ph's primary persona.
 
-4. **Domain `plot.ph` is "pending" per the user memory but README does not say what is blocking. Are we waiting on dotPH registrar paperwork, DNS provider choice, or Cloudflare zone setup?** Without that, the ship-blocker work has no destination to land on.
+4. **Domain `dataviz.ph` is "pending" per the user memory but README does not say what is blocking. The domain is registered but DNS currently points at a Linode box; the remaining step is repointing it to the Vercel project.** Without that, the ship-blocker work has no production destination to land on.
 
-5. **Should plot.ph adopt the "All data sourced from public records" disclaimer block standard across the civic-tech PH cluster (per the scoped-rules `civic-tech-ph` doc)?** Today the methodology section is rich and honest but doesn't carry the standard disclaimer phrasing. Adopting it makes plot.ph defensible if a province ever pushes back on a published number. Yes / no.
+5. **Should dataviz.ph adopt the "All data sourced from public records" disclaimer block standard across the civic-tech PH cluster (per the scoped-rules `civic-tech-ph` doc)?** Today the methodology section is rich and honest but doesn't carry the standard disclaimer phrasing. Adopting it makes dataviz.ph defensible if a province ever pushes back on a published number. Yes / no.
 
 ---
 
@@ -168,7 +168,7 @@ Second full pass after the gapminder layout restructure (`bc6431d`, `dd0b60f`) l
 1. **DPWH flagship headline understates the plotted total ~2.5x.** "Twelve years, two trillion in roads" ([public/data/stories.json:1](public/data/stories.json#L1), [public/data/pair_headlines.json:13](public/data/pair_headlines.json#L13)). Recomputed from the 876 rows the chart actually plots (`dpwh_spend_per_capita` per-capita x `population.json`): **PHP 5.04 trillion** nominal over **11 years (2014–2024, not twelve)**. Effort **S**. Fix: correct the copy to ~5 trillion / 11 years AND compute the figure in [etl/build.py](etl/build.py) so it can never drift again (data-integrity rule: interpolate constants, don't hardcode prose).
 2. **The build manifest — the single stale-deploy detector — is itself stale.** `manifest.json` records `stories.json` sha256 `8ac8de1a…` but the file on disk is `cd47659e…`, and `pair_headlines.json` is **absent from the manifest entirely**. The restructure hand-edited stories.json and added pair_headlines.json without re-running `build_manifest()`. Effort **S**. Fix: re-run `python -m etl.build`; add a pre-commit/CI check that recomputes every `public/data/*.json` sha256 against the manifest and fails on drift.
 3. **A single 404 on any of 7 core data files kills the whole page silently.** [public/app.js:110-122](public/app.js#L110): `provinces, poverty, dpwh, all_spend, gdp, indicators, stories` are fetched with no `.catch()` (8 others are guarded). Effort **S**. Fix: guard all 15 with a visible "couldn't load data" state instead of an uncaught throw.
-4. **Deploy is not wired — there is no destination.** No `wrangler.toml` / `_headers` / `netlify.toml` / `vercel.json` / `.github/workflows/`, and `git remote -v` is empty; canonical/OG meta point at `plot.ph` which resolves to nothing. Effort **M**. Fix: `wrangler.toml` + `public/_headers` (CSP + caching) + a deploy workflow; resolve the domain (open question 4 from the prior section).
+4. **Deploy is wired to Vercel.** `vercel.json` carries the CSP + caching headers and serves the static `public/` dir; CI (`.github/workflows/ci.yml`) runs lint + tests, and Vercel's Git integration ships `public/` on every push to `main`. Remaining: repoint the `dataviz.ph` domain (currently on Linode) to the Vercel project (open question 4 from the prior section).
 
 ## High-impact UX / accessibility (verified against source)
 
@@ -198,7 +198,7 @@ Shipped already (verified): X/Y picker, chart-type strip (bubbles/line/bar), pla
 
 ## Data-coverage matrix vs ph-civic-data-mcp (28 tools, source-verified)
 
-Full matrix: `tmp/audit-20260529T005415Z/09-coverage-matrix.md`. Today plot.ph visualizes **4 of 28 tools, all partial** (population, poverty, national CPI, and a provincial GDP cut — note plot.ph's GDP is PSA 2A/PPA at [etl/build.py:149](etl/build.py#L149), *not* the World Bank tool). **"All data possible" is scoped, not literal**, in three honest buckets:
+Full matrix: `tmp/audit-20260529T005415Z/09-coverage-matrix.md`. Today dataviz.ph visualizes **4 of 28 tools, all partial** (population, poverty, national CPI, and a provincial GDP cut — note dataviz.ph's GDP is PSA 2A/PPA at [etl/build.py:149](etl/build.py#L149), *not* the World Bank tool). **"All data possible" is scoped, not literal**, in three honest buckets:
 
 ### Bucket A — fits today's bubble/line/bar views, needs only ETL + a story (NO new view type)
 
@@ -216,7 +216,7 @@ Plus the already-scoped PhilGEPS story variants from the prior roadmap section (
 
 A province **choropleth view** (Effort **L**, PSGC polygons from psgc.gitlab.io) is the single biggest unlock: it lets readers see *where* the existing 10 indicators are, AND becomes the only honest home for 8 geo/event sources that have no province×year panel shape — earthquakes (`phivolcs.py:115`, `usgs.py:68`), volcano alert levels (`phivolcs.py:330`), historical typhoon tracks (`ibtracs.py:75`), NDVI (`modis_ndvi.py:61`), solar/climate (`nasa_power.py:45`), air quality (`open_meteo_aq.py:58`). These are point/track/raster data; they belong on a basemap, never in a bubble.
 
-### Bucket C — out of scope for plot.ph (14 tools)
+### Bucket C — out of scope for dataviz.ph (14 tools)
 
 Live procurement notices with no cost/province (`philgeps.py:88/155`, `infra.py:415` — the awards-mirror per-capita panels already cover procurement better), real-time weather/hazard feeds (`pagasa.py`, `cross_source.py:117`), single-record detail lookups (`infra.py:354`, `phivolcs.py:160`), PSGC geo-reference utilities (useful only as ETL geocoders, no metric to plot), and mixed-grain composites (`autostitch.py:54`, `cross_source.py:214`).
 

@@ -1,5 +1,5 @@
 [project]
-name = "plot-ph"
+name = "dataviz-ph"
 version = "0.0.1"
 description = "Animated bubble chart for Philippine public data"
 requires-python = ">=3.11"

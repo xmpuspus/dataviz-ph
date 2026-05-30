@@ -1,4 +1,4 @@
-// plot.ph: story switcher, inflation toggle, CSV download, a11y mirror table,
+// dataviz.ph: story switcher, inflation toggle, CSV download, a11y mirror table,
 // compare-two-years overlay, keyboard scrubber.
 
 const PALETTE = {
@@ -226,7 +226,7 @@ function renderSizeLegend() {
 
 // First-read scaffold dismissal persists so a returning reader is not nagged.
 // localStorage can throw (private mode / disabled storage); fail open to shown.
-const HOWTO_KEY = "plotph_howto_dismissed";
+const HOWTO_KEY = "datavizph_howto_dismissed";
 function readHowtoDismissed() {
   try {
     return localStorage.getItem(HOWTO_KEY) === "1";
@@ -1783,7 +1783,7 @@ function downloadCsv(story, data, state) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `plot-ph-${story.id}-${state.year}.csv`;
+  a.download = `dataviz-ph-${story.id}-${state.year}.csv`;
   document.body.appendChild(a);
   a.click();
   setTimeout(() => {
@@ -2426,8 +2426,8 @@ async function main() {
       const t = btn.dataset.type;
       if (!t || t === state.chartType) return;
       // Switching away from bubbles stops any running play loop.
-      if (t !== "bubbles" && typeof window.__plotph_stopPlay === "function") {
-        window.__plotph_stopPlay();
+      if (t !== "bubbles" && typeof window.__datavizph_stopPlay === "function") {
+        window.__datavizph_stopPlay();
       }
       state.chartType = t;
       render();
@@ -2481,8 +2481,8 @@ async function main() {
   }
   // Expose for the chart-type strip handler so switching away from bubbles
   // stops the timer.
-  window.__plotph_stopPlay = stopPlay;
-  window.__plotph_startPlay = startPlay;
+  window.__datavizph_stopPlay = stopPlay;
+  window.__datavizph_startPlay = startPlay;
   if (bigPlay) {
     bigPlay.addEventListener("click", () => {
       if (state.chartType === "line") return;
@@ -2501,7 +2501,7 @@ async function main() {
     const name = v.isCustom ? `${v.x}-vs-${v.y}` : v.id;
     const a = document.createElement("a");
     a.href = url;
-    a.download = `plot-ph-${name}-${state.year}.png`;
+    a.download = `dataviz-ph-${name}-${state.year}.png`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => a.remove(), 0);
@@ -2569,8 +2569,8 @@ async function main() {
     // year-stepper doesn't keep firing while the chart re-renders as a
     // non-bubble view.
     if (next.chartType !== state.chartType) {
-      if (typeof window.__plotph_stopPlay === "function") {
-        window.__plotph_stopPlay();
+      if (typeof window.__datavizph_stopPlay === "function") {
+        window.__datavizph_stopPlay();
       }
       state.chartType = next.chartType;
     }
@@ -2597,8 +2597,8 @@ async function main() {
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (!reduceMotion) {
       setTimeout(() => {
-        if (typeof window.__plotph_startPlay === "function") {
-          window.__plotph_startPlay();
+        if (typeof window.__datavizph_startPlay === "function") {
+          window.__datavizph_startPlay();
         }
       }, 500);
     }

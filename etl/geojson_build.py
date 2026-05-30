@@ -1,13 +1,13 @@
-"""Build public/data/ph-provinces.geojson dissolved to plot.ph's 82-unit model.
+"""Build public/data/ph-provinces.geojson dissolved to dataviz.ph's 82-unit model.
 
 Source: faeldon/philippines-json-maps 2019 ADM2 (province-level, PSGC-coded,
 lowres 0.001 simplification). That dataset is already province-grain with HUCs
 folded into their parent province geometry (e.g. Cebu City is inside Cebu, not a
 separate feature) and Maguindanao still unified (pre-2022 split) -- both of which
-match plot.ph's data model. The only dissolve required is NCR: its 4 legislative
+match dataviz.ph's data model. The only dissolve required is NCR: its 4 legislative
 districts are merged into the single virtual NCR unit the rest of the app uses.
 
-Output: one Feature per plot.ph unit, properties = {name, psgc, island_group}.
+Output: one Feature per dataviz.ph unit, properties = {name, psgc, island_group}.
 `name` is the canonical provinces.json name so ECharts can match chart data to
 the polygon. Run once; the asset is committed (like the vendored ECharts build):
 
@@ -52,7 +52,7 @@ def _fetch_region(region_code: str) -> dict:
     if cached.exists():
         return json.loads(cached.read_text())
     url = f"{RAW_BASE}/provinces-region-{region_code}.0.001.json"
-    req = urllib.request.Request(url, headers={"User-Agent": "plot-ph-etl/1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": "dataviz-ph-etl/1.0"})
     raw = urllib.request.urlopen(req, timeout=60).read()  # noqa: S310 (trusted host)
     cached.write_bytes(raw)
     return json.loads(raw)
@@ -69,7 +69,7 @@ def _round_coords(obj):
 def build_province_geojson() -> dict:
     provinces = load_provinces()  # {psgc: {name, island_group, region_code, population_2020}}
 
-    # Collect source geometries grouped by the plot.ph unit they belong to.
+    # Collect source geometries grouped by the dataviz.ph unit they belong to.
     by_unit: dict[str, list] = {}
     unmatched: list[str] = []
     for region_code in REGION_CODES:

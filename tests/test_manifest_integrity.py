@@ -3,7 +3,7 @@
 Regression for 2026-05-29: the gapminder restructure hand-edited stories.json
 and added pair_headlines.json without re-running the build, so manifest.json
 recorded a stale sha256 for stories.json and omitted pair_headlines.json
-entirely. The manifest is plot.ph's only stale-deploy detector, so a stale
+entirely. The manifest is dataviz.ph's only stale-deploy detector, so a stale
 manifest is a data-integrity bug, not a cosmetic one.
 """
 

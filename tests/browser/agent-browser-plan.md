@@ -1,4 +1,4 @@
-# plot.ph — 40 behavioural integration tests (/agent-browser)
+# dataviz.ph — 40 behavioural integration tests (/agent-browser)
 
 Authored 2026-05-29. Driver: the `/agent-browser` skill (a real headless/headful browser — navigate, click, type, screenshot, read DOM/computed-style). **Not** Playwright.
 
@@ -67,7 +67,7 @@ Viewports used: **mobile 375x812**, **small 600x900**, **tablet 880x1000**, **de
 ## H. Export & share (T33–T35)
 
 - **T33 CSV export matches current pair.** Click CSV. Expect a download whose header columns = current X/Y/year and rows = rendered provinces. Visual/inspect: file downloaded, first row has the chosen indicator ids.
-- **T34 PNG snapshot is clean.** Click "Save PNG". Expect a 2x white-background PNG named `plot-ph-{story}-{year}.png`. Open it. Visual: image is the chart, white bg, no transparency artifacts.
+- **T34 PNG snapshot is clean.** Click "Save PNG". Expect a 2x white-background PNG named `dataviz-ph-{story}-{year}.png`. Open it. Visual: image is the chart, white bg, no transparency artifacts.
 - **T35 Copy-link round-trips full state.** Set a custom pair + chart type + year + log, click Copy link, open the copied URL in a fresh tab. Expect identical state restored from the hash. Visual: new tab matches the source tab exactly.
 
 ## I. Tooltips & popovers (T36–T37)
