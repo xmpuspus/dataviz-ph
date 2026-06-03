@@ -1218,12 +1218,18 @@ function buildLineOption(view, data, state) {
             color: "#111",
             fontSize: 11,
             fontWeight: 600,
-            backgroundColor: "rgba(255,255,255,0.75)",
-            padding: [1, 4],
-            borderRadius: 3,
+            // A white text halo (not an opaque box) keeps labels legible over the
+            // faint lines without one label's box hiding a neighbour's text when
+            // two converge (e.g. Sulu over Lanao del Sur near 13% in 2023-24).
+            textBorderColor: "#fff",
+            textBorderWidth: 3,
           }
         : { show: false },
       z: isHi ? 2 : 1,
+      // De-collide end labels: when two highlighted lines converge (e.g. Sulu and
+      // Lanao del Sur both near 13% poverty in 2023-24) their end labels stack and
+      // overprint. shiftY nudges overlapping labels apart vertically.
+      labelLayout: isHi ? { moveOverlap: "shiftY", hideOverlap: false } : undefined,
     });
   }
 
@@ -1300,6 +1306,10 @@ function buildLineOption(view, data, state) {
 function buildBarOption(view, data, state) {
   const yId = view.y;
   const yMeta = data.indicators[yId] || {};
+  // On a phone the plot column is too narrow for the default ~5 percent ticks,
+  // so they overprint into one smear. Ask for fewer and let ECharts hide any
+  // that still collide.
+  const narrow = window.innerWidth <= 520;
 
   // Collect (psgc, value) for the current year, drop null.
   const rows = [];
@@ -1324,8 +1334,10 @@ function buildBarOption(view, data, state) {
       nameGap: 28,
       nameTextStyle: { fontSize: 11, color: "#6b6b6b", fontStyle: "italic" },
       scale: yId === "poverty_change_pp",
+      splitNumber: narrow ? 3 : 5,
       axisLabel: {
         color: "#595959",
+        hideOverlap: true,
         formatter: (v) => {
           if (yId === "poverty" || yId === "dpwh_share_pct" ||
               yId === "cpi_yoy_pct" || yId === "poverty_change_pp") {
@@ -2411,6 +2423,10 @@ async function main() {
         b.classList.toggle("active", active);
         b.setAttribute("aria-pressed", active ? "true" : "false");
       });
+      // Expose the active chart type so CSS can move the play button clear of the
+      // left-hand province labels in the bar view on narrow screens.
+      const chartWrap = document.getElementById("chart-wrap");
+      if (chartWrap) chartWrap.dataset.ct = state.chartType;
       // Island-group legend only applies to the views coloured by island
       // (bubbles/line/bar). Map is coloured by the value scale, so hide it there
       // to avoid implying the map colours mean island groups.

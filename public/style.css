@@ -1029,4 +1029,7 @@ footer .disclaimer {
   #story-headline { font-size: 1.25rem; }
   .axis-pick-btn { font-size: 0.78rem; max-width: 200px; }
   .axis-pick-name { max-width: 160px; }
+  /* Bar view ranks province names down the left, where the play button sits.
+     Move it to the right edge there so it stops covering the bottom labels. */
+  #chart-wrap[data-ct="bar"] #big-play { left: auto; right: 14px; }
 }
