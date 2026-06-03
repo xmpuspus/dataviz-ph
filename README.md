@@ -10,7 +10,7 @@ Animated bubble charts of Philippine public data. Pick a story, hit play.
 
 Joining procurement with outcomes on one set of axes lets you ask whether public money tracked need, and see that it mostly did not. Every figure below is computed by the pipeline (and recomputed live in the page) from the sources further down, not hand-typed.
 
-- **DPWH contract awards attributed to provinces total PHP 5.04 trillion over 2014 to 2024**, and the yearly figure climbed from about PHP 210 billion a year in 2014 to 2016 to PHP 926 billion in 2024, roughly 3.7 times higher.
+- **DPWH contract awards attributed to provinces total PHP 5.04 trillion over 2014 to 2024**, and the yearly figure climbed from about PHP 210 billion a year in 2014 to 2016 to a peak of PHP 926 billion in 2024; the 2022 to 2024 average ran about 3.7 times the 2014 to 2016 average.
 - **That spending shows no clear link to poverty.** Across 81 provinces plus Metro Manila, the rank correlation between DPWH spend per capita and poverty incidence is about +0.12; for all-government spend it is about -0.07. No pattern either way.
 - **Economic output does track it.** Per-capita GDP against poverty is about -0.53: wealthier provinces are clearly less poor. So the spend-vs-poverty cloud is shapeless while GDP-vs-poverty is a clean downward diagonal.
 
@@ -18,7 +18,7 @@ These are contract *awards* (money committed), not verified disbursement; the ga
 
 ## Indicators and views
 
-Eleven indicators, free pick on either axis:
+Eleven indicators. Ten can go on either axis; national inflation is a single national series, shown in the line and rank views:
 
 - **Poverty incidence among families** (PSA Full-Year, 2018/2021/2023 anchors, linear-filled to 2014 to 2024)
 - **Subsistence incidence among families** (PSA, families below the food threshold; same 2018/2021/2023 anchors, always lower than the poverty line)
