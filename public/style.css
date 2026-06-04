@@ -215,7 +215,11 @@ main {
   align-items: start;
 }
 
-@media (min-width: 880px) {
+/* Two-column (chart + sidebar) only on real desktops. Below this the layout
+   stacks: chart full-width and leading, finding/caveat moved below it (by JS),
+   controls below that. Raised from 880 to 1100 so 1024-class tablets/small
+   laptops get the chart at the fold instead of a screen of finding text first. */
+@media (min-width: 1100px) {
   main {
     grid-template-columns: minmax(0, 1fr) 230px;
   }
@@ -225,7 +229,7 @@ main {
    Empty on desktop, so it collapses out of the grid. */
 #mobile-detail-slot:empty { display: none; }
 
-@media (max-width: 879px) {
+@media (max-width: 1099px) {
   #mobile-detail-slot { padding: 0 1rem 0.2rem; }
   #mobile-detail-slot .story-finding { margin-top: 0.7rem; }
   #mobile-detail-slot .story-caveat { margin-top: 0.5rem; }
@@ -328,7 +332,7 @@ main {
 #title-strip .story-why[hidden] { display: none; }
 
 /* Hide the "why" paragraph on narrow screens to keep the title strip compact */
-@media (max-width: 879px) {
+@media (max-width: 1099px) {
   #title-strip .story-why { display: none; }
 }
 
@@ -376,7 +380,7 @@ main {
   border-left: 1px solid var(--rule);
 }
 
-@media (max-width: 879px) {
+@media (max-width: 1099px) {
   #controls { border-left: 0; border-top: 1px solid var(--rule); }
 }
 
@@ -981,7 +985,7 @@ footer .disclaimer {
 
 /* --- Responsive ------------------------------------------------------- */
 
-@media (max-width: 879px) {
+@media (max-width: 1099px) {
   #topbar { padding: 0.55rem 1rem; }
   #title-strip { padding: 0.7rem 1rem 0.4rem; }
   #story-headline { font-size: 1.35rem; }
@@ -1015,8 +1019,8 @@ footer .disclaimer {
     overflow-x: auto;
     flex-wrap: nowrap;
     /* Fade the right edge so the row reads as scrollable (more tabs offscreen). */
-    -webkit-mask-image: linear-gradient(90deg, #000 90%, transparent);
-    mask-image: linear-gradient(90deg, #000 90%, transparent);
+    -webkit-mask-image: linear-gradient(90deg, #000 75%, transparent);
+    mask-image: linear-gradient(90deg, #000 75%, transparent);
   }
   #story-switcher::-webkit-scrollbar { display: none; }
   .story-btn { white-space: nowrap; flex-shrink: 0; }
@@ -1027,9 +1031,22 @@ footer .disclaimer {
   .chart-type-btn .ct-label { display: inline; }
   #chart { height: 460px; }
   #story-headline { font-size: 1.25rem; }
-  .axis-pick-btn { font-size: 0.78rem; max-width: 200px; }
-  .axis-pick-name { max-width: 160px; }
+  .axis-pick-btn { font-size: 0.78rem; max-width: 240px; }
+  .axis-pick-name { max-width: 200px; }
   /* Bar view ranks province names down the left, where the play button sits.
-     Move it to the right edge there so it stops covering the bottom labels. */
-  #chart-wrap[data-ct="bar"] #big-play { left: auto; right: 14px; }
+     Move it to the right edge AND lift it above the x-axis value row so it stops
+     covering both the bottom labels and the axis numbers. */
+  #chart-wrap[data-ct="bar"] #big-play { left: auto; right: 14px; bottom: 44px; }
+}
+
+/* Landscape phones: a 460-540px chart overflows a ~375px-tall viewport and pushes
+   the headline and controls off the first screen. Short chart + one-line headline
+   so the fold still carries the story and the chart together. */
+@media (max-height: 500px) and (orientation: landscape) {
+  #chart { height: 300px; }
+  #title-strip { padding-top: 0.4rem; padding-bottom: 0.3rem; }
+  #story-headline { font-size: 1.1rem; }
+  #title-strip .tagline { display: none; }
+  #topbar { padding-top: 0.35rem; padding-bottom: 0.35rem; }
+  #chart-howto { display: none; }
 }
