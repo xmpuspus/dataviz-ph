@@ -880,6 +880,67 @@ select:focus-visible {
 
 #big-play[hidden] { display: none !important; }
 
+/* --- Guided narrative arc --------------------------------------------- */
+
+/* Cross-fade between stories on the twist beat (axis swap reads as a transition,
+   not a reload). */
+#chart {
+  transition: opacity 0.42s ease;
+}
+#chart.arc-dim {
+  opacity: 0.12;
+}
+
+/* Pulse the play button once when control is handed back to the explorer. */
+@keyframes arc-pulse {
+  0% { box-shadow: 0 3px 12px rgba(0, 0, 0, 0.18); }
+  50% { box-shadow: 0 0 0 8px rgba(14, 124, 134, 0.28), 0 3px 12px rgba(0, 0, 0, 0.18); }
+  100% { box-shadow: 0 3px 12px rgba(0, 0, 0, 0.18); }
+}
+#big-play.arc-pulse {
+  animation: arc-pulse 0.9s ease 2;
+}
+
+/* Skip (during the arc) and Replay (after) share the bottom-right corner; they
+   are never shown at the same time. Big-play owns the bottom-left. */
+#arc-skip,
+#replay-arc {
+  position: absolute;
+  right: 14px;
+  bottom: 16px;
+  z-index: 6;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 999px;
+  padding: 0.5rem 0.85rem;
+  transition: background 0.12s ease, color 0.12s ease, transform 0.12s ease;
+}
+#arc-skip {
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--muted);
+  border: 1px solid var(--rule);
+}
+#arc-skip:hover { color: var(--ink); background: #fff; }
+#replay-arc {
+  background: var(--brand);
+  color: #fff;
+  border: 1px solid var(--brand);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+}
+#replay-arc:hover { background: var(--brand-hot); border-color: var(--brand-hot); transform: scale(1.03); }
+#arc-skip:focus-visible,
+#replay-arc:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+#arc-skip[hidden],
+#replay-arc[hidden] { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  #chart { transition: none; }
+  #big-play.arc-pulse { animation: none; }
+}
+
 /* --- Last-tapped panel (touch / mobile) -------------------------------- */
 
 #last-tap-panel {

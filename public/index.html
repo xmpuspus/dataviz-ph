@@ -112,6 +112,12 @@
         <span class="bp-icon bp-play" aria-hidden="true">▶</span>
         <span class="bp-icon bp-pause" aria-hidden="true">❚❚</span>
       </button>
+      <!-- Guided-arc controls. Skip shows only while the arc runs; Replay shows
+           once it ends or after a returning visit. JS toggles their hidden attr. -->
+      <button id="arc-skip" type="button" hidden>Skip the story ›</button>
+      <button id="replay-arc" type="button" hidden>
+        <span aria-hidden="true">↻</span> Play the guided story
+      </button>
     </section>
 
     <!-- On phones the finding + caveat get moved here (by JS, below the chart)
