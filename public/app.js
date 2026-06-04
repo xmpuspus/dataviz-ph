@@ -326,6 +326,38 @@ function globalExtent(indicatorId, data, state) {
   return ext;
 }
 
+const _quantileCache = new Map();
+// Interior quantile breakpoints (nBins-1 of them) across ALL panel years. A
+// linear colour ramp washes a log-skewed spend/GDP distribution almost uniformly
+// pale (most provinces low, a few huge); quantile bins put ~an equal share of
+// province-years in each colour so the choropleth actually separates. Cross-year
+// like globalExtent, so a province's bin reflects real change, not a per-frame
+// rescale.
+function globalQuantiles(indicatorId, data, state, nBins) {
+  const key = `${indicatorId}|${state.deflate ? "real" : "nom"}|${nBins}`;
+  if (_quantileCache.has(key)) return _quantileCache.get(key);
+  const meta = data.indicators[indicatorId] || {};
+  const years = meta.panel_years || [];
+  const vals = [];
+  for (const psgc of Object.keys(data.provinces)) {
+    for (const y of years) {
+      const row = lookupRow(indicatorId, psgc, y, data);
+      const v = row ? indicatorValue(row, indicatorId, state) : null;
+      if (v === null || v === undefined) continue;
+      vals.push(v);
+    }
+  }
+  vals.sort((a, b) => a - b);
+  const breaks = [];
+  if (vals.length) {
+    for (let i = 1; i < nBins; i++) {
+      breaks.push(vals[Math.floor((i / nBins) * (vals.length - 1))]);
+    }
+  }
+  _quantileCache.set(key, breaks);
+  return breaks;
+}
+
 // Indicator row lookup with national-only fallback: if the per-province row
 // is missing AND the indicator is flagged national_only, return the national
 // row (psgc='000000000') so every bubble gets the national value at that year.
@@ -710,26 +742,40 @@ function baseOption(story, data, state) {
   const xIndicator = story.x;
   const yIndicator = story.y;
   const logX = state.logX;
+  // Poverty change is the one axis-pickable indicator that crosses zero (poverty
+  // fell in most provinces, so most values are negative). A log axis or a
+  // 0-anchored linear axis would silently drop every negative province, so for a
+  // diverging indicator we hold the axis linear and let ECharts frame the full
+  // negative-to-positive range.
+  const xDiverging = xIndicator === "poverty_change_pp";
+  const effLogX = logX && !xDiverging;
   return {
     // Bottom margin reserves 200px for: tick labels (~30px), X picker pill (~36px),
     // caption (italic ~14px), timeline component, and the big play button.
     grid: { left: 60, right: 28, top: 56, bottom: 200 },
     xAxis: {
-      type: logX ? "log" : "value",
+      type: effLogX ? "log" : "value",
       // Indicator name lives in the HTML picker pill ABOVE this caption.
       // nameGap places this italic caption far enough below the axis to sit
       // under the pill, not on top of it.
-      name: shortAxisCaption(xIndicator, state) + (logX ? " · log scale" : " · linear"),
+      name: shortAxisCaption(xIndicator, state) + (effLogX ? " · log scale" : " · linear"),
       nameLocation: "middle",
       nameGap: 100,
       nameTextStyle: { fontSize: 11, color: "#6b6b6b", fontStyle: "italic" },
-      min: logX ? undefined : 0,
+      // Diverging indicator: no 0-floor (it would clip the negatives); scale lets
+      // ECharts frame the full negative-to-positive range and label its ticks.
+      min: xDiverging || effLogX ? undefined : 0,
+      scale: xDiverging,
       axisLine: { lineStyle: { color: "#ccc" } },
       axisTick: { show: false },
       splitLine: { show: true, lineStyle: { color: "#f0f0f0" } },
       axisLabel: {
         color: "#595959",
         formatter: (v) => {
+          if (xIndicator === "poverty" || xIndicator === "dpwh_share_pct" ||
+              xIndicator === "cpi_yoy_pct" || xIndicator === "poverty_change_pp") {
+            return v + "%";
+          }
           if (v >= 1_000_000) return (v / 1_000_000).toFixed(1) + "M";
           if (v >= 1000) return (v / 1000).toFixed(0) + "k";
           return v.toString();
@@ -925,6 +971,52 @@ function buildMapOption(view, data, state) {
   // change between years, not a scale that silently rescales each frame.
   const { min, max } = globalExtent(yId, data, state);
 
+  // Single-hue sequential blue ramp. Poverty/subsistence (bounded %) map fine on a
+  // continuous linear ramp; log-skewed spend/GDP get quantile bins so they don't
+  // wash pale.
+  const RAMP = ["#dce8f5", "#9ec3e3", "#5a93c7", "#2b6cb0", "#08306b"];
+  let visualMap;
+  if (yMeta.log_natural && max > min) {
+    const breaks = globalQuantiles(yId, data, state, RAMP.length);
+    const edges = [min, ...breaks, max];
+    const pieces = [];
+    for (let i = 0; i < RAMP.length; i++) {
+      const lo = edges[i];
+      const hi = edges[i + 1];
+      const bounds =
+        i === 0 ? { lte: hi } : i === RAMP.length - 1 ? { gt: lo } : { gt: lo, lte: hi };
+      pieces.push({
+        ...bounds,
+        color: RAMP[i],
+        label: `${formatValue(lo, yId)} to ${formatValue(hi, yId)}`,
+      });
+    }
+    visualMap = {
+      type: "piecewise",
+      pieces,
+      right: 16,
+      top: "middle",
+      itemWidth: 14,
+      itemHeight: 14,
+      textStyle: { color: "#595959", fontSize: 11 },
+    };
+  } else {
+    visualMap = {
+      min,
+      max,
+      calculable: true,
+      // Right edge, vertically centered: clear of the play button (bottom-left),
+      // the indicator picker (top-left), and the title (top-center).
+      right: 16,
+      top: "middle",
+      orient: "vertical",
+      itemHeight: 140,
+      text: [formatValue(max, yId), formatValue(min, yId)],
+      inRange: { color: RAMP },
+      textStyle: { color: "#595959", fontSize: 11 },
+    };
+  }
+
   return {
     // Faint year watermark (like bubble mode). The indicator name lives in the
     // picker pill top-left, so a centered title here would just collide with it
@@ -952,24 +1044,7 @@ function buildMapOption(view, data, state) {
         );
       },
     },
-    visualMap: {
-      min,
-      max,
-      calculable: true,
-      // Right edge, vertically centered: clear of the play button (bottom-left),
-      // the indicator picker (top-left), and the title (top-center).
-      right: 16,
-      top: "middle",
-      orient: "vertical",
-      itemHeight: 140,
-      text: [formatValue(max, yId), formatValue(min, yId)],
-      // Single-hue sequential ramp (light to dark blue). The mapped indicators
-      // (poverty %, subsistence %, per-capita spend/GDP) are sequential magnitudes
-      // with no meaningful zero-midpoint, so a diverging two-hue ramp would imply
-      // a neutral centre that does not exist. Dark = more, light = less.
-      inRange: { color: ["#dce8f5", "#7fa9d4", "#2b6cb0", "#08306b"] },
-      textStyle: { color: "#595959", fontSize: 11 },
-    },
+    visualMap,
     series: [
       {
         id: "map",
@@ -1114,7 +1189,7 @@ function buildBubbleOption(story, data, state) {
         data: years,
         currentIndex: Math.max(0, years.indexOf(state.year)),
         autoPlay: false,
-        playInterval: years.length <= 3 ? 1500 : 1100,
+        playInterval: years.length <= 3 ? 1400 : 1000,
         loop: false,
         bottom: 14,
         left: 90,
@@ -1536,7 +1611,7 @@ function syncDetailPlacement() {
   const slot = document.getElementById("mobile-detail-slot");
   const titleText = document.querySelector(".title-text");
   if (!finding || !caveat || !slot || !titleText) return;
-  const wantSlot = window.matchMedia("(max-width: 879px)").matches;
+  const wantSlot = window.matchMedia("(max-width: 1099px)").matches;
   const inSlot = finding.parentElement === slot;
   if (wantSlot && !inSlot) {
     slot.appendChild(finding);
@@ -2360,7 +2435,14 @@ async function main() {
               contrast = ` Per-capita GDP, by contrast, does track lower poverty (rho = ${r >= 0 ? "+" : ""}${r.toFixed(2)}).`;
             }
           }
-          findingEl.textContent = `What the data shows. ${f.sentence}${contrast} ${f.caveat || ""}`;
+          // The finding is a fixed-reference-year correlation; when the reader has
+          // scrubbed elsewhere, say so rather than let the year control and the
+          // finding silently disagree.
+          const yearNote =
+            f.year != null && state.year != null && state.year !== f.year
+              ? ` (Chart is showing ${state.year}; this correlation is measured at ${f.year}.)`
+              : "";
+          findingEl.textContent = `What the data shows. ${f.sentence}${contrast} ${f.caveat || ""}${yearNote}`;
           findingEl.hidden = false;
         } else {
           findingEl.textContent = "";
@@ -2399,9 +2481,16 @@ async function main() {
       // dead control in line/bar/map).
       const logBlock = document.getElementById("log-block");
       if (logBlock) logBlock.hidden = state.chartType !== "bubbles";
-      document.getElementById("log-toggle").textContent = state.logX
-        ? "X: log"
-        : "X: linear";
+      const logToggle = document.getElementById("log-toggle");
+      // Poverty change crosses zero, so a log X is impossible there; reflect the
+      // fixed-linear state instead of offering a dead toggle.
+      if (view.x === "poverty_change_pp") {
+        logToggle.textContent = "X: linear (fixed)";
+        logToggle.disabled = true;
+      } else {
+        logToggle.textContent = state.logX ? "X: log" : "X: linear";
+        logToggle.disabled = false;
+      }
       // Extrap toggle label
       const extBtn = document.getElementById("extrap-toggle");
       if (extBtn) {
@@ -2551,6 +2640,18 @@ async function main() {
     state.logX = !state.logX;
     render();
   });
+
+  // In-page anchor: scroll to methodology WITHOUT mutating the state hash. A bare
+  // "#methodology" would otherwise fire hashchange -> parseHash -> reset to the
+  // default story/view/year and lose the reader's place.
+  const methodologyLink = document.querySelector('a[href="#methodology"]');
+  if (methodologyLink) {
+    methodologyLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      const target = document.getElementById("methodology");
+      if (target) target.scrollIntoView({ behavior: "smooth" });
+    });
+  }
 
   document.getElementById("deflate-toggle").addEventListener("click", () => {
     state.deflate = !state.deflate;
@@ -2716,8 +2817,12 @@ async function main() {
 
   window.addEventListener("resize", () => chart.resize());
   // Re-place the finding/caveat when crossing the mobile breakpoint (rotate/resize).
-  window.matchMedia("(max-width: 879px)").addEventListener("change", syncDetailPlacement);
+  window.matchMedia("(max-width: 1099px)").addEventListener("change", syncDetailPlacement);
   window.addEventListener("hashchange", () => {
+    // Pure in-page anchors (e.g. #methodology) carry no chart state. Ignore them
+    // so an anchor click never resets the visualization to defaults.
+    const rawHash = window.location.hash.replace(/^#/, "");
+    if (rawHash && !/[=&]/.test(rawHash)) return;
     const next = parseHash(data.stories);
     state.story = next.story;
     state.xIndicator = next.xIndicator;
