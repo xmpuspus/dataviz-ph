@@ -511,9 +511,12 @@ function buildSeriesData(year, story, data, state) {
     const cvX = p.xPrec && p.xPrec.cv;
     const imprecise =
       (cvY != null && cvY > CV_UNRELIABLE) || (cvX != null && cvX > CV_UNRELIABLE);
+    // Arc hook beat dims every bubble so the opening question reads first, before
+    // the cloud starts moving.
+    const dimFactor = state.arc && state.arc.dim ? 0.35 : 1;
     const itemStyle = {
       color,
-      opacity: imprecise ? 0.3 : isProjected ? 0.45 : isAnchor ? 0.88 : 0.55,
+      opacity: (imprecise ? 0.3 : isProjected ? 0.45 : isAnchor ? 0.88 : 0.55) * dimFactor,
       borderColor: imprecise ? "#c05621" : isProjected ? color : isAnchor ? "#fff" : color,
       borderWidth: imprecise ? 1.6 : isProjected ? 2 : isAnchor ? 0.6 : 1.5,
       borderType: imprecise || isProjected ? "dashed" : "solid",
@@ -1070,6 +1073,90 @@ function buildMapOption(view, data, state) {
   };
 }
 
+// Median X/Y across all provinces at a given year. Used to anchor the arc's
+// "high spend, still high poverty" quadrant shade to the real upper-right cell
+// (the same median split the finding box reports), rather than a guessed pixel.
+function medianXYForYear(year, story, data, state) {
+  const xs = [];
+  const ys = [];
+  for (const psgc of Object.keys(data.provinces)) {
+    const p = pointFor(psgc, year, story, data, state);
+    if (p && p.x != null && p.y != null) {
+      xs.push(p.x);
+      ys.push(p.y);
+    }
+  }
+  if (xs.length < 4) return null;
+  const med = (arr) => {
+    const s = [...arr].sort((a, b) => a - b);
+    const m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  };
+  return { mx: med(xs), my: med(ys) };
+}
+
+// On-chart narration block for the guided arc. Styled like a small editorial
+// callout (serif headline + sans sub-line) so it reads as voice, not chrome.
+// Placement is responsive: on phones every beat sits centered in the sparse
+// upper band (clear of the dense low-poverty cloud and the bottom controls); on
+// wide screens each beat names its own empty corner via annotation.pos.
+function arcAnnotationBlock(annotation) {
+  const SERIF = "Georgia, 'Times New Roman', serif";
+  const SANS =
+    "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial, sans-serif";
+  const narrow = window.innerWidth < 700;
+  const pos = annotation.pos || "lowerLeft";
+  let left;
+  let top;
+  let boxW;
+  if (narrow) {
+    left = "center";
+    top = pos === "center" ? "30%" : "13%";
+    boxW = Math.min(window.innerWidth - 52, 320);
+  } else {
+    boxW = pos === "center" ? 470 : 380;
+    left = pos === "center" ? "center" : pos === "lowerRight" ? undefined : 78;
+    const POS_TOP = { center: "40%", upperLeft: "13%", lowerLeft: "60%", lowerRight: "60%" };
+    top = POS_TOP[pos] || "60%";
+  }
+  const big = pos === "center" && !narrow;
+  const block = {
+    text: annotation.text,
+    subtext: annotation.sub || "",
+    left,
+    top,
+    textAlign: "left",
+    textStyle: {
+      fontFamily: SERIF,
+      fontSize: narrow ? 15 : big ? 21 : 17,
+      fontWeight: 700,
+      color: annotation.color || "#111",
+      width: boxW,
+      overflow: "break",
+      lineHeight: narrow ? 20 : big ? 28 : 23,
+    },
+    subtextStyle: {
+      fontFamily: SANS,
+      fontSize: narrow ? 12 : 13,
+      fontWeight: 500,
+      color: "#333",
+      width: boxW,
+      overflow: "break",
+      lineHeight: narrow ? 16 : 18,
+    },
+    backgroundColor: "rgba(255,255,255,0.94)",
+    borderColor: annotation.color || "#e6e6e6",
+    borderWidth: 1.5,
+    borderRadius: 6,
+    padding: [10, 14],
+    itemGap: 6,
+    z: 60,
+  };
+  // lowerRight anchors to the right edge instead of a left offset.
+  if (!narrow && pos === "lowerRight") block.right = 36;
+  return block;
+}
+
 function buildBubbleOption(story, data, state) {
   const years = story.panel_years;
   // Pre-compute the full trail set so base-option stubs and per-step series
@@ -1093,7 +1180,23 @@ function buildBubbleOption(story, data, state) {
     const trailsByPsgc = new Map(
       allTrails.map((t) => [t.name.replace(/^trail_/, ""), t]),
     );
-    const stepSeries = [{ id: "bubbles", data: buildSeriesData(year, story, data, state) }];
+    const bubbleStep = { id: "bubbles", data: buildSeriesData(year, story, data, state) };
+    // Arc reveal beat: shade the top-right cell (above the median on both axes) so
+    // the "even high spenders stayed high-poverty" point is visible, not just
+    // stated. Anchored to this year's real medians; the exact count lives in the
+    // finding box, so the shade stays a qualitative pointer (no on-chart number).
+    if (state.arc && state.arc.quadrant) {
+      const med = medianXYForYear(year, story, data, state);
+      if (med) {
+        bubbleStep.markArea = {
+          silent: true,
+          itemStyle: { color: "rgba(197,48,48,0.07)" },
+          label: { show: false },
+          data: [[{ xAxis: med.mx, yAxis: med.my }, { xAxis: "max", yAxis: "max" }]],
+        };
+      }
+    }
+    const stepSeries = [bubbleStep];
     for (const psgc of trailIds) {
       const t = trailsByPsgc.get(psgc);
       stepSeries.push(
@@ -1158,6 +1261,9 @@ function buildBubbleOption(story, data, state) {
         borderRadius: 4,
         padding: [4, 10],
       });
+    }
+    if (state.arc && state.arc.annotation) {
+      titleBlocks.push(arcAnnotationBlock(state.arc.annotation));
     }
     return {
       series: stepSeries,
@@ -1515,6 +1621,10 @@ function parseHash(stories) {
 }
 
 function writeHash(state, view) {
+  // Don't pollute the URL while the guided arc is running. The arc switches story
+  // and pins/unpins provinces transiently; persisting those mid-show would leave a
+  // misleading shareable link. The first post-arc render writes a clean hash.
+  if (state.arc) return;
   const params = new URLSearchParams();
   params.set("story", state.story.id);
   // Round-trip custom indicator picks only when they diverge from the preset.
@@ -2295,59 +2405,9 @@ function renderLastTapPanel(seriesPoint, state) {
 
 // ---------- boot ----------
 
-// Peso figure at a readable scale (trillions / billions / millions).
-function formatPesoScale(v) {
-  if (v >= 1e12) return `PHP ${(v / 1e12).toFixed(2)} trillion`;
-  if (v >= 1e9) return `PHP ${Math.round(v / 1e9)} billion`;
-  if (v >= 1e6) return `PHP ${Math.round(v / 1e6)} million`;
-  return `PHP ${COUNT.format(Math.round(v))}`;
-}
-
-// National DPWH award trajectory, rebuilt from per-capita x 2020 population (the
-// exact figures the chart plots), so the methodology line can never drift.
-function computeDpwhSurge(data) {
-  const rows = data.indicatorRows && data.indicatorRows.dpwh_spend_per_capita;
-  const prov = data.provinces;
-  if (!rows || !prov) return null;
-  const yearTot = {};
-  let total = 0;
-  for (const key in rows) {
-    const r = rows[key];
-    const p = prov[r.psgc];
-    if (!p || r.value == null) continue;
-    const award = r.value * p.population_2020;
-    yearTot[r.year] = (yearTot[r.year] || 0) + award;
-    total += award;
-  }
-  const years = Object.keys(yearTot).map(Number);
-  if (!years.length) return null;
-  const avg = (yy) => {
-    const vals = yy.map((y) => yearTot[y]).filter((v) => v != null);
-    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
-  };
-  let peakYr = years[0];
-  for (const y of years) if (yearTot[y] > yearTot[peakYr]) peakYr = y;
-  const early = avg([2014, 2015, 2016]);
-  const late = avg([2022, 2023, 2024]);
-  return { total, early, late, ratio: early ? late / early : null, peakYr, peakVal: yearTot[peakYr] };
-}
-
-// Fill the methodology "scale and trend" line from the computed trajectory.
-function renderScaleContext(data) {
-  const el = document.getElementById("methodology-scale");
-  const s = computeDpwhSurge(data);
-  if (!el || !s || s.early == null || s.ratio == null) return;
-  const set = (k, v) => {
-    const n = el.querySelector(`[data-ctx="${k}"]`);
-    if (n) n.textContent = v;
-  };
-  set("total", formatPesoScale(s.total));
-  set("early", formatPesoScale(s.early));
-  set("peak", formatPesoScale(s.peakVal));
-  set("peakyr", String(s.peakYr));
-  set("ratio", `${s.ratio.toFixed(1)} times`);
-  el.hidden = false;
-}
+// The DPWH award-trajectory figures (total / early-avg / peak / ratio) and their
+// renderer moved to methodology.js with the methodology section. The chart page no
+// longer carries the methodology prose, so that compute lives next to its markup.
 
 async function main() {
   const root = document.getElementById("chart");
@@ -2369,11 +2429,14 @@ async function main() {
     extrapolate: initial.extrapolate,
     view: null,
     howtoDismissed: readHowtoDismissed(),
+    // Guided-narrative arc state (Rosling hook->reveal->twist->release). null when
+    // the reader is in free explore; an object {beat, annotation, dim, quadrant}
+    // while the arc is running. render() reads it to overlay on-chart narration.
+    arc: null,
   };
 
   const chart = echarts.init(root, null, { renderer: "canvas" });
   renderFreshness(data.manifest);
-  renderScaleContext(data);
 
   // Wire the axis-picker panel selection back into state.
   _indicatorPickHandler = (kind, id) => {
@@ -2538,7 +2601,11 @@ async function main() {
       // views are read differently), and stays gone once dismissed.
       const howto = document.getElementById("chart-howto");
       if (howto) {
-        const showHowto = state.chartType === "bubbles" && !state.howtoDismissed;
+        // The guided arc is its own intro, so the static how-to scaffold would
+        // double up and clutter the top band the annotations use. Hide it while
+        // the arc runs; it returns afterward (unless the reader dismissed it).
+        const showHowto =
+          state.chartType === "bubbles" && !state.howtoDismissed && !state.arc;
         howto.hidden = !showHowto;
         if (showHowto) {
           const yrs = view.panel_years;
@@ -2641,18 +2708,6 @@ async function main() {
     render();
   });
 
-  // In-page anchor: scroll to methodology WITHOUT mutating the state hash. A bare
-  // "#methodology" would otherwise fire hashchange -> parseHash -> reset to the
-  // default story/view/year and lose the reader's place.
-  const methodologyLink = document.querySelector('a[href="#methodology"]');
-  if (methodologyLink) {
-    methodologyLink.addEventListener("click", (e) => {
-      e.preventDefault();
-      const target = document.getElementById("methodology");
-      if (target) target.scrollIntoView({ behavior: "smooth" });
-    });
-  }
-
   document.getElementById("deflate-toggle").addEventListener("click", () => {
     state.deflate = !state.deflate;
     render();
@@ -2693,6 +2748,9 @@ async function main() {
   // autoPlay is false and controls are hidden, so we run our own loop.
   const bigPlay = document.getElementById("big-play");
   let playTimer = null;
+  // Fires once when the loop reaches the last year on its own (not on manual
+  // pause/abort). The arc sequencer uses it to advance to the next beat.
+  let playOnComplete = null;
   function setPlayingState(playing) {
     if (bigPlay) {
       bigPlay.classList.toggle("playing", playing);
@@ -2707,15 +2765,17 @@ async function main() {
       playTimer = null;
     }
     IS_AUTOPLAYING = false;
+    playOnComplete = null;
     setPlayingState(false);
     // Announce the year we landed on (suppressed during the run). render() is
     // synchronous, so a render() that immediately follows in the same handler
     // supersedes this one before paint, no flicker.
     if (wasPlaying) render();
   }
-  function startPlay() {
+  function startPlay(onComplete) {
     if (playTimer) return;
     if (state.chartType === "line") return;
+    playOnComplete = onComplete || null;
     const panelYears = () =>
       (state.view && state.view.panel_years) || state.story.panel_years;
     // If we're sitting on the last year, rewind to the first so play means
@@ -2733,7 +2793,9 @@ async function main() {
       const cur = panelYears();
       const idx = cur.indexOf(state.year);
       if (idx < 0 || idx >= cur.length - 1) {
+        const cb = playOnComplete;
         stopPlay();
+        if (cb) cb();
         return;
       }
       state.year = cur[idx + 1];
@@ -2751,6 +2813,285 @@ async function main() {
       else startPlay();
     });
   }
+
+  // ---------- Guided narrative arc (Rosling: hook -> reveal -> twist -> release) ----------
+  // A small scene sequencer that scripts the default first-visit view into a
+  // 4-beat story, then hands control back to the explorer. Every beat drives the
+  // same render() path a user click uses, so nothing here forks the chart engine.
+  const ARC_SEEN_KEY = "datavizph_arc_seen_v1";
+  function readArcSeen() {
+    try {
+      return localStorage.getItem(ARC_SEEN_KEY) === "1";
+    } catch (e) {
+      return false;
+    }
+  }
+  function writeArcSeen() {
+    try {
+      localStorage.setItem(ARC_SEEN_KEY, "1");
+    } catch (e) {
+      /* private mode: fall through, arc just replays next visit */
+    }
+  }
+
+  const replayBtn = document.getElementById("replay-arc");
+  const skipBtn = document.getElementById("arc-skip");
+  const showReplay = (show) => {
+    if (replayBtn) replayBtn.hidden = !show;
+  };
+  const showSkip = (show) => {
+    if (skipBtn) skipBtn.hidden = !show;
+  };
+  function pulseControls() {
+    if (bigPlay) {
+      bigPlay.classList.add("arc-pulse");
+      setTimeout(() => bigPlay.classList.remove("arc-pulse"), 1800);
+    }
+  }
+
+  // Story + finding lookups for live annotation copy. Rho is read from the data,
+  // never typed in, so the on-chart number can't drift from the finding box.
+  const spendStory = data.stories.find((s) => s.id === "spend-vs-poverty");
+  const gdpStory = data.stories.find((s) => s.id === "gdp-vs-poverty");
+  const rhoOf = (story, fallback) =>
+    story && story.finding && typeof story.finding.spearman === "number"
+      ? story.finding.spearman
+      : fallback;
+  const spendRho = rhoOf(spendStory, 0.12);
+  const gdpRho = rhoOf(gdpStory, -0.53);
+  const fmtRho = (r) => {
+    const v = (Math.sign(r) * Math.round(Math.abs(r) * 100)) / 100;
+    return (v < 0 ? "−" : "+") + Math.abs(v).toFixed(2);
+  };
+
+  let arcRunning = false;
+  let arcPriorSel = null;
+  let arcTimers = [];
+  // Switch the arc onto a preset story exactly the way a tab click does: reset the
+  // X/Y indicator overrides and the log default too, or makeView() keeps the old
+  // axis indicators and the chart never actually changes axes.
+  const arcSetStory = (s) => {
+    state.story = s;
+    state.xIndicator = s.x;
+    state.yIndicator = s.y;
+    state.logX = !!s.default_log_x;
+  };
+  const arcWait = (ms, fn) => {
+    const t = setTimeout(fn, ms);
+    arcTimers.push(t);
+    return t;
+  };
+  const clearArcTimers = () => {
+    arcTimers.forEach(clearTimeout);
+    arcTimers = [];
+  };
+  const setArc = (beat) => {
+    state.arc = beat;
+    render();
+  };
+
+  // Cross-fade the chart between two stories (the twist) so the axis swap reads as
+  // a transition, not a reload. Reduced motion: swap instantly.
+  function arcCrossfade(swap, done) {
+    if (REDUCE_MOTION) {
+      swap();
+      render();
+      if (done) done();
+      return;
+    }
+    root.classList.add("arc-dim");
+    arcWait(420, () => {
+      swap();
+      render();
+      arcWait(40, () => {
+        root.classList.remove("arc-dim");
+        if (done) done();
+      });
+    });
+  }
+
+  function abortArc() {
+    if (!arcRunning && !state.arc) return;
+    clearArcTimers();
+    if (playTimer) stopPlay();
+    arcRunning = false;
+    state.arc = null;
+    if (arcPriorSel) state.sel = arcPriorSel;
+    arcPriorSel = null;
+    root.classList.remove("arc-dim");
+    render();
+    showReplay(true);
+    showSkip(false);
+  }
+
+  function runArc() {
+    if (arcRunning) return;
+    arcRunning = true;
+    writeArcSeen();
+    arcPriorSel = new Set(state.sel);
+    showReplay(false);
+    showSkip(true);
+
+    // Open on the spend-vs-poverty story, clean selection, the site's default
+    // (2018-real) inflation mode for full defensibility. Real DPWH spend can't be
+    // computed before the CPI base year, so the sweep starts at 2018 (the same
+    // floor the default autoplay uses) rather than the 2014 panel start, which
+    // would show empty frames. The "eleven years / 5 trillion" hook is the award
+    // total over the full panel; the animation plays the real-value years.
+    arcSetStory(spendStory);
+    state.chartType = "bubbles";
+    state.sel = new Set();
+    const sy = spendStory.panel_years;
+    const arcFirstYear =
+      DEFLATABLE_INDICATORS.has(spendStory.x) && state.deflate
+        ? Math.max(sy[0], CPI_BASE_YEAR)
+        : sy[0];
+    state.year = arcFirstYear;
+
+    // BEAT 0 - HOOK: state the assumption, dim the cloud, let it land.
+    setArc({
+      beat: "hook",
+      dim: true,
+      quadrant: false,
+      annotation: {
+        pos: "center",
+        color: "#111",
+        text: "Eleven years. ₱5 trillion in road contracts.",
+        sub: "Did poverty fall with the spending? Most people assume it did. Watch.",
+      },
+    });
+
+    arcWait(4600, () => {
+      // BEAT 1 - REVEAL: play 2018->2024, shade the upper-right, the cloud holds.
+      state.year = arcFirstYear;
+      setArc({
+        beat: "reveal",
+        dim: false,
+        quadrant: true,
+        annotation: {
+          pos: "lowerLeft",
+          color: "#0e7c86",
+          text: "Watch the cloud — it isn't sliding down.",
+          sub: "Each bubble is a province. Further right = more road spending per person.",
+        },
+      });
+      startPlay(() => {
+        // Landed on the last year: state the non-result.
+        setArc({
+          beat: "reveal-end",
+          dim: false,
+          quadrant: true,
+          annotation: {
+            pos: "lowerLeft",
+            color: "#111",
+            text: `No link. ρ = ${fmtRho(spendRho)}.`,
+            sub: "Across 81 provinces and Metro Manila, higher road spending did not track lower poverty.",
+          },
+        });
+        arcWait(3600, beatSpecific);
+      });
+    });
+
+    function beatSpecific() {
+      // BEAT 2 - SPECIFIC: poverty did move in places; name one, honestly.
+      // Keep the auto-trails (Sulu, Lanao del Sur, Basilan all plunge from ~65-75%
+      // toward ~13-34%) rather than pinning one - three plunging BARMM trails read
+      // far stronger than a single occluded line. The annotation names the steepest
+      // (Sulu) and sits lower-right, clear of the left-side plunge zone.
+      state.sel = new Set();
+      setArc({
+        beat: "specific",
+        dim: false,
+        quadrant: false,
+        annotation: {
+          pos: "lowerRight",
+          color: "#c53030",
+          text: "Poverty did fall — sharply, in places.",
+          sub: "Sulu's PSA estimate dropped 75% to 13% (2018–2023). But the move didn't follow the road money.",
+        },
+      });
+      arcWait(5400, beatTwist);
+    }
+
+    function beatTwist() {
+      // BEAT 3 - TWIST: switch the X axis to wealth; the diagonal appears.
+      arcCrossfade(
+        () => {
+          arcSetStory(gdpStory);
+          state.sel = new Set();
+          state.year = gdpStory.default_year; // 2023
+          state.arc = {
+            beat: "twist",
+            dim: false,
+            quadrant: false,
+            annotation: {
+              pos: "lowerLeft",
+              color: "#0e7c86",
+              text: "Switch the axis to wealth. Now it slides.",
+              sub: `Per-capita GDP against poverty: ρ = ${fmtRho(gdpRho)}. Money for roads didn't track poverty. Wealth did.`,
+            },
+          };
+        },
+        () => arcWait(6400, beatRelease),
+      );
+    }
+
+    function beatRelease() {
+      // BEAT 4 - RELEASE: hand the explorer over.
+      setArc({
+        beat: "release",
+        dim: false,
+        quadrant: false,
+        annotation: {
+          pos: "lowerLeft",
+          color: "#595959",
+          text: "Now explore it yourself.",
+          sub: "Pick a year, a province, or compare two paths. Every figure here is open data.",
+        },
+      });
+      pulseControls();
+      arcWait(4400, () => {
+        state.arc = null;
+        arcRunning = false;
+        arcPriorSel = null;
+        render(); // first clean hash write of the post-arc view
+        showReplay(true);
+        showSkip(false);
+      });
+    }
+  }
+
+  // First user gesture during the arc takes control: abort and drop into explore.
+  // Capture phase + swallow so the same gesture doesn't also scrub/select.
+  const arcGestureGuard = (e) => {
+    if (!arcRunning && !state.arc) return;
+    if (e.target && e.target.closest && e.target.closest("#arc-skip, #replay-arc")) {
+      return;
+    }
+    e.stopImmediatePropagation();
+    if (e.type === "keydown") e.preventDefault();
+    abortArc();
+  };
+  document.addEventListener("pointerdown", arcGestureGuard, true);
+  window.addEventListener("keydown", arcGestureGuard, true);
+  if (skipBtn) {
+    skipBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      abortArc();
+    });
+  }
+  if (replayBtn) {
+    replayBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      showReplay(false);
+      runArc();
+    });
+  }
+  window.__datavizph_runArc = runArc;
+  // Read-only accessor for the current arc beat (null in free explore). Lets tests
+  // and the screenshot harness sync to a beat deterministically instead of racing
+  // wall-clock timers.
+  window.__datavizph_arcBeat = () => (state.arc ? state.arc.beat : null);
 
   document.getElementById("png").addEventListener("click", () => {
     const url = chart.getDataURL({
@@ -2847,9 +3188,9 @@ async function main() {
   render();
 
   if (!initial.hadHash) {
-    // Start autoplay from a year that has data in the current deflate mode so
-    // viewers don't watch 4 empty frames before bubbles appear. With deflate=real
-    // we can't render pre-CPI-base years, so start at CPI_BASE_YEAR.
+    // Start from a year that has data in the current deflate mode so viewers
+    // don't watch empty frames before bubbles appear. With deflate=real we can't
+    // render pre-CPI-base years, so start at CPI_BASE_YEAR.
     const panel = state.view.panel_years;
     const safeFirstYear =
       DEFLATABLE_INDICATORS.has(state.view.x) && state.deflate
@@ -2857,17 +3198,21 @@ async function main() {
         : panel[0];
     state.year = panel.includes(safeFirstYear) ? safeFirstYear : panel[0];
     render();
-    // Respect prefers-reduced-motion: don't autoplay the bubble animation. The
-    // play button stays available for anyone who wants it.
-    const reduceMotion =
-      window.matchMedia &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (!reduceMotion) {
+
+    if (REDUCE_MOTION) {
+      // No auto-run under reduced motion. Offer the narrated story on demand; the
+      // default annotated view + finding box already make the point statically.
+      showReplay(true);
+    } else if (!readArcSeen()) {
+      // First visit: the full guided arc (hook -> reveal -> twist -> release).
+      runArc();
+    } else {
+      // Returning visitor: the familiar gentle autoplay, plus a button to replay
+      // the guided story for anyone who wants the narration again.
       setTimeout(() => {
-        if (typeof window.__datavizph_startPlay === "function") {
-          window.__datavizph_startPlay();
-        }
+        if (!arcRunning) startPlay();
       }, 500);
+      showReplay(true);
     }
   }
 }

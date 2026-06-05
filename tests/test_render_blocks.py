@@ -69,6 +69,11 @@ def browser():
 def page(browser):
     errors: list[str] = []
     pg = browser.new_page()
+    # These tests target the interactive explorer directly. Reduced motion disables
+    # the first-visit guided arc (a real a11y path), so the chart is immediately
+    # interactive and control/tab clicks are not swallowed by the arc's
+    # take-control gesture guard. The arc itself is covered by test_guided_arc_*.
+    pg.emulate_media(reduced_motion="reduce")
     pg.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
     pg.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
     pg.console_errors = errors
@@ -179,3 +184,98 @@ def test_howto_scaffold_hidden_outside_bubble_mode(page, base_url):
     page.wait_for_selector("#chart-howto", state="hidden", timeout=10000)
     assert page.get_attribute("#chart-howto", "hidden") is not None
     assert page.get_attribute("#size-legend", "hidden") is not None
+
+
+# ---- Guided narrative arc (first-visit Rosling-style story) -------------------
+
+
+def test_guided_arc_runs_then_yields_to_explorer(browser, base_url):
+    """First visit (motion on, no hash) plays the guided arc; the first user
+    gesture hands control back to the explorer, which then behaves normally."""
+    errors: list[str] = []
+    pg = browser.new_page()  # motion on, fresh context => fresh localStorage
+    pg.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+    pg.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
+    try:
+        pg.goto(base_url, wait_until="networkidle")
+        pg.wait_for_selector("#story-finding:not([hidden])", timeout=15000)
+        # The arc announces itself: the Skip control is visible while it runs.
+        pg.wait_for_selector("#arc-skip:not([hidden])", timeout=5000)
+        # The opening beats sit on spend-vs-poverty (an award-based indicator).
+        assert "Awards, not disbursement" in pg.inner_text("#story-caveat")
+        # Take control: Skip drops into the explorer and offers a replay.
+        pg.click("#arc-skip")
+        pg.wait_for_selector("#replay-arc:not([hidden])", timeout=5000)
+        assert pg.get_attribute("#arc-skip", "hidden") is not None
+        # Explorer is now live: a story-tab click switches stories (not swallowed).
+        first = pg.inner_text("#story-finding")
+        tabs = pg.query_selector_all("#story-switcher button.story-btn")
+        assert len(tabs) >= 4
+        tabs[-1].click()
+        pg.wait_for_function(
+            "prev => document.querySelector('#story-finding').textContent !== prev",
+            arg=first,
+        )
+        assert errors == [], f"unexpected errors during arc: {errors}"
+    finally:
+        pg.close()
+
+
+def test_guided_arc_skipped_for_deep_links(browser, base_url):
+    """A shared/deep-linked view (URL hash present) never triggers the arc."""
+    pg = browser.new_page()  # motion on
+    try:
+        pg.goto(base_url + "#story=gdp-vs-poverty&year=2023", wait_until="networkidle")
+        pg.wait_for_selector("#story-finding:not([hidden])", timeout=15000)
+        pg.wait_for_timeout(400)
+        assert pg.get_attribute("#arc-skip", "hidden") is not None, (
+            "the arc must not run when the URL carries a shared-view hash"
+        )
+    finally:
+        pg.close()
+
+
+# ---- Methodology split out to its own page -----------------------------------
+
+
+def test_landing_has_no_inline_methodology(page, base_url):
+    """The landing page is the explorer only; the methodology prose moved out."""
+    page.goto(base_url, wait_until="networkidle")
+    page.wait_for_selector("#story-finding:not([hidden])", timeout=15000)
+    assert page.query_selector("#methodology") is None, (
+        "methodology prose must not render inline on the landing page"
+    )
+    # The top-bar link now routes to the standalone page, not an in-page anchor.
+    href = page.get_attribute("a.topbar-link", "href")
+    assert href == "/methodology", f"methodology link should point to /methodology, got {href!r}"
+    # The slim footer (disclaimer + freshness) stays on the landing page.
+    assert "public records" in page.inner_text(".disclaimer")
+    assert page.inner_text("#data-freshness").startswith("Built ")
+
+
+def test_methodology_page_renders_with_live_scale(browser, base_url):
+    """The standalone /methodology page carries the prose, fills the DPWH scale
+    figures live from the data (no hardcoded numbers), and routes back."""
+    errors = []
+    pg = browser.new_page()
+    pg.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+    pg.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
+    try:
+        # Directory index: serves methodology/index.html both locally and on Vercel.
+        pg.goto(base_url + "methodology/", wait_until="networkidle")
+        body = pg.inner_text("body")
+        assert "Awards, not disbursement" in body
+        assert "Honesty notes" in body
+        # The "Scale and trend" line is computed by methodology.js and unhides once
+        # the data loads; its figures must be peso-scaled, not raw or blank.
+        pg.wait_for_selector("#methodology-scale:not([hidden])", timeout=15000)
+        scale = pg.inner_text("#methodology-scale")
+        assert "PHP" in scale and "trillion" in scale, f"scale not filled: {scale!r}"
+        assert "times" in scale, f"ratio not filled: {scale!r}"
+        # Freshness + a route back to the chart.
+        assert pg.inner_text("#data-freshness").startswith("Built ")
+        backs = pg.query_selector_all('a[href="/"]')
+        assert backs, "methodology page must link back to the chart"
+        assert errors == [], f"unexpected errors: {errors}"
+    finally:
+        pg.close()

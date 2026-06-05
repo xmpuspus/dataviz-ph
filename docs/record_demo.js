@@ -1,14 +1,15 @@
-// Insight-led hero recorder for dataviz.ph. The point, not just the interaction:
-//   1. DPWH spend vs poverty, autoplay the full span -> a shapeless scatter
-//      (finding box on screen: rho +0.12, no clear link). Spend rises, the cloud
-//      never tilts toward lower poverty.
-//   2. Switch to GDP vs poverty -> the cloud snaps into a clean downward diagonal
-//      (rho -0.525). Output predicts poverty; spending didn't.
-//   3. Back to DPWH, switch to the Map -> where it landed, animated across years.
-//   4. Back to bubbles, hold the full cloud as the loop point.
+// Hero recorder for dataviz.ph. Records the guided narrative arc that now plays
+// on first load (fresh context => fresh localStorage => the arc auto-runs):
+//   0. HOOK    "Eleven years. 5 trillion in road contracts. ... Most people
+//              assume it did. Watch." (bubbles dimmed, 2018)
+//   1. REVEAL  autoplay 2018->2024; the cloud marches right but never slides
+//              down; top-right quadrant shaded; ends on "No link. rho = +0.12".
+//   2. SPECIFIC the BARMM trails plunge; "Sulu's PSA estimate dropped 75% to 13%".
+//   3. TWIST   cross-fade to GDP vs poverty; the clean downward diagonal; "Now it
+//              slides. rho = -0.53. Money for roads didn't track poverty. Wealth did."
+// Stops holding the twist (the payoff) as the loop point.
 // Serve public/ on :8099, then `node docs/record_demo.js`, then convert the webm
-// to a gif (fps=15, scale=900, two-pass palette, trim ~1.5s of load intro).
-// Resolve Playwright from a global/local install, or any npx cache copy.
+// to a gif (see the ffmpeg recipe in the repo; ~1.5x speed, fps 13, scale 900).
 function loadPlaywright() {
   try { return require('playwright'); } catch (e) { /* fall through */ }
   const fsx = require('fs'), path = require('path'), os = require('os');
@@ -30,50 +31,34 @@ const W = 1440, H = 1200;
 
 (async () => {
   const browser = await PW.chromium.launch();
+  // Fresh context => fresh localStorage => the first-visit arc auto-runs. Motion on.
   const ctx = await browser.newContext({
     viewport: { width: W, height: H }, deviceScaleFactor: 2,
     recordVideo: { dir: OUT, size: { width: W, height: H } },
   });
   const page = await ctx.newPage();
-  const year = () => page.evaluate(() => document.getElementById('year-display').textContent);
-  const stillPlaying = () => page.locator('#big-play').evaluate((e) => e.classList.contains('playing'));
+  const beat = () => page.evaluate(
+    () => (window.__datavizph_arcBeat ? window.__datavizph_arcBeat() : null),
+  );
+  const waitBeat = async (name, maxMs = 30000) => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < maxMs) {
+      if ((await beat()) === name) return true;
+      await page.waitForTimeout(120);
+    }
+    return false;
+  };
 
+  // ?cb is a query string, not a hash, so initial.hadHash stays false and the arc
+  // runs. Cache-bust so a fresh script/data load each run.
   await page.goto('http://localhost:8099/?cb=' + Date.now(), { waitUntil: 'networkidle', timeout: 20000 });
-  await page.waitForSelector('#axis-pick-y', { timeout: 15000 });
-  await page.waitForTimeout(700);
+  await page.waitForSelector('#story-finding:not([hidden])', { timeout: 15000 });
 
-  // Beat 1: DPWH vs poverty, watch the cold-open autoplay; pause near the end.
-  for (let i = 0; i < 90; i++) { if ((await year()) === '2022') break; await page.waitForTimeout(100); }
-  if (await stillPlaying()) await page.locator('#big-play').click();
-  await page.waitForTimeout(1300);
-
-  // Beat 2: the contrast. GDP vs poverty -> a clear downward diagonal.
-  await page.getByRole('button', { name: 'GDP vs poverty', exact: true }).click();
-  await page.waitForTimeout(1500);
-  await page.locator('#year-next').click();
-  await page.waitForTimeout(1700);
-
-  // Beat 3: back to DPWH, then the Map; animate the choropleth to the last year.
-  await page.getByRole('button', { name: 'DPWH vs poverty', exact: true }).click();
-  await page.waitForTimeout(800);
-  await page.locator('.chart-type-btn[data-type=map]').click();
-  for (let i = 0; i < 80; i++) {
-    const ready = await page.evaluate(() => {
-      const c = echarts.getInstanceByDom(document.getElementById('chart'));
-      const o = c && c.getOption();
-      return !!(o && o.series && o.series.some(s => s.type === 'map'));
-    });
-    if (ready) break;
-    await page.waitForTimeout(100);
-  }
-  await page.waitForTimeout(900);
-  await page.locator('#big-play').click();
-  for (let i = 0; i < 60; i++) { if ((await year()) === '2024') break; await page.waitForTimeout(100); }
-  await page.waitForTimeout(1200);
-
-  // Beat 4: back to bubbles, hold a settled full cloud as the loop point.
-  await page.locator('.chart-type-btn[data-type=bubbles]').click();
-  await page.waitForTimeout(2400);
+  // Let the arc carry itself: hook -> reveal (play) -> reveal-end -> specific ->
+  // twist. Hold the twist (the diagonal payoff) as the final/loop frame.
+  await waitBeat('hook');
+  await waitBeat('twist');
+  await page.waitForTimeout(3500);
 
   await page.close();
   await ctx.close();

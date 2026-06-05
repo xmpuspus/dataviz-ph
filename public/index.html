@@ -37,7 +37,7 @@
     <nav id="story-switcher" aria-label="story switcher"></nav>
     <div class="topbar-right">
       <a id="story-source" href="#" target="_blank" rel="noopener" hidden>Source</a>
-      <a class="topbar-link" href="#methodology">Methodology</a>
+      <a class="topbar-link" href="/methodology">Methodology</a>
     </div>
   </header>
 
@@ -111,6 +111,12 @@
       >
         <span class="bp-icon bp-play" aria-hidden="true">▶</span>
         <span class="bp-icon bp-pause" aria-hidden="true">❚❚</span>
+      </button>
+      <!-- Guided-arc controls. Skip shows only while the arc runs; Replay shows
+           once it ends or after a returning visit. JS toggles their hidden attr. -->
+      <button id="arc-skip" type="button" hidden>Skip the story ›</button>
+      <button id="replay-arc" type="button" hidden>
+        <span aria-hidden="true">↻</span> Play the guided story
       </button>
     </section>
 
@@ -215,120 +221,12 @@
     <div id="chart-sr-table" class="sr-only"></div>
   </section>
 
-  <section id="methodology" aria-label="methodology">
-    <h2>Methodology</h2>
-    <p>
-      <strong>Sources.</strong>
-      DPWH spend: PhilGEPS awards data 2013 to 2025, filtered to contracts where the
-      implementing agency name contains "PUBLIC WORKS AND HIGHWAYS". Mirrored at
-      <a href="https://github.com/csiiiv/philgeps-awards-dashboard" rel="noopener">csiiiv/philgeps-awards-dashboard</a>
-      (MIT license).
-      Poverty: PSA OpenStat 1E/FY Table 1a (Annual Per Capita Poverty Threshold and
-      Poverty Incidence Among Families with Measures of Precision); anchors at 2018,
-      2021, 2023.
-      Per capita GDP: PSA OpenStat 2A/PPA/2025 Table 9 at constant 2018 prices, 2022 to 2024.
-      Consumer Price Index: PSA OpenStat 2M/PI/CPI/2018NEW, all items, PHILIPPINES
-      annual average; used to deflate DPWH spend to PHP 2018-real.
-      Population: PSA 2020 Census of Population and Housing, with Highly Urbanized
-      Cities summed back into their parent provinces so per-capita ratios reflect the
-      whole geographic province.
-    </p>
-    <p>
-      <strong>Awards, not disbursement.</strong>
-      Every spend figure here is PhilGEPS <em>contract awards</em> (the peso value of
-      contracts awarded), not disbursement (cash actually paid out). The two are not
-      the same: a contract can be awarded and then run for years, get re-scoped, or go
-      partly unspent. Government reports its money in three stages, appropriation
-      (budgeted), obligation (committed), then disbursement (paid), and disbursement
-      routinely lags obligation by a wide margin within a year. Actual disbursement
-      <em>by province of delivery</em> is not published anywhere machine-readable for
-      2014 to 2024: COA's annual reports (coa.gov.ph) are PDF-only and tag the
-      disbursing agency office, not where the project was built; DPWH's project portal
-      carries awards, not cash. So awards are the closest public proxy. The "five
-      trillion in roads" headline is the total contract value attributed to provinces,
-      money committed, not money proven spent.
-    </p>
-    <p id="methodology-scale" hidden>
-      <strong>Scale and trend.</strong>
-      Province-attributed DPWH contract awards total
-      <span data-ctx="total"></span> across 2014 to 2024. The yearly figure rose
-      from about <span data-ctx="early"></span> a year in 2014 to 2016 to a peak of
-      <span data-ctx="peak"></span> in <span data-ctx="peakyr"></span>; the 2022 to
-      2024 average ran about <span data-ctx="ratio"></span> the 2014 to 2016 average.
-      As with every figure here, these are
-      awards (money committed), not verified disbursement; the figures are computed
-      live from the same per-province data the chart plots.
-    </p>
-    <p>
-      <strong>Compute.</strong>
-      For each province and year, DPWH per capita is the sum of DPWH-tagged contract
-      award values divided by 2020 Census population. Poverty for non-anchor years is
-      linearly interpolated between the nearest PSA anchors; years before 2018 and
-      after 2023 are held constant at the nearest anchor (rendered with a colored
-      border so the held-constant treatment is visible). DPWH PHP 2018-real values
-      are nominal divided by (annual CPI / 100). The per-story "What the data shows"
-      line is a Spearman rank correlation computed across all provinces at the story's
-      reference year; it describes association only, never causation.
-    </p>
-    <p>
-      <strong>Uncertainty.</strong>
-      Poverty and subsistence incidence are survey estimates, not censuses, so PSA
-      publishes a 95% confidence interval and a coefficient of variation (CV) for each
-      province-year. The chart carries those: hover any poverty or subsistence bubble
-      to see its CI, select a province to draw its CI as a whisker, and provinces whose
-      CV exceeds 30% (PSA's threshold for an imprecise estimate, typically the
-      low-poverty provinces where a small sample yields a wide margin) are drawn dimmed
-      with a dashed amber ring. Only the survey years (2018, 2021, 2023) carry a CI;
-      interpolated and held-constant years are model estimates and deliberately show
-      none.
-    </p>
-    <p>
-      <strong>Honesty notes.</strong>
-      About 20 percent of DPWH award value cannot be attributed to a single province
-      (null area_of_delivery, multi-province contracts, "Independent City" bucket)
-      and is excluded. Seven province-years with per-capita under PHP 100 are
-      dropped as likely coverage gaps. Maguindanao is shown as the pre-2022-split
-      unit because PSA's poverty table still reports the rolled-up Maguindanao;
-      Maguindanao del Norte / del Sur 2023 rows are intentionally not used. NCR
-      is the regional aggregate (16 cities) treated as a single bubble.
-    </p>
-    <p>
-      <strong>Fixed denominator.</strong>
-      Every per-capita figure across 2014 to 2024 divides by the same 2020 Census
-      population, because that is the only complete province-level census in the
-      window. Provinces grew over the decade, so early-year per-capita spend is
-      modestly overstated and late-year modestly understated relative to a true
-      same-year population. The effect is small next to the year-to-year swings in
-      contract awards, but it is real and worth knowing.
-    </p>
-    <p>
-      <strong>Single-snapshot indicators.</strong>
-      Population is the 2020 Census, and "poverty change 2018 to 2023" is one number
-      per province. Both are repeated across the panel only so they can pair with
-      year-varying indicators in the picker; they do not actually vary by year, so the
-      animation holds them still and the chart labels them "does not vary by year."
-      Hitting play never implies motion these series do not have.
-    </p>
-    <p>
-      <strong>Limits.</strong>
-      Poverty rates are PSA's "province-without-HUC" measure published in Table 1a.
-      Per-capita DPWH spend uses whole-province population including HUCs. Per
-      capita GDP uses PSA's "province-only" measure (HUCs are published separately
-      and are NOT rolled in here), and PSA publishes provincial GDP only from 2022,
-      so that panel is three years. Bubble size is the 2020 Census and does not
-      animate. Every province carries all three published PSA anchors (2018, 2021,
-      2023); for example Sulu fell from 75.3% in 2018 to 41.5% in 2021 to 13.0% in
-      2023. Years before 2018 and after 2023 are held constant at the nearest
-      anchor and drawn with a colored border so the held-constant treatment is
-      visible.
-    </p>
-  </section>
-
   <footer>
     <p>
       Sources: PSA OpenStat, PhilGEPS, PSA 2020 Census ·
       <a href="https://github.com/xmpuspus" rel="noopener">Built by Xavier Puspus</a> ·
-      MIT license
+      MIT license ·
+      <a href="/methodology">Full methodology</a>
     </p>
     <p id="data-freshness" class="freshness"></p>
     <p class="disclaimer">
