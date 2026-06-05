@@ -1016,6 +1016,15 @@ select:focus-visible {
 #methodology a { color: var(--luzon); text-decoration: underline; }
 #methodology a:hover { text-decoration: none; }
 
+/* Standalone methodology page: push the "back to chart" link to the right of the
+   top bar (no story switcher to fill the middle), and set off the closing link. */
+.topbar-spacer { flex: 1 1 auto; }
+.methodology-back {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+}
+
 footer {
   margin: 1.5rem 1.25rem 2rem;
   padding-top: 1rem;

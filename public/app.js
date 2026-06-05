@@ -2405,59 +2405,9 @@ function renderLastTapPanel(seriesPoint, state) {
 
 // ---------- boot ----------
 
-// Peso figure at a readable scale (trillions / billions / millions).
-function formatPesoScale(v) {
-  if (v >= 1e12) return `PHP ${(v / 1e12).toFixed(2)} trillion`;
-  if (v >= 1e9) return `PHP ${Math.round(v / 1e9)} billion`;
-  if (v >= 1e6) return `PHP ${Math.round(v / 1e6)} million`;
-  return `PHP ${COUNT.format(Math.round(v))}`;
-}
-
-// National DPWH award trajectory, rebuilt from per-capita x 2020 population (the
-// exact figures the chart plots), so the methodology line can never drift.
-function computeDpwhSurge(data) {
-  const rows = data.indicatorRows && data.indicatorRows.dpwh_spend_per_capita;
-  const prov = data.provinces;
-  if (!rows || !prov) return null;
-  const yearTot = {};
-  let total = 0;
-  for (const key in rows) {
-    const r = rows[key];
-    const p = prov[r.psgc];
-    if (!p || r.value == null) continue;
-    const award = r.value * p.population_2020;
-    yearTot[r.year] = (yearTot[r.year] || 0) + award;
-    total += award;
-  }
-  const years = Object.keys(yearTot).map(Number);
-  if (!years.length) return null;
-  const avg = (yy) => {
-    const vals = yy.map((y) => yearTot[y]).filter((v) => v != null);
-    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
-  };
-  let peakYr = years[0];
-  for (const y of years) if (yearTot[y] > yearTot[peakYr]) peakYr = y;
-  const early = avg([2014, 2015, 2016]);
-  const late = avg([2022, 2023, 2024]);
-  return { total, early, late, ratio: early ? late / early : null, peakYr, peakVal: yearTot[peakYr] };
-}
-
-// Fill the methodology "scale and trend" line from the computed trajectory.
-function renderScaleContext(data) {
-  const el = document.getElementById("methodology-scale");
-  const s = computeDpwhSurge(data);
-  if (!el || !s || s.early == null || s.ratio == null) return;
-  const set = (k, v) => {
-    const n = el.querySelector(`[data-ctx="${k}"]`);
-    if (n) n.textContent = v;
-  };
-  set("total", formatPesoScale(s.total));
-  set("early", formatPesoScale(s.early));
-  set("peak", formatPesoScale(s.peakVal));
-  set("peakyr", String(s.peakYr));
-  set("ratio", `${s.ratio.toFixed(1)} times`);
-  el.hidden = false;
-}
+// The DPWH award-trajectory figures (total / early-avg / peak / ratio) and their
+// renderer moved to methodology.js with the methodology section. The chart page no
+// longer carries the methodology prose, so that compute lives next to its markup.
 
 async function main() {
   const root = document.getElementById("chart");
@@ -2487,7 +2437,6 @@ async function main() {
 
   const chart = echarts.init(root, null, { renderer: "canvas" });
   renderFreshness(data.manifest);
-  renderScaleContext(data);
 
   // Wire the axis-picker panel selection back into state.
   _indicatorPickHandler = (kind, id) => {
@@ -2758,18 +2707,6 @@ async function main() {
     state.logX = !state.logX;
     render();
   });
-
-  // In-page anchor: scroll to methodology WITHOUT mutating the state hash. A bare
-  // "#methodology" would otherwise fire hashchange -> parseHash -> reset to the
-  // default story/view/year and lose the reader's place.
-  const methodologyLink = document.querySelector('a[href="#methodology"]');
-  if (methodologyLink) {
-    methodologyLink.addEventListener("click", (e) => {
-      e.preventDefault();
-      const target = document.getElementById("methodology");
-      if (target) target.scrollIntoView({ behavior: "smooth" });
-    });
-  }
 
   document.getElementById("deflate-toggle").addEventListener("click", () => {
     state.deflate = !state.deflate;

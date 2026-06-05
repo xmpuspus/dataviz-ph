@@ -233,3 +233,49 @@ def test_guided_arc_skipped_for_deep_links(browser, base_url):
         )
     finally:
         pg.close()
+
+
+# ---- Methodology split out to its own page -----------------------------------
+
+
+def test_landing_has_no_inline_methodology(page, base_url):
+    """The landing page is the explorer only; the methodology prose moved out."""
+    page.goto(base_url, wait_until="networkidle")
+    page.wait_for_selector("#story-finding:not([hidden])", timeout=15000)
+    assert page.query_selector("#methodology") is None, (
+        "methodology prose must not render inline on the landing page"
+    )
+    # The top-bar link now routes to the standalone page, not an in-page anchor.
+    href = page.get_attribute("a.topbar-link", "href")
+    assert href == "/methodology", f"methodology link should point to /methodology, got {href!r}"
+    # The slim footer (disclaimer + freshness) stays on the landing page.
+    assert "public records" in page.inner_text(".disclaimer")
+    assert page.inner_text("#data-freshness").startswith("Built ")
+
+
+def test_methodology_page_renders_with_live_scale(browser, base_url):
+    """The standalone /methodology page carries the prose, fills the DPWH scale
+    figures live from the data (no hardcoded numbers), and routes back."""
+    errors = []
+    pg = browser.new_page()
+    pg.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+    pg.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
+    try:
+        # Directory index: serves methodology/index.html both locally and on Vercel.
+        pg.goto(base_url + "methodology/", wait_until="networkidle")
+        body = pg.inner_text("body")
+        assert "Awards, not disbursement" in body
+        assert "Honesty notes" in body
+        # The "Scale and trend" line is computed by methodology.js and unhides once
+        # the data loads; its figures must be peso-scaled, not raw or blank.
+        pg.wait_for_selector("#methodology-scale:not([hidden])", timeout=15000)
+        scale = pg.inner_text("#methodology-scale")
+        assert "PHP" in scale and "trillion" in scale, f"scale not filled: {scale!r}"
+        assert "times" in scale, f"ratio not filled: {scale!r}"
+        # Freshness + a route back to the chart.
+        assert pg.inner_text("#data-freshness").startswith("Built ")
+        backs = pg.query_selector_all('a[href="/"]')
+        assert backs, "methodology page must link back to the chart"
+        assert errors == [], f"unexpected errors: {errors}"
+    finally:
+        pg.close()
