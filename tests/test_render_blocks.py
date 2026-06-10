@@ -131,7 +131,7 @@ def test_finding_and_caveat_react_to_story_switch(page, base_url):
     assert "Awards, not disbursement" in page.inner_text("#story-caveat")
 
     tabs = page.query_selector_all("#story-switcher button.story-btn")
-    assert len(tabs) == 5, "expected the five preset story tabs"
+    assert len(tabs) == 6, "expected the six preset story tabs"
     # GDP-vs-poverty (4th tab) plots no award-based indicator, so the awards
     # caveat must drop while the finding stays present and updates. (The 5th
     # tab, cumulative spend vs poverty change, is award-based again.)
