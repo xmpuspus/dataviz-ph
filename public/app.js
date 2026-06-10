@@ -51,6 +51,72 @@ const ISLAND_LABEL = {
   barmm: "BARMM",
 };
 
+// Single-hue sequential blue ramp, shared by the map choropleth and the
+// color-by-Y-quantile bubble encoding so "darker = higher" reads the same way
+// everywhere.
+const RAMP = ["#dce8f5", "#9ec3e3", "#5a93c7", "#2b6cb0", "#08306b"];
+
+// ---------- i18n scaffold (EN + Tagalog) ----------
+// Tagalog strings live in locales/tl.json, fetched only when the reader picks
+// TL (or picked it on a past visit). English is the canonical text authored in
+// index.html / this file; applyStaticLocale() stashes each element's English
+// original in a data attribute so toggling back needs no reload. Computed
+// sentences (the finding line) translate the TEMPLATE and interpolate the same
+// numbers; nothing numeric is ever retyped per language.
+const LANG_KEY = "datavizph_lang";
+let LANG = "en";
+let TL_DICT = null;
+
+function readLang() {
+  try {
+    return localStorage.getItem(LANG_KEY) === "tl" ? "tl" : "en";
+  } catch {
+    return "en";
+  }
+}
+
+function persistLang(lang) {
+  try {
+    localStorage.setItem(LANG_KEY, lang);
+  } catch {
+    /* storage unavailable: choice lasts for this page view only */
+  }
+}
+
+// Dotted-path lookup into the TL dictionary; falls back to the English string.
+function t(path, fallback) {
+  if (LANG !== "tl" || !TL_DICT) return fallback;
+  let node = TL_DICT;
+  for (const key of path.split(".")) {
+    node = node && typeof node === "object" ? node[key] : undefined;
+  }
+  return typeof node === "string" ? node : fallback;
+}
+
+// Fill {name} placeholders in a localized template.
+function tFill(template, vars) {
+  return template.replace(/\{(\w+)\}/g, (m, k) =>
+    Object.prototype.hasOwnProperty.call(vars, k) ? String(vars[k]) : m,
+  );
+}
+
+// Swap every data-i18n element's text (and data-i18n-ph placeholder) to the
+// active language. The English original is captured once into data-i18n-en on
+// first call, so EN -> TL -> EN round-trips losslessly.
+function applyStaticLocale() {
+  document.documentElement.lang = LANG;
+  for (const el of document.querySelectorAll("[data-i18n]")) {
+    if (el.dataset.i18nEn === undefined) el.dataset.i18nEn = el.textContent;
+    el.textContent = t(el.dataset.i18n, el.dataset.i18nEn);
+  }
+  for (const el of document.querySelectorAll("[data-i18n-ph]")) {
+    if (el.dataset.i18nPhEn === undefined) {
+      el.dataset.i18nPhEn = el.getAttribute("placeholder") || "";
+    }
+    el.setAttribute("placeholder", t(el.dataset.i18nPh, el.dataset.i18nPhEn));
+  }
+}
+
 const PHP = new Intl.NumberFormat("en-PH", {
   style: "currency",
   currency: "PHP",
@@ -269,6 +335,20 @@ function indexRows(rows) {
   for (const r of rows) out[`${r.psgc}-${r.year}`] = r;
   return out;
 }
+
+// Color-by-Y-quantile bubble encoding: bin the value into the shared RAMP by
+// the indicator's cross-year quintile breaks (same bins the choropleth uses),
+// so a bubble's shade reflects real change across years, not a per-frame rank.
+function quantileColor(value, indicatorId, data, state) {
+  const breaks = globalQuantiles(indicatorId, data, state, RAMP.length);
+  let i = 0;
+  while (i < breaks.length && value > breaks[i]) i += 1;
+  return RAMP[i];
+}
+
+// Equal-size bubble diameter for the size-by:none encoding. Near the middle of
+// the population scale so neither extreme reads as a data statement.
+const EQUAL_SIZE_PX = 11;
 
 // Bubble size: log10(pop) mapped to 6..36 px so NCR doesn't dominate.
 function sizeFor(pop) {
@@ -604,7 +684,12 @@ function buildSeriesData(year, story, data, state) {
     const isSel = state.sel.has(p.psgc);
     const faded = groupFaded(state, p.island);
     const showLabel = !faded && (isSel || outlier.has(p.psgc));
-    const color = PALETTE[p.island] || "#999";
+    // Color: island group by default (editorial choice: geography stays
+    // readable); optional five-shade quantile of the current Y indicator.
+    const color =
+      state.colorBy === "yq"
+        ? quantileColor(p.y, story.y, data, state)
+        : PALETTE[p.island] || "#999";
     const isAnchor = !p.interp && !p.extrap;
     const isProjected = !!p.projected;
     // Imprecise = PSA reports a CV above the reliability threshold on either axis.
@@ -631,7 +716,9 @@ function buildSeriesData(year, story, data, state) {
       value: [p.x, p.y, p.pop, p.name, p.year, p.interp, p.island, p.extrap],
       xPrec: p.xPrec,
       yPrec: p.yPrec,
-      symbolSize: sizeFor(p.pop),
+      // Size: 2020 Census population by default (the Gapminder 4th variable);
+      // optional equal size for readers who find the area encoding noisy.
+      symbolSize: state.sizeBy === "eq" ? EQUAL_SIZE_PX : sizeFor(p.pop),
       itemStyle,
       label: {
         show: showLabel,
@@ -886,9 +973,62 @@ function strengthWord(rho) {
   return "a very strong";
 }
 
+// Locale key for the strength bucket (locales/tl.json spells out each
+// strength+direction pair in full to dodge interpolation grammar bugs).
+function strengthKey(rho) {
+  const a = Math.abs(rho);
+  if (a < 0.2) return "none";
+  if (a < 0.4) return "weak";
+  if (a < 0.6) return "moderate";
+  if (a < 0.8) return "strong";
+  return "very_strong";
+}
+
 function formatPValue(p) {
   if (p < 0.001) return "p < 0.001";
   return `p = ${p.toFixed(3)}`;
+}
+
+// Localized indicator display name (TL dict carries indicators.<id>; English
+// falls through to the indicators.json name).
+function indicatorName(indicatorId, data) {
+  const meta = (data.indicators || {})[indicatorId] || {};
+  return t(`indicators.${indicatorId}`, meta.name || indicatorId);
+}
+
+// One finding sentence from its computed components. The numbers (rho, p, n,
+// year) are interpolated identically in both languages; only the surrounding
+// template is translated. Mirrors the ETL's English sentence shape.
+function findingSentence({ year, n, xName, yName, rho, pValue }) {
+  const rhoTxt = `${rho >= 0 ? "+" : ""}${rho.toFixed(2)}`;
+  const pTxt = formatPValue(pValue);
+  const direction = rho < 0 ? "negative" : "positive";
+  const tpl = t("finding.template", null);
+  const strength = t(`finding.strength.${strengthKey(rho)}_${direction}`, null);
+  if (tpl && strength) {
+    return tFill(tpl, { year, n, x: xName, y: yName, rho: rhoTxt, p: pTxt, strength });
+  }
+  return (
+    `In ${year}, across ${n} areas, the rank correlation between ` +
+    `${xName} and ${yName} is rho = ${rhoTxt} ` +
+    `(${pTxt}), showing ${strengthWord(rho)} ${direction} link.`
+  );
+}
+
+// The standard finding caveat: correlation-not-causation, plus the awards
+// disclaimer whenever an award-based spend indicator sits on either axis.
+function findingCaveat(xId, yId) {
+  let caveat = t("finding.caveat_corr", "Correlation, not causation.");
+  if (AWARDS_INDICATORS.has(xId) || AWARDS_INDICATORS.has(yId)) {
+    caveat +=
+      " " +
+      t(
+        "finding.caveat_awards",
+        "Spend here is PhilGEPS contract awards (money committed), not " +
+          "verified disbursement or built outcomes.",
+      );
+  }
+  return caveat;
 }
 
 // Live finding for a custom (non-preset) pair at the displayed year. Cached per
@@ -897,7 +1037,7 @@ const _liveFindingCache = new Map();
 function computeLiveFinding(view, data, state) {
   const key = `${view.x}|${view.y}|${state.year}|${state.deflate ? "r" : "n"}|${
     state.extrapolate ? "e" : ""
-  }`;
+  }|${LANG}`;
   if (_liveFindingCache.has(key)) return _liveFindingCache.get(key);
   const xs = [];
   const ys = [];
@@ -913,20 +1053,15 @@ function computeLiveFinding(view, data, state) {
   if (rho !== null) {
     const rng = mulberry32(seedFromString(`${view.x}|${view.y}|${state.year}`));
     const pVal = permutationP(xs, ys, rho, rng);
-    const xName = (data.indicators[view.x] || {}).name || view.x;
-    const yName = (data.indicators[view.y] || {}).name || view.y;
-    const direction = rho < 0 ? "negative" : "positive";
-    const sentence =
-      `In ${state.year}, across ${xs.length} areas, the rank correlation between ` +
-      `${xName} and ${yName} is rho = ${rho >= 0 ? "+" : ""}${rho.toFixed(2)} ` +
-      `(${formatPValue(pVal)}), showing ${strengthWord(rho)} ${direction} link.`;
-    let caveat = "Correlation, not causation.";
-    if (AWARDS_INDICATORS.has(view.x) || AWARDS_INDICATORS.has(view.y)) {
-      caveat +=
-        " Spend here is PhilGEPS contract awards (money committed), not " +
-        "verified disbursement or built outcomes.";
-    }
-    out = { rho, pValue: pVal, n: xs.length, sentence, caveat };
+    const sentence = findingSentence({
+      year: state.year,
+      n: xs.length,
+      xName: indicatorName(view.x, data),
+      yName: indicatorName(view.y, data),
+      rho,
+      pValue: pVal,
+    });
+    out = { rho, pValue: pVal, n: xs.length, sentence, caveat: findingCaveat(view.x, view.y) };
   }
   _liveFindingCache.set(key, out);
   return out;
@@ -1126,6 +1261,32 @@ function baseOption(story, data, state) {
         },
       },
     },
+    // Inside-type zoom on the bubble cloud only: at phone widths the log-X cloud
+    // still overlaps heavily in the low band, so pinch (touch) or Ctrl+scroll
+    // (desktop) zooms in. filterMode:none keeps every bubble alive (the window
+    // moves, points are never dropped); plain drag and plain scroll are left
+    // alone so the page still scrolls. Any re-render resets the window, which
+    // doubles as the zoom-out affordance.
+    dataZoom: [
+      {
+        type: "inside",
+        xAxisIndex: 0,
+        filterMode: "none",
+        zoomOnMouseWheel: "ctrl",
+        moveOnMouseMove: "ctrl",
+        moveOnMouseWheel: false,
+        preventDefaultMouseMove: false,
+      },
+      {
+        type: "inside",
+        yAxisIndex: 0,
+        filterMode: "none",
+        zoomOnMouseWheel: "ctrl",
+        moveOnMouseMove: "ctrl",
+        moveOnMouseWheel: false,
+        preventDefaultMouseMove: false,
+      },
+    ],
     tooltip: {
       trigger: "item",
       // On touch devices ECharts' default 'mousemove|click' fires on the synthetic
@@ -1302,10 +1463,10 @@ function buildMapOption(view, data, state) {
   // change between years, not a scale that silently rescales each frame.
   const { min, max } = globalExtent(yId, data, state);
 
-  // Single-hue sequential blue ramp. Poverty/subsistence (bounded %) map fine on a
-  // continuous linear ramp; log-skewed spend/GDP get quantile bins so they don't
-  // wash pale.
-  const RAMP = ["#dce8f5", "#9ec3e3", "#5a93c7", "#2b6cb0", "#08306b"];
+  // Single-hue sequential blue ramp (module-level RAMP, shared with the
+  // color-by-Y-quantile bubble encoding). Poverty/subsistence (bounded %) map
+  // fine on a continuous linear ramp; log-skewed spend/GDP get quantile bins so
+  // they don't wash pale.
   let visualMap;
   if (yMeta.log_natural && max > min) {
     const breaks = globalQuantiles(yId, data, state, RAMP.length);
@@ -2160,7 +2321,13 @@ function parseHash(stories) {
   // Playback speed: only 0.5 / 2 are meaningful in the URL (1 is the default).
   const spdParam = parseFloat(params.get("spd"));
   const speed = [0.5, 2].includes(spdParam) ? spdParam : 1;
+  // Bubble encodings: island-color + population-size are the defaults; only the
+  // alternates ride in the URL.
+  const colorBy = params.get("col") === "yq" ? "yq" : "island";
+  const sizeBy = params.get("size") === "eq" ? "eq" : "pop";
   return {
+    colorBy,
+    sizeBy,
     story,
     xIndicator: xParam || story.x,
     yIndicator: yParam || story.y,
@@ -2203,6 +2370,8 @@ function writeHash(state, view) {
   if (state.sel.size) params.set("sel", [...state.sel].join(","));
   if (state.grp && state.grp.size) params.set("grp", [...state.grp].join(","));
   if (state.speed && state.speed !== 1) params.set("spd", String(state.speed));
+  if (state.colorBy === "yq") params.set("col", "yq");
+  if (state.sizeBy === "eq") params.set("size", "eq");
   if (state.embed) params.set("embed", "1");
   window.history.replaceState(null, "", "#" + params.toString());
   // The embed attribution chip links to the full explorer view: the same state
@@ -2478,7 +2647,10 @@ function renderStorySwitcher(stories, state, view, render) {
     btn.type = "button";
     btn.setAttribute("aria-pressed", s.id === activeId ? "true" : "false");
     btn.className = "story-btn" + (s.id === activeId ? " active" : "");
-    btn.textContent = s.tab_label || s.headline.split(".")[0];
+    btn.textContent = t(
+      `stories.${s.id}.tab_label`,
+      s.tab_label || s.headline.split(".")[0],
+    );
     btn.addEventListener("click", () => {
       state.story = s;
       state.xIndicator = s.x;
@@ -3056,6 +3228,8 @@ async function main() {
     grp: initial.grp,
     speed: initial.speed,
     embed: initial.embed,
+    colorBy: initial.colorBy,
+    sizeBy: initial.sizeBy,
     view: null,
     howtoDismissed: readHowtoDismissed(),
     // Guided-narrative arc state (Rosling hook->reveal->twist->release). null when
@@ -3085,6 +3259,15 @@ async function main() {
   }
   syncEmbedMode();
 
+  // Language boots from localStorage; the TL dictionary is fetched only when
+  // Tagalog is active (returning TL readers pay one small JSON fetch).
+  LANG = readLang();
+  if (LANG === "tl") {
+    TL_DICT = await fetchJson("locales/tl.json").catch(() => null);
+    if (!TL_DICT) LANG = "en";
+  }
+  applyStaticLocale();
+
   const chart = echarts.init(root, null, { renderer: "canvas" });
   renderFreshness(data.manifest);
 
@@ -3103,17 +3286,38 @@ async function main() {
   function updateFindingBox(view) {
     const findingEl = document.getElementById("story-finding");
     if (!findingEl) return;
+    const prefix = t("finding.prefix", "What the data shows.");
     const f = !view.isCustom ? view.finding : null;
     if (view.isCustom) {
       const lf = computeLiveFinding(view, data, state);
       if (lf) {
-        findingEl.textContent = `What the data shows. ${lf.sentence} ${lf.caveat}`;
+        findingEl.textContent = `${prefix} ${lf.sentence} ${lf.caveat}`;
         findingEl.hidden = false;
       } else {
         findingEl.textContent = "";
         findingEl.hidden = true;
       }
     } else if (f && f.available && f.sentence) {
+      // The preset sentence ships precomputed in English (stories.json). In TL
+      // mode, rebuild it from the same computed components through the
+      // translated template: identical numbers, translated frame. The
+      // both-above-median clause rides along when the ETL computed one.
+      let sentence = f.sentence;
+      if (LANG === "tl" && typeof f.spearman === "number") {
+        sentence = findingSentence({
+          year: f.year,
+          n: f.n,
+          xName: indicatorName(view.x, data),
+          yName: indicatorName(view.y, data),
+          rho: f.spearman,
+          pValue: f.p_value,
+        });
+        const bamTpl = t("finding.both_above_median", null);
+        if (bamTpl && typeof f.both_above_median === "number") {
+          sentence += " " + tFill(bamTpl, { k: f.both_above_median, n: f.n });
+        }
+      }
+      const caveat = LANG === "tl" ? findingCaveat(view.x, view.y) : f.caveat || "";
       // On the DPWH-vs-poverty story, set the non-result against the one
       // pairing that does track poverty: per-capita GDP. The contrast is the
       // point, so pull the GDP story's own computed rho (no hardcoded number).
@@ -3123,17 +3327,24 @@ async function main() {
         const gs = g && g.finding && typeof g.finding.spearman === "number" ? g.finding.spearman : null;
         if (gs !== null) {
           const r = (Math.sign(gs) * Math.round(Math.abs(gs) * 100)) / 100;
-          contrast = ` Per-capita GDP, by contrast, does track lower poverty (rho = ${r >= 0 ? "+" : ""}${r.toFixed(2)}).`;
+          const rTxt = `${r >= 0 ? "+" : ""}${r.toFixed(2)}`;
+          const cTpl = t("finding.contrast", null);
+          contrast = cTpl
+            ? ` ${tFill(cTpl, { rho: rTxt })}`
+            : ` Per-capita GDP, by contrast, does track lower poverty (rho = ${rTxt}).`;
         }
       }
       // The finding is a fixed-reference-year correlation; when the reader has
       // scrubbed elsewhere, say so rather than let the year control and the
       // finding silently disagree.
-      const yearNote =
-        f.year != null && state.year != null && state.year !== f.year
-          ? ` (Chart is showing ${state.year}; this correlation is measured at ${f.year}.)`
-          : "";
-      findingEl.textContent = `What the data shows. ${f.sentence}${contrast} ${f.caveat || ""}${yearNote}`;
+      let yearNote = "";
+      if (f.year != null && state.year != null && state.year !== f.year) {
+        const yTpl = t("finding.year_note", null);
+        yearNote = yTpl
+          ? ` ${tFill(yTpl, { shown: state.year, measured: f.year })}`
+          : ` (Chart is showing ${state.year}; this correlation is measured at ${f.year}.)`;
+      }
+      findingEl.textContent = `${prefix} ${sentence}${contrast} ${caveat}${yearNote}`;
       findingEl.hidden = false;
     } else {
       findingEl.textContent = "";
@@ -3175,9 +3386,14 @@ async function main() {
       const singleYear = view.panel_years.length <= 1;
 
       const xIndicator = data.indicators[view.x];
-      // Headline + tagline update with view (preset or custom)
-      document.getElementById("story-headline").textContent = view.headline;
-      document.getElementById("story-tagline").textContent = view.tagline;
+      // Headline + tagline update with view. Presets localize through the
+      // locale dict; custom picker views keep their computed English copy.
+      document.getElementById("story-headline").textContent = view.isCustom
+        ? view.headline
+        : t(`stories.${view.id}.headline`, view.headline);
+      document.getElementById("story-tagline").textContent = view.isCustom
+        ? view.tagline
+        : t(`stories.${view.id}.tagline`, view.tagline);
       // Per-story why + source link: hide on custom views (preset copy doesn't apply)
       const whyEl = document.getElementById("story-why");
       if (whyEl) {
@@ -3282,12 +3498,26 @@ async function main() {
       const islandNote = document.getElementById("island-legend-note");
       if (islandNote) islandNote.hidden = state.chartType !== "line";
       // Size key: bubbles and panels encode the 4th variable (population) as
-      // area. Line/bar/map drop it, so the key would be a lie there.
+      // area. Line/bar/map drop it, and the equal-size encoding drops it too,
+      // so the key would be a lie there.
       const sizeLegend = document.getElementById("size-legend");
+      const bubbleLike = state.chartType === "bubbles" || state.chartType === "panels";
       if (sizeLegend) {
-        const showSize = state.chartType === "bubbles" || state.chartType === "panels";
+        const showSize = bubbleLike && state.sizeBy !== "eq";
         sizeLegend.hidden = !showSize;
         if (showSize) renderSizeLegend();
+      }
+      // Bubble encoding selectors only apply where bubbles render; mirror state
+      // into the selects so hash-driven loads land on the right options.
+      const encodeBlock = document.getElementById("encode-block");
+      if (encodeBlock) {
+        encodeBlock.hidden = !bubbleLike;
+        const colorSel = document.getElementById("color-by");
+        const sizeSel = document.getElementById("size-by");
+        if (colorSel) colorSel.value = state.colorBy === "yq" ? "yq" : "island";
+        if (sizeSel) sizeSel.value = state.sizeBy === "eq" ? "eq" : "pop";
+        const yqNote = document.getElementById("encode-yq-note");
+        if (yqNote) yqNote.hidden = state.colorBy !== "yq";
       }
       // First-read scaffold: one plain-language line above the chart for the
       // novice landing on a 4-D moving scatter. Bubble mode only (the other
@@ -3303,8 +3533,13 @@ async function main() {
         if (showHowto) {
           const yrs = view.panel_years;
           const span = yrs && yrs.length ? `${yrs[0]}→${yrs[yrs.length - 1]}` : "the years";
-          document.getElementById("chart-howto-text").textContent =
-            `Each bubble is a province or Metro Manila. Size = population. Press play to watch ${span}.`;
+          document.getElementById("chart-howto-text").textContent = tFill(
+            t(
+              "controls.howto",
+              "Each bubble is a province or Metro Manila. Size = population. Press play to watch {span}.",
+            ),
+            { span },
+          );
         }
       }
       const selHint = document.getElementById("selected-hint");
@@ -3314,12 +3549,12 @@ async function main() {
         // gesture. Map taps pin on the first tap on every input type.
         if (state.chartType === "map") {
           selHint.textContent = IS_TOUCH
-            ? "Tap a province to keep it labeled."
-            : "Click a province to keep it labeled.";
+            ? t("controls.hint_tap_map", "Tap a province to keep it labeled.")
+            : t("controls.hint_click_map", "Click a province to keep it labeled.");
         } else {
           selHint.textContent = IS_TOUCH
-            ? "Tap a bubble for details. Tap again to keep it labeled."
-            : "Click a bubble to keep it labeled.";
+            ? t("controls.hint_tap_bubble", "Tap a bubble for details. Tap again to keep it labeled.")
+            : t("controls.hint_click_bubble", "Click a bubble to keep it labeled.");
         }
       }
       // Big play button: hidden in line mode (X axis is already year) and on
@@ -3991,6 +4226,97 @@ async function main() {
     setTimeout(() => a.remove(), 0);
   });
 
+  // SVG export: the live chart renders on canvas (getDataURL only does PNG
+  // there), so replay the current merged option through a throwaway
+  // SVG-renderer instance in SSR mode and download renderToSVGString()'s
+  // output. Map polygons are registered globally, so the map view exports too.
+  document.getElementById("svg").addEventListener("click", () => {
+    const v = state.view || state.story;
+    const name = v.isCustom ? `${v.x}-vs-${v.y}` : v.id;
+    let svgChart = null;
+    try {
+      const opt = chart.getOption();
+      opt.animation = false;
+      opt.backgroundColor = "#fff";
+      svgChart = echarts.init(null, null, {
+        renderer: "svg",
+        ssr: true,
+        width: chart.getWidth(),
+        height: chart.getHeight(),
+      });
+      svgChart.setOption(opt);
+      const svgStr = svgChart.renderToSVGString();
+      const blob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `dataviz-ph-${name}-${state.year}.svg`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        a.remove();
+        URL.revokeObjectURL(url);
+      }, 0);
+    } catch (e) {
+      console.error("svg export failed", e);
+      showChartNotice("SVG export failed. The PNG button still works.");
+      track("client_error", {
+        message: `svg_export: ${String((e && e.message) || e).slice(0, 160)}`,
+        source: "svg-export",
+      });
+    } finally {
+      if (svgChart) svgChart.dispose();
+    }
+  });
+
+  // Bubble encoding selectors (color-by / size-by).
+  const colorBySel = document.getElementById("color-by");
+  if (colorBySel) {
+    colorBySel.addEventListener("change", () => {
+      state.colorBy = colorBySel.value === "yq" ? "yq" : "island";
+      track("encode", { colorBy: state.colorBy, sizeBy: state.sizeBy });
+      render();
+    });
+  }
+  const sizeBySel = document.getElementById("size-by");
+  if (sizeBySel) {
+    sizeBySel.addEventListener("change", () => {
+      state.sizeBy = sizeBySel.value === "eq" ? "eq" : "pop";
+      track("encode", { colorBy: state.colorBy, sizeBy: state.sizeBy });
+      render();
+    });
+  }
+
+  // EN <-> Tagalog toggle. The button shows the language you would switch TO.
+  const langBtn = document.getElementById("lang-toggle");
+  function syncLangButton() {
+    if (!langBtn) return;
+    langBtn.textContent = LANG === "tl" ? "EN" : "TL";
+    langBtn.setAttribute(
+      "aria-label",
+      LANG === "tl" ? "Switch to English" : "Lumipat sa Tagalog",
+    );
+  }
+  syncLangButton();
+  if (langBtn) {
+    langBtn.addEventListener("click", async () => {
+      const next = LANG === "tl" ? "en" : "tl";
+      if (next === "tl" && !TL_DICT) {
+        TL_DICT = await fetchJson("locales/tl.json").catch(() => null);
+        if (!TL_DICT) {
+          showChartNotice("Tagalog strings could not load. Staying in English.");
+          return;
+        }
+      }
+      LANG = next;
+      persistLang(LANG);
+      track("lang", { lang: LANG });
+      applyStaticLocale();
+      syncLangButton();
+      render();
+    });
+  }
+
   document.getElementById("year-prev").addEventListener("click", () => {
     stepYear(state, -1, render);
   });
@@ -4086,6 +4412,8 @@ async function main() {
     state.deflate = next.deflate;
     state.grp = next.grp;
     state.speed = next.speed;
+    state.colorBy = next.colorBy;
+    state.sizeBy = next.sizeBy;
     if (next.embed !== state.embed) {
       state.embed = next.embed;
       syncEmbedMode();

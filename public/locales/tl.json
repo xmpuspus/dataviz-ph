@@ -1,0 +1,105 @@
+{
+  "_comment": "Tagalog strings for the first-read surface: story headlines, taglines, the finding-sentence template, and control labels. Numbers are never typed here; the finding template interpolates the same computed values the English sentence uses.",
+  "stories": {
+    "spend-vs-poverty": {
+      "tab_label": "DPWH vs kahirapan",
+      "headline": "Labing-isang taon, limang trilyon sa kalsada. Bumaba ba ang kahirapan?",
+      "tagline": "Gastos ng DPWH kada tao laban sa antas ng kahirapan. 81 lalawigan at Metro Manila. 2014 hanggang 2024. Pindutin ang play, o gamitin ang arrow keys."
+    },
+    "all-spend-vs-poverty": {
+      "tab_label": "Buong gobyerno vs kahirapan",
+      "headline": "Lahat ng gastos ng gobyerno. Umaabot ba sa mahihirap?",
+      "tagline": "Bawat kontratang PhilGEPS na maiuugnay sa lalawigan, kada tao, laban sa antas ng kahirapan. 81 lalawigan at Metro Manila, 2014 hanggang 2024. I-scrub ang mga taon."
+    },
+    "all-spend-vs-gdp": {
+      "tab_label": "Gastos vs GDP",
+      "headline": "Sinusundan ba ng gastos ang yaman, o hinahabol ang kahirapan?",
+      "tagline": "81 lalawigan at Metro Manila. 2022 hanggang 2024. Lahat ng kontrata ng gobyerno kada tao laban sa GDP kada tao."
+    },
+    "gdp-vs-poverty": {
+      "tab_label": "GDP vs kahirapan",
+      "headline": "Mas mayamang lalawigan, mas mababang kahirapan?",
+      "tagline": "GDP kada tao (constant 2018 PHP) laban sa antas ng kahirapan. Tatlong taon ng datos ng PSA kada lalawigan, 2022 hanggang 2024."
+    },
+    "spend-vs-poverty-change": {
+      "tab_label": "Gastos vs pagbabago ng kahirapan",
+      "headline": "Mas maraming gastos sa kalsada, mas malaking pagbaba ng kahirapan?",
+      "tagline": "Kabuuang gastos ng DPWH kada tao, 2014-2023, laban sa pagbabago ng antas ng kahirapan mula 2018 hanggang 2023. Isang snapshot, 81 lalawigan at Metro Manila."
+    }
+  },
+  "indicators": {
+    "poverty": "Antas ng kahirapan ng mga pamilya",
+    "subsistence_incidence": "Antas ng subsistence ng mga pamilya",
+    "dpwh_spend_per_capita": "Gastos ng DPWH kada tao",
+    "all_spend_per_capita": "Gastos ng buong gobyerno kada tao",
+    "gdp_per_capita": "GDP kada tao",
+    "doh_spend_per_capita": "Gastos ng DOH kada tao",
+    "infra_spend_per_capita": "Gastos sa imprastraktura kada tao",
+    "dpwh_share_pct": "Bahagi ng DPWH sa kabuuang gastos",
+    "population": "Populasyon (2020 Census)",
+    "poverty_change_pp": "Pagbabago ng kahirapan 2018 hanggang 2023",
+    "cpi_yoy_pct": "Pambansang CPI, taon-sa-taon",
+    "dpwh_spend_per_capita_cum": "Kabuuang gastos ng DPWH kada tao 2014-2023"
+  },
+  "finding": {
+    "prefix": "Ano ang ipinapakita ng datos.",
+    "template": "Noong {year}, sa {n} lugar, ang rank correlation sa pagitan ng {x} at {y} ay rho = {rho} ({p}), {strength}.",
+    "strength": {
+      "none_positive": "walang malinaw na positibong kaugnayan",
+      "none_negative": "walang malinaw na negatibong kaugnayan",
+      "weak_positive": "may mahinang positibong kaugnayan",
+      "weak_negative": "may mahinang negatibong kaugnayan",
+      "moderate_positive": "may katamtamang positibong kaugnayan",
+      "moderate_negative": "may katamtamang negatibong kaugnayan",
+      "strong_positive": "may malakas na positibong kaugnayan",
+      "strong_negative": "may malakas na negatibong kaugnayan",
+      "very_strong_positive": "may napakalakas na positibong kaugnayan",
+      "very_strong_negative": "may napakalakas na negatibong kaugnayan"
+    },
+    "both_above_median": "{k} sa {n} lugar ang lampas sa median sa parehong axis.",
+    "caveat_corr": "Korelasyon ito, hindi sanhi.",
+    "caveat_awards": "Ang gastos dito ay halaga ng mga kontratang iginawad sa PhilGEPS (perang nakalaan), hindi beripikadong paggasta o naipatayong proyekto.",
+    "contrast": "Sa kabilang banda, ang GDP kada tao ay tumutugma sa mas mababang kahirapan (rho = {rho}).",
+    "year_note": "(Ipinapakita ng tsart ang {shown}; ang korelasyong ito ay sinukat sa {measured}.)"
+  },
+  "controls": {
+    "methodology": "Metodolohiya",
+    "ct_bubbles": "Mga bula",
+    "ct_lines": "Mga linya",
+    "ct_ranks": "Ranggo",
+    "ct_map": "Mapa",
+    "ct_panels": "Mga panel",
+    "find": "Maghanap ng lalawigan",
+    "search_placeholder": "I-type para maghanap",
+    "selected": "Mga napili",
+    "islands": "Pangkat ng isla",
+    "island_hint": "I-click ang isang pangkat para ituon ito. Kukupas ang iba. I-click ulit para ibalik.",
+    "size": "Laki ng bula",
+    "size_cap": "Populasyon (2020 Census)",
+    "encode": "Kulay at laki",
+    "color_by": "Kulayan ang mga bula ayon sa",
+    "color_island": "Pangkat ng isla (default)",
+    "color_yq": "Halaga ng Y, limang kulay",
+    "size_by": "Laki ng mga bula ayon sa",
+    "size_pop": "Populasyon, 2020 Census (default)",
+    "size_eq": "Pantay-pantay na laki",
+    "encode_yq_note": "Mas madilim, mas mataas ang halaga ng Y. Ang island legend ay nagsasala pa rin ng mga pangkat.",
+    "year": "Taon",
+    "compare": "Ihambing sa taon",
+    "axis": "Axis",
+    "log_hint": "Pinapalawak ng log scale ang mga lalawigang magkakadikit sa mababang gastos.",
+    "zoom_hint": "I-zoom ang mga bula: mag-pinch, o pindutin ang Ctrl habang nag-i-scroll. Nagre-reset ang zoom sa anumang pagbabago ng kontrol.",
+    "currency": "Pera",
+    "deflate_hint": "Inayos para sa implasyon sa constant 2018 pesos gamit ang PSA CPI.",
+    "projection": "Proyeksyon",
+    "extrap_hint": "Linear na pinapalawig ang kahirapan lampas sa huling PSA survey year.",
+    "download": "I-download",
+    "csv_all": "CSV (lahat ng taon)",
+    "link": "Link",
+    "howto": "Bawat bula ay isang lalawigan o Metro Manila. Laki = populasyon. Pindutin ang play para panoorin ang {span}.",
+    "hint_tap_map": "I-tap ang isang lalawigan para manatili ang pangalan nito.",
+    "hint_click_map": "I-click ang isang lalawigan para manatili ang pangalan nito.",
+    "hint_tap_bubble": "I-tap ang isang bula para sa detalye. I-tap ulit para manatili ang pangalan nito.",
+    "hint_click_bubble": "I-click ang isang bula para manatili ang pangalan nito."
+  }
+}

@@ -32,8 +32,8 @@
   <link rel="preload" as="fetch" crossorigin href="data/gdp_per_capita.json">
   <link rel="preload" as="fetch" crossorigin href="data/indicators.json">
   <link rel="preload" as="fetch" crossorigin href="data/stories.json">
-  <script src="vendor/echarts-custom-5.6.0.min.js"
-          integrity="sha384-8tVVM8FVXhA2om9KnCZ3CcK0W73phciOw915kWI1Swb4/GK3iXIjytDvFyss7EGs"
+  <script src="vendor/echarts-custom-5.6.0-r2.min.js"
+          integrity="sha384-UvTOMv7fL+FD4zOYzFOEeOuw0wP2GOG4Jf+j8sAlaRxa6+iue6HD/gTWzNVvn+hI"
           crossorigin="anonymous"
           referrerpolicy="no-referrer"
           defer></script>
@@ -48,7 +48,8 @@
     <nav id="story-switcher" aria-label="story switcher"></nav>
     <div class="topbar-right">
       <a id="story-source" href="#" target="_blank" rel="noopener" hidden>Source</a>
-      <a class="topbar-link" href="/methodology">Methodology</a>
+      <a class="topbar-link" href="/methodology" data-i18n="controls.methodology">Methodology</a>
+      <button id="lang-toggle" type="button" aria-label="Lumipat sa Tagalog">TL</button>
     </div>
   </header>
 
@@ -68,25 +69,25 @@
     <nav id="chart-type-strip" aria-label="chart type">
       <button type="button" class="chart-type-btn active" data-type="bubbles" aria-pressed="true" title="Bubbles">
         <span class="ct-icon" aria-hidden="true">●</span>
-        <span class="ct-label">Bubbles</span>
+        <span class="ct-label" data-i18n="controls.ct_bubbles">Bubbles</span>
       </button>
       <button type="button" class="chart-type-btn" data-type="line" aria-pressed="false" title="Lines">
         <span class="ct-icon" aria-hidden="true">/\</span>
-        <span class="ct-label">Lines</span>
+        <span class="ct-label" data-i18n="controls.ct_lines">Lines</span>
       </button>
       <button type="button" class="chart-type-btn" data-type="bar" aria-pressed="false" title="Ranks">
         <span class="ct-icon" aria-hidden="true">▥</span>
-        <span class="ct-label">Ranks</span>
+        <span class="ct-label" data-i18n="controls.ct_ranks">Ranks</span>
       </button>
       <button type="button" class="chart-type-btn" data-type="map" aria-pressed="false" title="Map">
         <span class="ct-icon" aria-hidden="true">◍</span>
-        <span class="ct-label">Map</span>
+        <span class="ct-label" data-i18n="controls.ct_map">Map</span>
       </button>
       <!-- Side-by-side spend-vs-GDP contrast. Only offered when poverty is on
            the Y axis (JS toggles the hidden attr). -->
       <button type="button" class="chart-type-btn" data-type="panels" aria-pressed="false" title="Panels" hidden>
         <span class="ct-icon" aria-hidden="true">▦</span>
-        <span class="ct-label">Panels</span>
+        <span class="ct-label" data-i18n="controls.ct_panels">Panels</span>
       </button>
     </nav>
   </section>
@@ -117,8 +118,10 @@
         Animated bubble chart. Each bubble is one Philippine province. Use Left and
         Right arrow keys to scrub years; Home and End jump to the first and last
         year. Tab through the controls below the chart to change story, step year,
-        choose a year to compare against, toggle the X axis, search provinces,
-        download CSV, or copy a shareable link. A text version of the current view
+        choose a year to compare against, toggle the X axis, change bubble color
+        and size encodings, search provinces, download CSV or an image, or copy a
+        shareable link. On a touch screen, pinch the chart to zoom the bubbles;
+        with a mouse, hold Ctrl and scroll. A text version of the current view
         is below the chart.
       </p>
       <div
@@ -162,11 +165,12 @@
       </div>
 
       <div class="block">
-        <h2>Find a province</h2>
+        <h2 data-i18n="controls.find">Find a province</h2>
         <input
           id="search"
           type="search"
           placeholder="Type to search"
+          data-i18n-ph="controls.search_placeholder"
           autocomplete="off"
           aria-label="search provinces"
         >
@@ -174,13 +178,13 @@
       </div>
 
       <div class="block">
-        <h2>Selected</h2>
+        <h2 data-i18n="controls.selected">Selected</h2>
         <p class="hint" id="selected-hint">Click a bubble to keep it labeled.</p>
         <div id="selected-chips"></div>
       </div>
 
       <div class="block" id="island-legend">
-        <h2>Island groups</h2>
+        <h2 data-i18n="controls.islands">Island groups</h2>
         <ul class="legend-list">
           <li><button type="button" class="legend-toggle" data-group="luzon" aria-pressed="false"><span class="dot" data-group="luzon"></span>Luzon</button></li>
           <li><button type="button" class="legend-toggle" data-group="visayas" aria-pressed="false"><span class="dot" data-group="visayas"></span>Visayas</button></li>
@@ -189,55 +193,78 @@
           <li><button type="button" class="legend-toggle" data-group="barmm" aria-pressed="false"><span class="dot" data-group="barmm"></span>BARMM</button></li>
           <li class="legend-imprecise"><span class="ring-imprecise" aria-hidden="true"></span>Dashed ring: PSA flags the estimate as imprecise (CV above 30 percent).</li>
         </ul>
-        <p class="hint" id="island-filter-hint">Click a group to focus it. Others fade. Click again to restore.</p>
+        <p class="hint" id="island-filter-hint" data-i18n="controls.island_hint">Click a group to focus it. Others fade. Click again to restore.</p>
         <p class="hint legend-note" id="island-legend-note" hidden>In Lines, bold lines are the selected or most-changed provinces. The rest stay faint for context.</p>
       </div>
 
       <div class="block" id="size-legend" hidden>
-        <h2>Bubble size</h2>
+        <h2 data-i18n="controls.size">Bubble size</h2>
         <div class="size-legend-row" id="size-legend-row" aria-hidden="true"></div>
-        <p class="hint size-legend-cap">Population (2020 Census)</p>
+        <p class="hint size-legend-cap" data-i18n="controls.size_cap">Population (2020 Census)</p>
         <p class="sr-only">
           Bigger circles mark more populous areas, by 2020 Census population:
           from roughly 100 thousand people to 13 million in Metro Manila.
         </p>
       </div>
 
+      <!-- Bubble encoding. Defaults are an editorial choice: island-group color
+           keeps the archipelago's geography readable across every view, and
+           2020 Census population as area is the Gapminder 4th variable. The
+           alternates are the only encodings the data supports honestly: a
+           five-shade quantile ramp of the current Y indicator, and equal-size
+           bubbles for readers who find the area encoding noisy. -->
+      <div class="block" id="encode-block">
+        <h2 data-i18n="controls.encode">Color and size</h2>
+        <label class="hint" for="color-by" data-i18n="controls.color_by">Color bubbles by</label>
+        <select id="color-by" aria-label="bubble color encoding">
+          <option value="island" data-i18n="controls.color_island">Island group (default)</option>
+          <option value="yq" data-i18n="controls.color_yq">Y value, five shades</option>
+        </select>
+        <label class="hint" for="size-by" data-i18n="controls.size_by">Size bubbles by</label>
+        <select id="size-by" aria-label="bubble size encoding">
+          <option value="pop" data-i18n="controls.size_pop">Population, 2020 Census (default)</option>
+          <option value="eq" data-i18n="controls.size_eq">Equal size</option>
+        </select>
+        <p class="hint" id="encode-yq-note" hidden data-i18n="controls.encode_yq_note">Darker means a higher Y value. The island legend still filters groups.</p>
+      </div>
+
       <div class="block">
-        <h2>Year <span id="year-display"></span></h2>
+        <h2><span data-i18n="controls.year">Year</span> <span id="year-display"></span></h2>
         <div class="year-stepper">
           <button id="year-prev" type="button" aria-label="previous year">&#9664;</button>
           <input type="range" id="year-range" class="year-range" min="0" step="1" value="0" aria-label="year">
           <button id="year-next" type="button" aria-label="next year">&#9654;</button>
         </div>
-        <label class="hint" for="compare-select">Compare with year</label>
+        <label class="hint" for="compare-select" data-i18n="controls.compare">Compare with year</label>
         <select id="compare-select" aria-label="compare with year"></select>
       </div>
 
       <div class="block" id="log-block">
-        <h2>Axis</h2>
+        <h2 data-i18n="controls.axis">Axis</h2>
         <button id="log-toggle" type="button">X: log</button>
-        <p class="hint">Log scale spreads out the crowded low-spend provinces.</p>
+        <p class="hint" data-i18n="controls.log_hint">Log scale spreads out the crowded low-spend provinces.</p>
+        <p class="hint" data-i18n="controls.zoom_hint">Zoom the bubbles: pinch, or hold Ctrl and scroll. Changing any control resets the zoom.</p>
       </div>
 
       <div class="block" id="deflate-block" hidden>
-        <h2>Currency</h2>
+        <h2 data-i18n="controls.currency">Currency</h2>
         <button id="deflate-toggle" type="button">PHP, 2018-real</button>
-        <p class="hint">Adjusted for inflation to constant 2018 pesos using the PSA CPI.</p>
+        <p class="hint" data-i18n="controls.deflate_hint">Adjusted for inflation to constant 2018 pesos using the PSA CPI.</p>
       </div>
 
       <div class="block">
-        <h2>Projection</h2>
+        <h2 data-i18n="controls.projection">Projection</h2>
         <button id="extrap-toggle" type="button" aria-pressed="false">Project past anchors: off</button>
-        <p class="hint">Linearly extends poverty past the last PSA survey year.</p>
+        <p class="hint" data-i18n="controls.extrap_hint">Linearly extends poverty past the last PSA survey year.</p>
       </div>
 
       <div class="block">
-        <h2>Download</h2>
+        <h2 data-i18n="controls.download">Download</h2>
         <button id="csv" type="button">CSV</button>
-        <button id="csv-all" type="button">CSV (all years)</button>
+        <button id="csv-all" type="button" data-i18n="controls.csv_all">CSV (all years)</button>
         <button id="png" type="button">PNG</button>
-        <button id="share" type="button">Link</button>
+        <button id="svg" type="button">SVG</button>
+        <button id="share" type="button" data-i18n="controls.link">Link</button>
         <button id="embed-code" type="button">Embed</button>
         <p class="hint" id="share-status" role="status" aria-live="polite"></p>
       </div>
