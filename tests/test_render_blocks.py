@@ -65,6 +65,15 @@ def browser():
             b.close()
 
 
+def _stub_insights(pg):
+    """Serve an empty stub for the Vercel insights script, which only exists on
+    the deployed host; its local 404 would pollute no-console-error assertions."""
+    pg.route(
+        "**/_vercel/insights/script.js",
+        lambda route: route.fulfill(status=200, content_type="application/javascript", body=""),
+    )
+
+
 @pytest.fixture
 def page(browser):
     errors: list[str] = []
@@ -74,6 +83,7 @@ def page(browser):
     # interactive and control/tab clicks are not swallowed by the arc's
     # take-control gesture guard. The arc itself is covered by test_guided_arc_*.
     pg.emulate_media(reduced_motion="reduce")
+    _stub_insights(pg)
     pg.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
     pg.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
     pg.console_errors = errors
@@ -194,6 +204,7 @@ def test_guided_arc_runs_then_yields_to_explorer(browser, base_url):
     gesture hands control back to the explorer, which then behaves normally."""
     errors: list[str] = []
     pg = browser.new_page()  # motion on, fresh context => fresh localStorage
+    _stub_insights(pg)
     pg.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
     pg.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
     try:
@@ -258,6 +269,7 @@ def test_methodology_page_renders_with_live_scale(browser, base_url):
     figures live from the data (no hardcoded numbers), and routes back."""
     errors = []
     pg = browser.new_page()
+    _stub_insights(pg)
     pg.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
     pg.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
     try:

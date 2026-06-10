@@ -1,6 +1,40 @@
 // dataviz.ph: story switcher, inflation toggle, CSV download, a11y mirror table,
 // compare-two-years overlay, keyboard scrubber.
 
+// Vercel Web Analytics queue stub: if the insights script has not loaded yet
+// (or analytics is disabled on the project) calls queue harmlessly. CSP bans
+// inline scripts, so the stub lives here instead of index.html.
+window.va =
+  window.va ||
+  function () {
+    (window.vaq = window.vaq || []).push(arguments);
+  };
+
+function track(name, data) {
+  try {
+    window.va("event", data ? { name, data } : { name });
+  } catch {
+    /* telemetry must never break the app */
+  }
+}
+
+// A chart-engine crash on a visitor's device is otherwise invisible to the
+// maintainer; report message + view state, nothing personal.
+window.addEventListener("error", (e) => {
+  track("client_error", {
+    message: String(e.message || "").slice(0, 200),
+    source: `${e.filename || ""}:${e.lineno || 0}`,
+    hash: window.location.hash.slice(0, 120),
+  });
+});
+window.addEventListener("unhandledrejection", (e) => {
+  track("client_error", {
+    message: String((e.reason && e.reason.message) || e.reason || "").slice(0, 200),
+    source: "unhandledrejection",
+    hash: window.location.hash.slice(0, 120),
+  });
+});
+
 const PALETTE = {
   luzon: "#2b6cb0",
   visayas: "#38a169",
@@ -2869,6 +2903,9 @@ async function main() {
     console.warn("optional data files failed to load:", data.optionalFailures);
     const optNotice = document.getElementById("optional-load-notice");
     if (optNotice) optNotice.hidden = false;
+    // Without a signal, a corrupt or missing optional file degrades every
+    // visitor's chart for weeks before anyone notices.
+    track("soft_fail", { files: data.optionalFailures.join(",").slice(0, 200) });
   }
 
   document.getElementById("csv").addEventListener("click", () => {
@@ -3218,6 +3255,7 @@ async function main() {
       arcWait(4400, () => {
         // Full arc completed: mark it seen so returning visits skip to gentle autoplay.
         writeArcSeen();
+        track("arc_complete");
         state.arc = null;
         arcRunning = false;
         arcPriorSel = null;
@@ -3251,6 +3289,7 @@ async function main() {
     // Scroll-like gesture: don't abort.
     if (Math.sqrt(dx * dx + dy * dy) >= TAP_THRESHOLD_PX) return;
     writeArcSeen();
+    track("arc_abort", { via: "tap", beat: state.arc ? state.arc.beat : "" });
     abortArc();
   };
   const arcKeyGuard = (e) => {
@@ -3258,6 +3297,7 @@ async function main() {
     if (e.target && e.target.closest && e.target.closest("#arc-skip, #replay-arc")) return;
     // No preventDefault: Tab, Space, arrow keys must reach their targets.
     writeArcSeen();
+    track("arc_abort", { via: "key", beat: state.arc ? state.arc.beat : "" });
     abortArc();
   };
   document.addEventListener("pointerdown", arcPointerDown, true);
@@ -3268,6 +3308,7 @@ async function main() {
       e.preventDefault();
       // Explicit skip counts as seen: don't replay on next visit.
       writeArcSeen();
+      track("arc_skip", { beat: state.arc ? state.arc.beat : "" });
       abortArc();
     });
   }
@@ -3411,6 +3452,10 @@ async function main() {
 
 main().catch((e) => {
   console.error(e);
+  track("client_error", {
+    message: String((e && e.message) || e).slice(0, 200),
+    source: "load",
+  });
   const root = document.getElementById("chart");
   root.replaceChildren();
   const msg = document.createElement("div");
