@@ -25,6 +25,11 @@
       "tab_label": "Gastos vs pagbabago ng kahirapan",
       "headline": "Mas maraming gastos sa kalsada, mas malaking pagbaba ng kahirapan?",
       "tagline": "Kabuuang gastos ng DPWH kada tao, 2014-2023, laban sa pagbabago ng antas ng kahirapan mula 2018 hanggang 2023. Isang snapshot, 81 lalawigan at Metro Manila."
+    },
+    "inflation-vs-poverty": {
+      "tab_label": "Implasyon vs kahirapan",
+      "headline": "Kung saan pinakamabilis tumaas ang presyo, sino na ang mahirap?",
+      "tagline": "Implasyon ng CPI kada rehiyon (taon-sa-taon) laban sa antas ng kahirapan. Inilalathala ng PSA ang CPI kada rehiyon, hindi kada lalawigan, kaya bumababa ang kuwentong ito mula sa 82 yunit ng lalawigan tungo sa 18 rehiyon. Mga survey year ng PSA: 2021 at 2023."
     }
   },
   "indicators": {
@@ -39,7 +44,9 @@
     "population": "Populasyon (2020 Census)",
     "poverty_change_pp": "Pagbabago ng kahirapan 2018 hanggang 2023",
     "cpi_yoy_pct": "Pambansang CPI, taon-sa-taon",
-    "dpwh_spend_per_capita_cum": "Kabuuang gastos ng DPWH kada tao 2014-2023"
+    "dpwh_spend_per_capita_cum": "Kabuuang gastos ng DPWH kada tao 2014-2023",
+    "region_cpi_yoy_pct": "Implasyon kada rehiyon (CPI, taon-sa-taon)",
+    "region_poverty": "Antas ng kahirapan ng mga pamilya (kada rehiyon)"
   },
   "finding": {
     "prefix": "Ano ang ipinapakita ng datos.",
@@ -70,6 +77,8 @@
     "ct_map": "Mapa",
     "ct_panels": "Mga panel",
     "find": "Maghanap ng lalawigan",
+    "find_region": "Maghanap ng rehiyon",
+    "howto_region": "Bawat bula ay isa sa 18 rehiyon, pare-pareho ang laki. Pindutin ang play para panoorin ang {span}.",
     "search_placeholder": "I-type para maghanap",
     "selected": "Mga napili",
     "islands": "Pangkat ng isla",

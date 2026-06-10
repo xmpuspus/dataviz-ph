@@ -9,13 +9,16 @@ import random
 from datetime import UTC, datetime
 from pathlib import Path
 
-from etl import interpolate, philgeps, psa_openstat, validate
+from etl import interpolate, philgeps, psa_inflation, psa_openstat, validate
 from etl.psgc import huc_parent, load_provinces, normalize_name
 
 PUBLIC_DATA = Path(__file__).resolve().parent.parent / "public" / "data"
 
 PANEL_YEARS = list(range(2014, 2025))  # 2014-2024 inclusive
 POVERTY_ANCHORS = [2018, 2021, 2023]
+# Regional story panel: poverty anchors that have a year-on-year inflation
+# print (regional CPI is 2018-based, so YoY starts 2019; 2018 drops out).
+REGION_STORY_YEARS = [2021, 2023]
 GDP_PANEL_YEARS = [2022, 2023, 2024]
 GDP_ANCHORS = [2022, 2023, 2024]  # PSA publishes all three; no interpolation needed
 CPI_YOY_YEARS = list(range(2019, 2026))  # need year-prior so series starts at 2019
@@ -256,12 +259,14 @@ def compute_story_finding(
         "gdp_per_capita": "per-capita GDP",
         "subsistence_incidence": "subsistence incidence",
         "poverty_change_pp": "poverty change (pp)",
+        "region_poverty": "regional poverty incidence",
     }.get(yid, yid.replace("_", " "))
     xname = {
         "dpwh_spend_per_capita": "DPWH spend per capita",
         "dpwh_spend_per_capita_cum": "cumulative DPWH spend per capita (2014-2023)",
         "all_spend_per_capita": "all-government spend per capita",
         "gdp_per_capita": "per-capita GDP",
+        "region_cpi_yoy_pct": "regional CPI inflation (year-on-year)",
     }.get(xid, xid.replace("_", " "))
 
     direction = "negative" if (rho is not None and rho < 0) else "positive"
@@ -414,6 +419,19 @@ def main(no_cache: bool = False) -> None:
     population_series = expand_population(provinces_out, PANEL_YEARS)
     validate.validate_all(population_series, schema="population")
 
+    print(">> fetch regional poverty + regional CPI (18 regions, PSA 1a + 2M/PI/CPI)")
+    regions = psa_inflation.load_regions()
+    region_poverty = psa_inflation.fetch_regional_poverty()
+    validate.validate_all(region_poverty, schema="rate_pct")
+    validate.validate_precision(region_poverty)
+    validate.validate_coverage(region_poverty, len(regions), POVERTY_ANCHORS, "region_poverty")
+    validate.validate_uniqueness(region_poverty, "region_poverty")
+    region_cpi = psa_inflation.fetch_regional_cpi()
+    region_cpi_yoy = psa_inflation.compute_regional_cpi_yoy(region_cpi)
+    validate.validate_all(region_cpi_yoy, schema="yoy_pct")
+    validate.validate_uniqueness(region_cpi_yoy, "region_cpi_yoy_pct")
+    region_yoy_years = sorted({r["year"] for r in region_cpi_yoy})
+
     print(">> derive: cumulative DPWH spend per capita 2014-2023 (nominal)")
     dpwh_cum = compute_dpwh_spend_per_capita_cum(dpwh_spend)
     # Cumulative values can exceed the single-year peso_per_capita max; use a wide
@@ -452,6 +470,9 @@ def main(no_cache: bool = False) -> None:
     write_json("poverty_change_pp.json", poverty_change)
     write_json("population.json", population_series)
     write_json("dpwh_spend_per_capita_cum.json", dpwh_cum)
+    write_json("regions.json", regions)
+    write_json("region_poverty.json", region_poverty)
+    write_json("region_cpi_yoy_pct.json", region_cpi_yoy)
 
     indicators = [
         {
@@ -733,6 +754,56 @@ def main(no_cache: bool = False) -> None:
                 "not a yearly series."
             ),
         },
+        {
+            "id": "region_cpi_yoy_pct",
+            "name": "Regional inflation (CPI year-on-year)",
+            "unit": "%",
+            "source": "Derived from PSA OpenStat 2M/PI/CPI/2018NEW, regional rows",
+            "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__2M__PI__CPI/"),
+            "definition": (
+                "Year-on-year change in each region's all-items CPI annual average, "
+                "2018=100. PSA publishes CPI by region, not province, so this "
+                "indicator runs on the 18 official regions."
+            ),
+            "vintage": (
+                "(cpi_year - cpi_prev) / cpi_prev * 100 per region, consecutive "
+                "years only. The series starts in 2019 (the 2018-based index needs a "
+                "year-prior) and excludes the in-progress calendar year, whose "
+                "running annual average would read as a fake full-year print."
+            ),
+            "log_natural": False,
+            "panel_years": region_yoy_years,
+            "anchor_years": region_yoy_years,
+            "unit_set": "regions",
+            "coverage_label": (
+                "Regional grain: PSA publishes CPI by region, so this view has 18 "
+                "units instead of the 82 provincial units elsewhere on the site."
+            ),
+        },
+        {
+            "id": "region_poverty",
+            "name": "Poverty incidence among families (regional)",
+            "unit": "%",
+            "source": "PSA OpenStat 1E/FY Table 1a, regional rows",
+            "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1E__FY/"),
+            "definition": (
+                "Share of families below the official poverty threshold, as PSA "
+                "publishes it for each of the 18 regions in Table 1a. These are "
+                "PSA's own regional estimates (full survey design), not an average "
+                "of the provincial rows."
+            ),
+            "vintage": (
+                "PSA Full-Year anchors at 2018, 2021, 2023; survey years only, no "
+                "interpolation at the regional grain. Each year carries PSA's "
+                "published 95% confidence interval and coefficient of variation."
+            ),
+            "log_natural": False,
+            "panel_years": POVERTY_ANCHORS,
+            "anchor_years": POVERTY_ANCHORS,
+            "has_ci": True,
+            "cv_unreliable_above": 30,
+            "unit_set": "regions",
+        },
     ]
     write_json("indicators.json", indicators)
 
@@ -882,6 +953,32 @@ def main(no_cache: bool = False) -> None:
                 "for transparency. Negative Y means poverty fell; positive means it rose."
             ),
         },
+        {
+            "id": "inflation-vs-poverty",
+            "tab_label": "Inflation vs poverty",
+            "headline": "Where prices rise fastest, who already lives poor?",
+            "tagline": (
+                "Regional CPI inflation (year-on-year) against poverty incidence. "
+                "PSA publishes CPI by region, not province, so this story drops "
+                "from the 82 provincial units used elsewhere to 18 regions. "
+                "PSA survey years 2021 and 2023."
+            ),
+            "why": (
+                "Inflation is a tax that falls hardest where incomes are lowest, "
+                "but headline inflation is a national number. PSA's regional CPI "
+                "lets the question be asked one level down: do the regions with "
+                "the fastest-rising prices also carry the highest poverty? The "
+                "upper-right of the chart is the squeeze: high poverty and fast "
+                "price growth at the same time."
+            ),
+            "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__2M__PI__CPI/"),
+            "x": "region_cpi_yoy_pct",
+            "y": "region_poverty",
+            "unit_set": "regions",
+            "panel_years": REGION_STORY_YEARS,
+            "default_year": 2023,
+            "default_log_x": False,
+        },
     ]
 
     # Compute a data-grounded finding per story so each question gets an answer
@@ -896,6 +993,8 @@ def main(no_cache: bool = False) -> None:
         "infra_spend_per_capita": {(r["psgc"], r["year"]): r["value"] for r in infra_spend},
         "gdp_per_capita": {(r["psgc"], r["year"]): r["value"] for r in gdp},
         "poverty_change_pp": {(r["psgc"], r["year"]): r["value"] for r in poverty_change},
+        "region_cpi_yoy_pct": {(r["psgc"], r["year"]): r["value"] for r in region_cpi_yoy},
+        "region_poverty": {(r["psgc"], r["year"]): r["value"] for r in region_poverty},
     }
     for s in stories:
         s["finding"] = compute_story_finding(s, value_index)
@@ -935,6 +1034,8 @@ def main(no_cache: bool = False) -> None:
                 "population": len(population),
                 "gdp": len(gdp),
                 "cpi_years": len(cpi),
+                "region_poverty": len(region_poverty),
+                "region_cpi_yoy": len(region_cpi_yoy),
             },
         },
     }
@@ -972,6 +1073,9 @@ def main(no_cache: bool = False) -> None:
             "poverty_change_pp": len(poverty_change),
             "population": len(population_series),
             "dpwh_spend_per_capita_cum": len(dpwh_cum),
+            "regions": len(regions),
+            "region_poverty": len(region_poverty),
+            "region_cpi_yoy_pct": len(region_cpi_yoy),
             "stories": len(stories),
             "indicators": len(indicators),
         },
@@ -995,6 +1099,9 @@ def main(no_cache: bool = False) -> None:
     print(f"  poverty change rows: {len(poverty_change)}")
     print(f"  dpwh cum rows: {len(dpwh_cum)}")
     print(f"  population rows: {len(population_series)}")
+    print(f"  regions: {len(regions)}")
+    print(f"  region poverty rows: {len(region_poverty)}")
+    print(f"  region cpi yoy rows: {len(region_cpi_yoy)}")
     print(f"  stories: {len(stories)}")
     print(f"  indicators: {len(indicators)}")
     print(f"  manifest built_at: {manifest['built_at']}")

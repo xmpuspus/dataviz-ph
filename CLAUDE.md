@@ -43,7 +43,7 @@ First-visit (no URL hash, motion on) plays a 4-beat arc, then hands control to t
 ## Dev, test, ship
 
 - Serve locally: `python3 -m http.server 8099 --directory public` (the topbar `/methodology` link works via the server's directory index).
-- Test: `python3 -m pytest -q` (100 passing). Browser tests use Playwright + headless Chromium and self-skip when Chromium is absent; CI installs Chromium, so they run both locally AND on CI. Explorer browser tests emulate reduced motion so the arc doesn't swallow control clicks; the arc itself has dedicated tests.
+- Test: `python3 -m pytest -q` (120 passing). Browser tests use Playwright + headless Chromium and self-skip when Chromium is absent; CI installs Chromium, so they run both locally AND on CI. Explorer browser tests emulate reduced motion so the arc doesn't swallow control clicks; the arc itself has dedicated tests.
 - Lint: `ruff check . && ruff format --check .` (CI runs both).
 - Ship: cut a branch off `main`, PR, let CI go green, merge to `main` (Vercel auto-deploys prod). Then VERIFY PROD:
   - Use a real headless browser (Playwright) against `https://dataviz.ph`. `WebFetch`/curl do NOT run JS, so the chart and the methodology scale numbers won't appear in a plain fetch.
@@ -52,7 +52,12 @@ First-visit (no URL hash, motion on) plays a 4-beat arc, then hands control to t
 
 ## Current state (2026-06-10)
 
-The `audit-sweep` branch is the latest pass, on top of the A1 guided arc + methodology split (PR #4, squash `ba77407`). What it added:
+Two post-audit passes shipped on top of the audit sweep (PR #5, `faed40d`):
+
+- **Explorer upgrades (PR #6).** Vendor bundle r2 (`echarts-custom-5.6.0-r2.min.js`: +SVGRenderer +DataZoomInside, +13.3 KB gzip, fresh SRI). SVG export button (throwaway SSR SVG-renderer instance). Color-by (island default / Y-quantile RAMP) + size-by (population default / equal) selectors, hash `col=yq` / `size=eq`. Inside dataZoom on bubble axes (pinch / Ctrl+scroll; plain scroll untouched). EN/Tagalog scaffold: `locales/tl.json` covers headlines/taglines/finding template/control labels; `t()` falls back to the English authored in HTML/JS; finding sentences re-interpolate the same computed numbers; toggle in topbar, persisted in localStorage.
+- **Regional inflation story (PR #7).** `etl/psa_inflation.py` pulls the 18-region cut: CPI YoY per region (2M/PI/CPI/2018NEW regional rows, in-progress year excluded) and PSA's own regional poverty rows from Table 1a (never aggregated from provinces; shares the cached Table 1a payload). 6th preset `inflation-vs-poverty` (x `region_cpi_yoy_pct`, y `region_poverty`, panel 2021+2023, finding via the same 10k-permutation machinery). app.js gained a unit-set abstraction: `unit_set:"regions"` on an indicator routes every engine loop (`unitsForIndicator`/`unitsOf`) to `regions.json` (18 units, no population so equal-size bubbles, size legend hidden); map + panels are off at that grain; pickers only offer same-grain pairs; search/SR table/CSV run on the active set.
+
+The earlier audit-sweep pass (PR #5) added:
 
 - Critical fix: DOH and Infra spend now actually deflate (`DEFLATABLE_INDICATORS` in `app.js`); their labels claimed 2018-real over nominal values before.
 - 5th preset `spend-vs-poverty-change`: cumulative nominal DPWH spend per capita 2014-2023 (`dpwh_spend_per_capita_cum`, `can_deflate: false`) vs poverty change in pp, single 2023 panel. 12 indicators total.

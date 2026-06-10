@@ -99,6 +99,24 @@
       disbursement, and the correlation is association, not causation.
     </p>
     <p>
+      <strong>Regional inflation story.</strong>
+      The "Inflation vs poverty" preset runs at a coarser grain than the rest of
+      the site: PSA publishes the Consumer Price Index by region, not by
+      province, so that story uses the 18 official regions instead of the 82
+      provincial units. Inflation per region is the year-on-year change in the
+      all-items annual-average CPI (2018=100) from PSA OpenStat
+      2M/PI/CPI/2018NEW; the series starts in 2019 because the 2018-based index
+      needs a year prior, and the in-progress calendar year is excluded because
+      its running average is not a full-year print. Poverty is PSA's own
+      regional estimate read directly off the regional rows of Table 1a, with
+      its published 95% CI and CV, never an average of the provincial rows
+      (PSA's regional estimate uses the full survey design). The chart shows
+      the two PSA survey years that have an inflation print, 2021 and 2023.
+      Regions carry no population bubble size (the regional census total is not
+      pulled), so every bubble draws at the same size, and the map view is off
+      at this grain.
+    </p>
+    <p>
       <strong>Significance.</strong>
       Every preset's finding line carries a permutation p-value: the observed
       Spearman rho is compared against 10,000 random shuffles of the Y values

@@ -95,9 +95,9 @@ def _goto(pg, base_url, hash_suffix):
 def test_new_story_tab_and_single_year_degrade(page, base_url):
     _goto(page, base_url, "#story=spend-vs-poverty-change")
     page.wait_for_selector("#story-finding:not([hidden])", timeout=15000)
-    # All five preset tabs are rendered in the topbar.
+    # All six preset tabs are rendered in the topbar.
     tabs = page.locator("#story-switcher .story-btn")
-    assert tabs.count() == 5
+    assert tabs.count() == 6
     # Single-year panel: nothing to animate or scrub.
     assert page.locator("#big-play").is_hidden()
     assert page.locator("#play-speed").is_hidden()

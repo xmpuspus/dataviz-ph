@@ -240,6 +240,7 @@ async function loadData() {
     });
   const [
     provinces,
+    regions,
     poverty,
     subsistence,
     spend,
@@ -252,12 +253,15 @@ async function loadData() {
     povertyChange,
     spendCum,
     population,
+    regionPoverty,
+    regionCpiYoy,
     indicators,
     stories,
     pairHeadlines,
     manifest,
   ] = await Promise.all([
     fetchJson("data/provinces.json"),
+    optJson("data/regions.json", {}),
     fetchJson("data/poverty.json"),
     optJson("data/subsistence.json", []),
     fetchJson("data/dpwh_spend_per_capita.json"),
@@ -270,6 +274,8 @@ async function loadData() {
     optJson("data/poverty_change_pp.json", []),
     optJson("data/dpwh_spend_per_capita_cum.json", []),
     optJson("data/population.json", []),
+    optJson("data/region_poverty.json", []),
+    optJson("data/region_cpi_yoy_pct.json", []),
     fetchJson("data/indicators.json"),
     fetchJson("data/stories.json"),
     optJson("data/pair_headlines.json", {}),
@@ -278,6 +284,7 @@ async function loadData() {
   return {
     optionalFailures,
     provinces,
+    regions,
     indicatorRows: {
       poverty: indexRows(poverty),
       subsistence_incidence: indexRows(subsistence),
@@ -291,6 +298,8 @@ async function loadData() {
       poverty_change_pp: indexRows(povertyChange),
       dpwh_spend_per_capita_cum: indexRows(spendCum),
       population: indexRows(population),
+      region_poverty: indexRows(regionPoverty),
+      region_cpi_yoy_pct: indexRows(regionCpiYoy),
     },
     indicators: Object.fromEntries(indicators.map((i) => [i.id, i])),
     stories,
@@ -473,7 +482,7 @@ function globalExtent(indicatorId, data, state) {
   const years = meta.panel_years || [];
   let min = Infinity;
   let max = -Infinity;
-  for (const psgc of Object.keys(data.provinces)) {
+  for (const psgc of Object.keys(unitsForIndicator(indicatorId, data))) {
     for (const y of years) {
       const row = lookupRow(indicatorId, psgc, y, data);
       const v = row ? indicatorValue(row, indicatorId, state) : null;
@@ -505,7 +514,7 @@ function globalQuantiles(indicatorId, data, state, nBins) {
   const meta = data.indicators[indicatorId] || {};
   const years = meta.panel_years || [];
   const vals = [];
-  for (const psgc of Object.keys(data.provinces)) {
+  for (const psgc of Object.keys(unitsForIndicator(indicatorId, data))) {
     for (const y of years) {
       const row = lookupRow(indicatorId, psgc, y, data);
       const v = row ? indicatorValue(row, indicatorId, state) : null;
@@ -522,6 +531,27 @@ function globalQuantiles(indicatorId, data, state, nBins) {
   }
   _quantileCache.set(key, breaks);
   return breaks;
+}
+
+// ---------- unit sets ----------
+// Most of the site runs on the 82 provincial units (81 provinces + Metro
+// Manila). Indicators PSA only publishes by region (CPI) carry
+// unit_set:"regions" and run on the 18 official regions instead. X and Y of a
+// view always share a unit set (the pickers filter cross-set pairs out), so
+// the view's unit set is its Y indicator's. Region units carry no
+// population_2020, so bubbles there render equal-size and the size key hides.
+function unitsForIndicator(indicatorId, data) {
+  const meta = (data.indicators || {})[indicatorId] || {};
+  return meta.unit_set === "regions" ? data.regions || {} : data.provinces;
+}
+
+function unitsOf(viewOrStory, data) {
+  return unitsForIndicator(viewOrStory.y, data);
+}
+
+function isRegionView(viewOrStory, data) {
+  const meta = (data.indicators || {})[viewOrStory.y] || {};
+  return meta.unit_set === "regions";
 }
 
 // Indicator row lookup with national-only fallback: if the per-province row
@@ -613,9 +643,9 @@ function projectValue(indicatorId, psgc, year, data) {
   return projected;
 }
 
-// Build per-province point for a year in the current story.
+// Build per-unit (province or region) point for a year in the current story.
 function pointFor(psgc, year, story, data, state) {
-  const info = data.provinces[psgc];
+  const info = unitsOf(story, data)[psgc];
   if (!info) return null;
   const xRow = lookupRow(story.x, psgc, year, data);
   const yRow = lookupRow(story.y, psgc, year, data);
@@ -665,7 +695,7 @@ function pointFor(psgc, year, story, data, state) {
 
 function buildSeriesData(year, story, data, state) {
   const points = [];
-  for (const psgc of Object.keys(data.provinces)) {
+  for (const psgc of Object.keys(unitsOf(story, data))) {
     const p = pointFor(psgc, year, story, data, state);
     if (p) points.push(p);
   }
@@ -718,7 +748,8 @@ function buildSeriesData(year, story, data, state) {
       yPrec: p.yPrec,
       // Size: 2020 Census population by default (the Gapminder 4th variable);
       // optional equal size for readers who find the area encoding noisy.
-      symbolSize: state.sizeBy === "eq" ? EQUAL_SIZE_PX : sizeFor(p.pop),
+      // Region units carry no population, so they always render equal-size.
+      symbolSize: state.sizeBy === "eq" || !p.pop ? EQUAL_SIZE_PX : sizeFor(p.pop),
       itemStyle,
       label: {
         show: showLabel,
@@ -741,7 +772,7 @@ function buildSeriesData(year, story, data, state) {
 // visit so the trace effect is visible without requiring a click.
 function autoTrailProvinces(story, data, n = 3) {
   const movements = [];
-  for (const psgc of Object.keys(data.provinces)) {
+  for (const psgc of Object.keys(unitsOf(story, data))) {
     let first = null;
     let last = null;
     for (const y of story.panel_years) {
@@ -775,7 +806,8 @@ function buildTrails(year, story, data, state) {
       if (p) pts.push([p.x, p.y]);
     }
     if (pts.length < 2) continue;
-    const info = data.provinces[psgc];
+    const info = unitsOf(story, data)[psgc];
+    if (!info) continue;
     const color = PALETTE[info.island_group] || "#999";
     // Trails of filtered-out island groups fade with their bubbles.
     const fadeMul = groupFaded(state, info.island_group) ? 0.2 : 1;
@@ -1041,7 +1073,7 @@ function computeLiveFinding(view, data, state) {
   if (_liveFindingCache.has(key)) return _liveFindingCache.get(key);
   const xs = [];
   const ys = [];
-  for (const psgc of Object.keys(data.provinces)) {
+  for (const psgc of Object.keys(unitsOf(view, data))) {
     const p = pointFor(psgc, state.year, view, data, state);
     if (p && p.x !== null && p.y !== null) {
       xs.push(p.x);
@@ -1330,7 +1362,7 @@ function baseOption(story, data, state) {
           ciTooltipLine(shortAxisName(xIndicator, state), xPrec, xIndicator) +
           `<div>${escapeHtml(shortAxisName(yIndicator, state))}: <b>${escapeHtml(formatValue(y, yIndicator))}</b></div>` +
           ciTooltipLine(shortAxisName(yIndicator, state), yPrec, yIndicator) +
-          `<div>Population (2020 Census): ${escapeHtml(COUNT.format(pop))}</div>` +
+          (pop ? `<div>Population (2020 Census): ${escapeHtml(COUNT.format(pop))}</div>` : "") +
           noteHtml
         );
       },
@@ -1370,7 +1402,7 @@ function buildCompareConnectors(year, story, data, state) {
   if (!state.compareYear || !story.panel_years.includes(state.compareYear)) return [];
   if (state.compareYear === year) return [];
   const out = [];
-  for (const psgc of Object.keys(data.provinces)) {
+  for (const psgc of Object.keys(unitsOf(story, data))) {
     const live = pointFor(psgc, year, story, data, state);
     const ghost = pointFor(psgc, state.compareYear, story, data, state);
     if (!live || !ghost) continue;
@@ -1430,17 +1462,18 @@ function buildMapOption(view, data, state) {
   const yId = view.y;
   const yMeta = data.indicators[yId] || {};
 
+  const mapUnits = unitsOf(view, data);
   const rows = [];
-  for (const psgc of Object.keys(data.provinces)) {
+  for (const psgc of Object.keys(mapUnits)) {
     const row = lookupRow(yId, psgc, state.year, data);
     const val = row ? indicatorValue(row, yId, state) : null;
-    const name = data.provinces[psgc].name;
+    const name = mapUnits[psgc].name;
     if (val === null || val === undefined) {
       rows.push({ name, value: null, psgc });
     } else {
       const prec = state.deflate && DEFLATABLE_INDICATORS.has(yId) ? null : precisionOf(row);
       const imprecise = prec && prec.cv != null && prec.cv > CV_UNRELIABLE;
-      const faded = groupFaded(state, data.provinces[psgc].island_group);
+      const faded = groupFaded(state, mapUnits[psgc].island_group);
       const itemStyle = {
         ...(imprecise
           ? { borderColor: "#c05621", borderWidth: 1.4, borderType: "dashed" }
@@ -1568,7 +1601,7 @@ function buildMapOption(view, data, state) {
 function medianXYForYear(year, story, data, state) {
   const xs = [];
   const ys = [];
-  for (const psgc of Object.keys(data.provinces)) {
+  for (const psgc of Object.keys(unitsOf(story, data))) {
     const p = pointFor(psgc, year, story, data, state);
     if (p && p.x != null && p.y != null) {
       xs.push(p.x);
@@ -1797,7 +1830,7 @@ function buildBubbleOption(story, data, state) {
     symbol: "none",
     smooth: true,
     lineStyle: {
-      color: PALETTE[data.provinces[psgc]?.island_group] || "#999",
+      color: PALETTE[unitsOf(story, data)[psgc]?.island_group] || "#999",
       width: 1.5,
       opacity: 0.45,
     },
@@ -1877,8 +1910,9 @@ function buildLineOption(view, data, state) {
   const highlighted = new Set([...state.sel, ...auto]);
 
   const series = [];
-  for (const psgc of Object.keys(data.provinces)) {
-    const info = data.provinces[psgc];
+  const lineUnits = unitsOf(view, data);
+  for (const psgc of Object.keys(lineUnits)) {
+    const info = lineUnits[psgc];
     const color = PALETTE[info.island_group] || "#999";
     const pts = [];
     for (const y of years) {
@@ -2014,15 +2048,16 @@ function buildBarOption(view, data, state) {
   const narrow = window.innerWidth <= 520;
 
   // Collect (psgc, value) for the current year, drop null.
+  const barUnits = unitsOf(view, data);
   const rows = [];
-  for (const psgc of Object.keys(data.provinces)) {
+  for (const psgc of Object.keys(barUnits)) {
     const row = lookupRow(yId, psgc, state.year, data);
     if (!row) continue;
     const val = indicatorValue(row, yId, state);
     if (val === null) continue;
     const prec = state.deflate && DEFLATABLE_INDICATORS.has(yId) ? null : precisionOf(row);
-    rows.push({ psgc, name: data.provinces[psgc].name, value: val,
-      island: data.provinces[psgc].island_group, prec });
+    rows.push({ psgc, name: barUnits[psgc].name, value: val,
+      island: barUnits[psgc].island_group, prec });
   }
   rows.sort((a, b) => b.value - a.value);
   const precByName = new Map(rows.map((r) => [r.name, r.prec]));
@@ -2388,10 +2423,12 @@ function writeHash(state, view) {
 // ---------- search ----------
 
 function wireSearch(input, data, state, render) {
+  // Search runs over the active view's unit set: provinces on provincial
+  // stories, the 18 regions on regional ones.
   const matches = (q) => {
     const lower = q.trim().toLowerCase();
     if (!lower) return [];
-    return Object.entries(data.provinces)
+    return Object.entries(unitsOf(state.view || state.story, data))
       .filter(([, info]) => info.name.toLowerCase().includes(lower))
       .map(([psgc, info]) => ({ psgc, name: info.name }))
       .slice(0, 6);
@@ -2514,7 +2551,9 @@ function renderSelChips(state, data, render) {
   const hint = document.getElementById("selected-hint");
   root.replaceChildren();
   for (const psgc of state.sel) {
-    const info = data.provinces[psgc];
+    // Selections can hold ids from either unit set (a region pin survives a
+    // story switch in the hash); chips render whichever set knows the id.
+    const info = data.provinces[psgc] || (data.regions || {})[psgc];
     if (!info) continue;
     const color = PALETTE[info.island_group] || "#999";
     const ink = readableInk(color);
@@ -2675,14 +2714,21 @@ function renderStorySwitcher(stories, state, view, render) {
 
 function renderIndicatorPickers(state, view, data, render) {
   const allIndicators = Object.values(data.indicators);
+  // Axes never mix unit sets (a regional indicator against a provincial one
+  // has no shared rows), so the choices on offer are the current set's only.
+  const unitSet = (data.indicators[view.y] || {}).unit_set || "provinces";
   const wireOne = (selectId, currentId, otherId, onChange) => {
     const select = document.getElementById(selectId);
     if (!select) return;
-    // Build options once. On subsequent renders just mutate enabled/selected,
-    // so Playwright (and screen readers) don't see flickering DOM children.
-    if (select.options.length === 0) {
+    // Build options once per unit set. On subsequent renders just mutate
+    // enabled/selected, so Playwright (and screen readers) don't see
+    // flickering DOM children.
+    if (select.options.length === 0 || select.dataset.unitSet !== unitSet) {
+      select.replaceChildren();
+      select.dataset.unitSet = unitSet;
       for (const ind of allIndicators) {
         if (ind.national_only) continue; // no per-province variation; not an axis choice
+        if ((ind.unit_set || "provinces") !== unitSet) continue;
         const opt = document.createElement("option");
         opt.value = ind.id;
         opt.textContent = ind.name;
@@ -2710,8 +2756,9 @@ function renderIndicatorPickers(state, view, data, render) {
 
 function renderSrTable(story, data, state) {
   const root = document.getElementById("chart-sr-table");
+  const regionMode = isRegionView(story, data);
   const rows = [];
-  for (const psgc of Object.keys(data.provinces)) {
+  for (const psgc of Object.keys(unitsOf(story, data))) {
     const p = pointFor(psgc, state.year, story, data, state);
     if (p) rows.push(p);
   }
@@ -2745,7 +2792,7 @@ function renderSrTable(story, data, state) {
   const thead = document.createElement("thead");
   const trh = document.createElement("tr");
   for (const h of [
-    "Province",
+    regionMode ? "Region" : "Province",
     "Island group",
     shortAxisName(story.x, state),
     shortAxisName(story.y, state),
@@ -2767,7 +2814,7 @@ function renderSrTable(story, data, state) {
       ISLAND_LABEL[r.island] || r.island,
       formatValue(r.x, story.x),
       formatValue(r.y, story.y),
-      COUNT.format(r.pop),
+      r.pop ? COUNT.format(r.pop) : "not shown at this grain",
     ]) {
       const td = document.createElement("td");
       td.textContent = cell;
@@ -2806,7 +2853,7 @@ function downloadCsv(story, data, state, allYears = false) {
   const rows = [headers.join(",")];
   const years = allYears ? story.panel_years || [state.year] : [state.year];
   for (const year of years) {
-    for (const psgc of Object.keys(data.provinces)) {
+    for (const psgc of Object.keys(unitsOf(story, data))) {
       const p = pointFor(psgc, year, story, data, state);
       if (!p) continue;
       rows.push(
@@ -2821,7 +2868,7 @@ function downloadCsv(story, data, state, allYears = false) {
           story.y,
           p.y,
           unitFor(story.y, state),
-          p.pop,
+          p.pop ?? "",
           p.interp ? "true" : "false",
           p.extrap ? "true" : "false",
         ]
@@ -2965,12 +3012,16 @@ function showIndicatorPanel(anchorBtn, kind, currentId, otherId, data) {
   panel.appendChild(list);
 
   const allIndicators = Object.values(data.indicators);
+  // Offer only indicators from the same unit set as the current pick: regional
+  // and provincial indicators share no rows, so cross-set pairs plot nothing.
+  const panelUnitSet = ((data.indicators || {})[currentId] || {}).unit_set || "provinces";
   function renderList(filter = "") {
     list.replaceChildren();
     const q = filter.trim().toLowerCase();
     const filtered = allIndicators.filter(
       (i) =>
         !i.national_only &&
+        (i.unit_set || "provinces") === panelUnitSet &&
         (!q || i.name.toLowerCase().includes(q) || (i.unit || "").toLowerCase().includes(q)),
     );
     for (const ind of filtered) {
@@ -3178,7 +3229,7 @@ function renderLastTapPanel(seriesPoint, state) {
   const rows = [
     [xLabel, formatValue(x, v.x)],
     [yLabel, formatValue(y, v.y)],
-    ["Population (2020)", COUNT.format(pop)],
+    ...(pop ? [["Population (2020)", COUNT.format(pop)]] : []),
   ];
   for (const [k, v] of rows) {
     const row = document.createElement("div");
@@ -3366,6 +3417,13 @@ async function main() {
         state.chartType = "bubbles";
         showChartNotice("Panels needs poverty on the Y axis. Showing bubbles instead.");
       }
+      // Region stories have no region-grain geojson, so the map view is off
+      // there (the 18 units read fine as bubbles, lines, and ranks).
+      const regionMode = isRegionView(view, data);
+      if (state.chartType === "map" && regionMode) {
+        state.chartType = "bubbles";
+        showChartNotice("The map is not available for regional stories. Showing bubbles instead.");
+      }
       // In Panels the playable years are the overlap of both X indicators'
       // coverage (per-capita GDP is the short one), not the story's full panel.
       if (state.chartType === "panels") {
@@ -3476,6 +3534,7 @@ async function main() {
         b.classList.toggle("active", active);
         b.setAttribute("aria-pressed", active ? "true" : "false");
         if (b.dataset.type === "panels") b.hidden = view.y !== "poverty";
+        if (b.dataset.type === "map") b.hidden = regionMode;
       });
       // Island-group filter buttons mirror the active set (empty = all normal).
       document.querySelectorAll(".legend-toggle").forEach((b) => {
@@ -3503,7 +3562,8 @@ async function main() {
       const sizeLegend = document.getElementById("size-legend");
       const bubbleLike = state.chartType === "bubbles" || state.chartType === "panels";
       if (sizeLegend) {
-        const showSize = bubbleLike && state.sizeBy !== "eq";
+        // Region units carry no population, so size encodes nothing there.
+        const showSize = bubbleLike && state.sizeBy !== "eq" && !regionMode;
         sizeLegend.hidden = !showSize;
         if (showSize) renderSizeLegend();
       }
@@ -3515,7 +3575,12 @@ async function main() {
         const colorSel = document.getElementById("color-by");
         const sizeSel = document.getElementById("size-by");
         if (colorSel) colorSel.value = state.colorBy === "yq" ? "yq" : "island";
-        if (sizeSel) sizeSel.value = state.sizeBy === "eq" ? "eq" : "pop";
+        if (sizeSel) {
+          sizeSel.value = state.sizeBy === "eq" ? "eq" : "pop";
+          // Regions carry no population, so there is nothing for size to
+          // encode; the control would be a dead switch.
+          sizeSel.disabled = regionMode;
+        }
         const yqNote = document.getElementById("encode-yq-note");
         if (yqNote) yqNote.hidden = state.colorBy !== "yq";
       }
@@ -3534,13 +3599,25 @@ async function main() {
           const yrs = view.panel_years;
           const span = yrs && yrs.length ? `${yrs[0]}→${yrs[yrs.length - 1]}` : "the years";
           document.getElementById("chart-howto-text").textContent = tFill(
-            t(
-              "controls.howto",
-              "Each bubble is a province or Metro Manila. Size = population. Press play to watch {span}.",
-            ),
+            regionMode
+              ? t(
+                  "controls.howto_region",
+                  "Each bubble is one of the 18 regions, all drawn the same size. Press play to watch {span}.",
+                )
+              : t(
+                  "controls.howto",
+                  "Each bubble is a province or Metro Manila. Size = population. Press play to watch {span}.",
+                ),
             { span },
           );
         }
+      }
+      // Search block heading follows the unit set.
+      const findHead = document.querySelector('[data-i18n="controls.find"]');
+      if (findHead) {
+        findHead.textContent = regionMode
+          ? t("controls.find_region", "Find a region")
+          : t("controls.find", findHead.dataset.i18nEn || "Find a province");
       }
       const selHint = document.getElementById("selected-hint");
       if (selHint) {
