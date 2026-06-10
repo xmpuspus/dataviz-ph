@@ -869,7 +869,10 @@ def main(no_cache: bool = False) -> None:
             "x": "dpwh_spend_per_capita_cum",
             "y": "poverty_change_pp",
             "size": "population_2020",
-            "panel_years": PANEL_YEARS,
+            # Both axes are static window aggregates (2014-2023 spend, 2018-2023
+            # poverty change), so every panel year renders the identical frame.
+            # A single 2023 panel keeps the year label honest and the timeline quiet.
+            "panel_years": [2023],
             "default_year": 2023,
             "default_log_x": True,
             "awards_caveat": AWARDS_CAVEAT,
