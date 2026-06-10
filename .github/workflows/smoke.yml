@@ -1,0 +1,54 @@
+name: Smoke
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prod-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Assert homepage returns HTTP 200 and expected title
+        run: |
+          curl -fsS -o /tmp/homepage.html https://dataviz.ph
+          grep -q "Philippine public data, animated" /tmp/homepage.html
+
+      - name: Assert manifest parses and is fresh
+        run: |
+          curl -fsS https://dataviz.ph/data/manifest.json -o /tmp/manifest.json
+          python3 - <<'EOF'
+          import json, sys
+          from datetime import datetime, timezone
+
+          with open("/tmp/manifest.json") as f:
+              m = json.load(f)
+
+          built_at = m.get("built_at")
+          if not built_at:
+              print("ERROR: manifest missing built_at")
+              sys.exit(1)
+
+          sha256 = m.get("sha256_per_file")
+          if not sha256 or not isinstance(sha256, dict):
+              print("ERROR: manifest missing sha256_per_file dict")
+              sys.exit(1)
+
+          ts = datetime.fromisoformat(built_at.replace("Z", "+00:00"))
+          now = datetime.now(timezone.utc)
+          age_days = (now - ts).days
+
+          print(f"Manifest built_at: {built_at} ({age_days} days old)")
+          print(f"sha256_per_file keys: {list(sha256.keys())[:5]}...")
+
+          if age_days > 365:
+              print(f"ERROR: manifest is {age_days} days old (limit 365)")
+              sys.exit(1)
+          elif age_days > 180:
+              print(f"::warning::manifest is {age_days} days old; consider refreshing the data")
+          EOF

@@ -1,6 +1,40 @@
 // dataviz.ph: story switcher, inflation toggle, CSV download, a11y mirror table,
 // compare-two-years overlay, keyboard scrubber.
 
+// Vercel Web Analytics queue stub: if the insights script has not loaded yet
+// (or analytics is disabled on the project) calls queue harmlessly. CSP bans
+// inline scripts, so the stub lives here instead of index.html.
+window.va =
+  window.va ||
+  function () {
+    (window.vaq = window.vaq || []).push(arguments);
+  };
+
+function track(name, data) {
+  try {
+    window.va("event", data ? { name, data } : { name });
+  } catch {
+    /* telemetry must never break the app */
+  }
+}
+
+// A chart-engine crash on a visitor's device is otherwise invisible to the
+// maintainer; report message + view state, nothing personal.
+window.addEventListener("error", (e) => {
+  track("client_error", {
+    message: String(e.message || "").slice(0, 200),
+    source: `${e.filename || ""}:${e.lineno || 0}`,
+    hash: window.location.hash.slice(0, 120),
+  });
+});
+window.addEventListener("unhandledrejection", (e) => {
+  track("client_error", {
+    message: String((e.reason && e.reason.message) || e.reason || "").slice(0, 200),
+    source: "unhandledrejection",
+    hash: window.location.hash.slice(0, 120),
+  });
+});
+
 const PALETTE = {
   luzon: "#2b6cb0",
   visayas: "#38a169",
@@ -29,6 +63,14 @@ const PCT = new Intl.NumberFormat("en-PH", {
 const COUNT = new Intl.NumberFormat("en-PH");
 
 const OUTLIER_TOP_N = 3;
+
+// Island-group focus filter. state.grp holds the active set; empty set means
+// every group renders at full strength. Marks of non-active groups fade to a
+// faint ghost (kept on chart for context, never removed).
+const GROUP_FADE_OPACITY = 0.15;
+function groupFaded(state, island) {
+  return !!(state.grp && state.grp.size && !state.grp.has(island));
+}
 
 // True while the play loop is auto-stepping years. Used to silence the sr-only
 // live summary so a screen reader is not flooded with one announcement per frame.
@@ -84,8 +126,15 @@ function makeView(state, data) {
     return { ...state.story, isCustom: false };
   }
   const xYears = new Set(xMeta.panel_years || []);
-  const panel_years = (yMeta.panel_years || []).filter((y) => xYears.has(y));
+  const overlap = (yMeta.panel_years || []).filter((y) => xYears.has(y));
   const isCustom = xId !== state.story.x || yId !== state.story.y;
+  // Preset stories own their panel: the cumulative-spend story pins a single
+  // year ([2023]) even though its static-snapshot indicators carry placeholder
+  // rows for every year. Custom picks use the indicators' coverage overlap.
+  const panel_years =
+    !isCustom && Array.isArray(state.story.panel_years) && state.story.panel_years.length
+      ? state.story.panel_years
+      : overlap;
   let default_year = state.story.default_year;
   if (!panel_years.includes(default_year)) {
     default_year = panel_years[panel_years.length - 1];
@@ -114,6 +163,15 @@ function makeView(state, data) {
 }
 
 async function loadData() {
+  // Optional files degrade to an empty fallback, but the failure is recorded so
+  // the page can say so (a silently absent population.json would otherwise just
+  // strip the size encoding with no signal to the reader).
+  const optionalFailures = [];
+  const optJson = (path, fallback) =>
+    fetchJson(path).catch(() => {
+      optionalFailures.push(path);
+      return fallback;
+    });
   const [
     provinces,
     poverty,
@@ -126,6 +184,7 @@ async function loadData() {
     dpwhShare,
     cpiYoy,
     povertyChange,
+    spendCum,
     population,
     indicators,
     stories,
@@ -134,22 +193,24 @@ async function loadData() {
   ] = await Promise.all([
     fetchJson("data/provinces.json"),
     fetchJson("data/poverty.json"),
-    fetchJson("data/subsistence.json").catch(() => []),
+    optJson("data/subsistence.json", []),
     fetchJson("data/dpwh_spend_per_capita.json"),
     fetchJson("data/all_spend_per_capita.json"),
-    fetchJson("data/doh_spend_per_capita.json").catch(() => []),
-    fetchJson("data/infra_spend_per_capita.json").catch(() => []),
+    optJson("data/doh_spend_per_capita.json", []),
+    optJson("data/infra_spend_per_capita.json", []),
     fetchJson("data/gdp_per_capita.json"),
-    fetchJson("data/dpwh_share_pct.json").catch(() => []),
-    fetchJson("data/cpi_yoy_pct.json").catch(() => []),
-    fetchJson("data/poverty_change_pp.json").catch(() => []),
-    fetchJson("data/population.json").catch(() => []),
+    optJson("data/dpwh_share_pct.json", []),
+    optJson("data/cpi_yoy_pct.json", []),
+    optJson("data/poverty_change_pp.json", []),
+    optJson("data/dpwh_spend_per_capita_cum.json", []),
+    optJson("data/population.json", []),
     fetchJson("data/indicators.json"),
     fetchJson("data/stories.json"),
-    fetchJson("data/pair_headlines.json").catch(() => ({})),
+    optJson("data/pair_headlines.json", {}),
     fetchJson("data/manifest.json").catch(() => null),
   ]);
   return {
+    optionalFailures,
     provinces,
     indicatorRows: {
       poverty: indexRows(poverty),
@@ -162,6 +223,7 @@ async function loadData() {
       dpwh_share_pct: indexRows(dpwhShare),
       cpi_yoy_pct: indexRows(cpiYoy),
       poverty_change_pp: indexRows(povertyChange),
+      dpwh_spend_per_capita_cum: indexRows(spendCum),
       population: indexRows(population),
     },
     indicators: Object.fromEntries(indicators.map((i) => [i.id, i])),
@@ -266,9 +328,33 @@ function persistHowtoDismissed() {
   }
 }
 
+// Transient chart status strip (e.g. "Map could not load"). The element carries
+// role="status", so unhiding it with fresh text is announced by screen readers.
+// Auto-hides after a few seconds; a dismiss button closes it sooner.
+let _chartNoticeTimer = null;
+function hideChartNotice() {
+  const box = document.getElementById("chart-notice");
+  if (box) box.hidden = true;
+  if (_chartNoticeTimer) {
+    clearTimeout(_chartNoticeTimer);
+    _chartNoticeTimer = null;
+  }
+}
+function showChartNotice(text, ms = 6000) {
+  const box = document.getElementById("chart-notice");
+  const txt = document.getElementById("chart-notice-text");
+  if (!box || !txt) return;
+  txt.textContent = text;
+  box.hidden = false;
+  if (_chartNoticeTimer) clearTimeout(_chartNoticeTimer);
+  _chartNoticeTimer = setTimeout(hideChartNotice, ms);
+}
+
 const DEFLATABLE_INDICATORS = new Set([
   "dpwh_spend_per_capita",
   "all_spend_per_capita",
+  "doh_spend_per_capita",
+  "infra_spend_per_capita",
 ]);
 
 // PSA CPI 2018=100 series starts at 2018. Years before that cannot be deflated
@@ -395,6 +481,22 @@ function getAnchors(indicatorId, psgc, data) {
   return out;
 }
 
+// Survey anchor years for an indicator, read off the data rows (neither interp
+// nor extrap markers), never hardcoded. Cached once per indicator.
+const _anchorYearsCache = new Map();
+function anchorYearsOf(indicatorId, data) {
+  if (_anchorYearsCache.has(indicatorId)) return _anchorYearsCache.get(indicatorId);
+  const rows = data.indicatorRows[indicatorId] || {};
+  const years = new Set();
+  for (const k of Object.keys(rows)) {
+    const r = rows[k];
+    if (r && !r.interp && !r.extrap && r.year !== undefined) years.add(r.year);
+  }
+  const out = [...years].sort((a, b) => a - b);
+  _anchorYearsCache.set(indicatorId, out);
+  return out;
+}
+
 // Linear projection from the two nearest anchors. Returns the projected value
 // or null if fewer than 2 anchors are available.
 function projectValue(indicatorId, psgc, year, data) {
@@ -500,7 +602,8 @@ function buildSeriesData(year, story, data, state) {
 
   return points.map((p) => {
     const isSel = state.sel.has(p.psgc);
-    const showLabel = isSel || outlier.has(p.psgc);
+    const faded = groupFaded(state, p.island);
+    const showLabel = !faded && (isSel || outlier.has(p.psgc));
     const color = PALETTE[p.island] || "#999";
     const isAnchor = !p.interp && !p.extrap;
     const isProjected = !!p.projected;
@@ -514,9 +617,10 @@ function buildSeriesData(year, story, data, state) {
     // Arc hook beat dims every bubble so the opening question reads first, before
     // the cloud starts moving.
     const dimFactor = state.arc && state.arc.dim ? 0.35 : 1;
+    const baseOpacity = imprecise ? 0.3 : isProjected ? 0.45 : isAnchor ? 0.88 : 0.55;
     const itemStyle = {
       color,
-      opacity: (imprecise ? 0.3 : isProjected ? 0.45 : isAnchor ? 0.88 : 0.55) * dimFactor,
+      opacity: (faded ? Math.min(baseOpacity, GROUP_FADE_OPACITY) : baseOpacity) * dimFactor,
       borderColor: imprecise ? "#c05621" : isProjected ? color : isAnchor ? "#fff" : color,
       borderWidth: imprecise ? 1.6 : isProjected ? 2 : isAnchor ? 0.6 : 1.5,
       borderType: imprecise || isProjected ? "dashed" : "solid",
@@ -586,8 +690,10 @@ function buildTrails(year, story, data, state) {
     if (pts.length < 2) continue;
     const info = data.provinces[psgc];
     const color = PALETTE[info.island_group] || "#999";
-    const lineOpacity = isSel ? 0.7 : 0.32;
-    const dotOpacity = isSel ? 0.9 : 0.5;
+    // Trails of filtered-out island groups fade with their bubbles.
+    const fadeMul = groupFaded(state, info.island_group) ? 0.2 : 1;
+    const lineOpacity = (isSel ? 0.7 : 0.32) * fadeMul;
+    const dotOpacity = (isSel ? 0.9 : 0.5) * fadeMul;
     trails.push({
       type: "line",
       name: `trail_${psgc}`,
@@ -657,6 +763,12 @@ function unitFor(indicatorId, state) {
   }
   if (indicatorId === "gdp_per_capita") return "PHP per person (constant 2018)";
   if (indicatorId === "poverty") return "%";
+  if (indicatorId === "dpwh_spend_per_capita_cum") {
+    return "PHP per person, cumulative 2014-2023, nominal";
+  }
+  if (indicatorId === "poverty_change_pp") {
+    return "Poverty change 2018 to 2023, percentage points; negative means poverty fell";
+  }
   return "";
 }
 
@@ -671,6 +783,153 @@ function formatValue(v, indicatorId) {
   }
   if (indicatorId === "population") return COUNT.format(v);
   return PHP.format(v);
+}
+
+// ---------- live correlation for custom picker pairs ----------
+// Port of etl/build.py's _rank/_pearson/_spearman/_permutation_p/_strength_word
+// so the ~40 picker pairs get the same computed finding the presets ship with.
+// The permutation p uses 1,000 shuffles client-side (the ETL uses 10,000) with a
+// deterministic PRNG seeded from (x, y, year) so repeated renders agree.
+
+// Fractional (average-of-ties) ranks, 1-based. Mirrors build.py _rank.
+function rankValues(vals) {
+  const order = [...vals.keys()].sort((a, b) => vals[a] - vals[b]);
+  const ranks = new Array(vals.length).fill(0);
+  let i = 0;
+  while (i < vals.length) {
+    let j = i;
+    while (j + 1 < vals.length && vals[order[j + 1]] === vals[order[i]]) j += 1;
+    const avg = (i + j) / 2 + 1;
+    for (let k = i; k <= j; k++) ranks[order[k]] = avg;
+    i = j + 1;
+  }
+  return ranks;
+}
+
+// Pearson correlation; null below 3 points or on a degenerate axis.
+function pearsonOf(xs, ys) {
+  const n = xs.length;
+  if (n < 3) return null;
+  let mx = 0;
+  let my = 0;
+  for (let i = 0; i < n; i++) {
+    mx += xs[i];
+    my += ys[i];
+  }
+  mx /= n;
+  my /= n;
+  let sxy = 0;
+  let sxx = 0;
+  let syy = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = xs[i] - mx;
+    const dy = ys[i] - my;
+    sxy += dx * dy;
+    sxx += dx * dx;
+    syy += dy * dy;
+  }
+  if (sxx <= 0 || syy <= 0) return null;
+  return sxy / Math.sqrt(sxx * syy);
+}
+
+function spearmanOf(xs, ys) {
+  if (xs.length < 3) return null;
+  return pearsonOf(rankValues(xs), rankValues(ys));
+}
+
+// Small deterministic PRNG so the permutation p is stable across renders.
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function seedFromString(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+// Two-tailed permutation p-value: shuffle ys, recompute rho, count |rho| >= |obs|.
+function permutationP(xs, ys, observedRho, rng, nPerm = 1000) {
+  const ysCopy = [...ys];
+  const absObs = Math.abs(observedRho);
+  let count = 0;
+  for (let p = 0; p < nPerm; p++) {
+    // Fisher-Yates shuffle driven by the seeded PRNG.
+    for (let i = ysCopy.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      const tmp = ysCopy[i];
+      ysCopy[i] = ysCopy[j];
+      ysCopy[j] = tmp;
+    }
+    const permRho = spearmanOf(xs, ysCopy);
+    if (permRho !== null && Math.abs(permRho) >= absObs) count += 1;
+  }
+  return count / nPerm;
+}
+
+// Same thresholds as build.py _strength_word.
+function strengthWord(rho) {
+  const a = Math.abs(rho);
+  if (a < 0.2) return "no clear";
+  if (a < 0.4) return "a weak";
+  if (a < 0.6) return "a moderate";
+  if (a < 0.8) return "a strong";
+  return "a very strong";
+}
+
+function formatPValue(p) {
+  if (p < 0.001) return "p < 0.001";
+  return `p = ${p.toFixed(3)}`;
+}
+
+// Live finding for a custom (non-preset) pair at the displayed year. Cached per
+// (x, y, year, currency, projection) so autoplay never recomputes a frame.
+const _liveFindingCache = new Map();
+function computeLiveFinding(view, data, state) {
+  const key = `${view.x}|${view.y}|${state.year}|${state.deflate ? "r" : "n"}|${
+    state.extrapolate ? "e" : ""
+  }`;
+  if (_liveFindingCache.has(key)) return _liveFindingCache.get(key);
+  const xs = [];
+  const ys = [];
+  for (const psgc of Object.keys(data.provinces)) {
+    const p = pointFor(psgc, state.year, view, data, state);
+    if (p && p.x !== null && p.y !== null) {
+      xs.push(p.x);
+      ys.push(p.y);
+    }
+  }
+  let out = null;
+  const rho = spearmanOf(xs, ys);
+  if (rho !== null) {
+    const rng = mulberry32(seedFromString(`${view.x}|${view.y}|${state.year}`));
+    const pVal = permutationP(xs, ys, rho, rng);
+    const xName = (data.indicators[view.x] || {}).name || view.x;
+    const yName = (data.indicators[view.y] || {}).name || view.y;
+    const direction = rho < 0 ? "negative" : "positive";
+    const sentence =
+      `In ${state.year}, across ${xs.length} areas, the rank correlation between ` +
+      `${xName} and ${yName} is rho = ${rho >= 0 ? "+" : ""}${rho.toFixed(2)} ` +
+      `(${formatPValue(pVal)}), showing ${strengthWord(rho)} ${direction} link.`;
+    let caveat = "Correlation, not causation.";
+    if (AWARDS_INDICATORS.has(view.x) || AWARDS_INDICATORS.has(view.y)) {
+      caveat +=
+        " Spend here is PhilGEPS contract awards (money committed), not " +
+        "verified disbursement or built outcomes.";
+    }
+    out = { rho, pValue: pVal, n: xs.length, sentence, caveat };
+  }
+  _liveFindingCache.set(key, out);
+  return out;
 }
 
 function shortAxisName(indicatorId, state) {
@@ -700,6 +959,9 @@ function shortAxisName(indicatorId, state) {
   if (indicatorId === "population") return "Population (2020 Census)";
   if (indicatorId === "poverty_change_pp") return "Poverty change 2018 to 2023 (pp)";
   if (indicatorId === "cpi_yoy_pct") return "National CPI year-on-year (%)";
+  if (indicatorId === "dpwh_spend_per_capita_cum") {
+    return "Cumulative DPWH spend per capita 2014-2023, PHP nominal";
+  }
   return indicatorId;
 }
 
@@ -714,8 +976,13 @@ function shortAxisCaption(indicatorId, state) {
   if (indicatorId === "poverty") return "percent of families below poverty line";
   if (indicatorId === "dpwh_share_pct") return "percent of total province spend";
   if (indicatorId === "population") return "people, 2020 Census";
-  if (indicatorId === "poverty_change_pp") return "percentage points, 2023 minus 2018";
+  if (indicatorId === "poverty_change_pp") {
+    return "percentage points, 2023 minus 2018; negative means poverty fell";
+  }
   if (indicatorId === "cpi_yoy_pct") return "percent, national series only";
+  if (indicatorId === "dpwh_spend_per_capita_cum") {
+    return "PHP per person, cumulative 2014-2023, nominal";
+  }
   return "";
 }
 
@@ -741,6 +1008,39 @@ const IS_TOUCH =
   window.matchMedia &&
   window.matchMedia("(hover: none)").matches;
 
+// Round a bound outward to 2 significant figures so the boundary tick a locked
+// axis draws reads as a clean number ("110", "71k"), not a float dump.
+function floorSig(v) {
+  if (v === 0) return 0;
+  if (v < 0) return -ceilSig(-v);
+  const p = Math.pow(10, Math.floor(Math.log10(v)) - 1);
+  return Math.floor(v / p) * p;
+}
+function ceilSig(v) {
+  if (v === 0) return 0;
+  if (v < 0) return -floorSig(-v);
+  const p = Math.pow(10, Math.floor(Math.log10(v)) - 1);
+  return Math.ceil(v / p) * p;
+}
+
+// Locked axis bounds for a value axis: the indicator's global cross-year extent
+// plus a small pad, so axes hold still while the timeline plays (the Gapminder
+// behavior) instead of silently rescaling each frame. Log axes need a positive
+// min; diverging indicators keep their real negative floor.
+function lockedAxisBounds(indicatorId, data, state, { log = false, diverging = false } = {}) {
+  const ext = globalExtent(indicatorId, data, state);
+  if (log) {
+    // Multiplicative pad on a log axis; bail to autoscale if the data isn't positive.
+    if (ext.min <= 0) return { min: undefined, max: ceilSig(ext.max * 1.05) };
+    return { min: floorSig(ext.min / 1.15), max: ceilSig(ext.max * 1.05) };
+  }
+  if (diverging) {
+    const pad = (ext.max - ext.min) * 0.05;
+    return { min: floorSig(ext.min - pad), max: ceilSig(ext.max + pad) };
+  }
+  return { min: 0, max: ceilSig(ext.max * 1.02) };
+}
+
 function baseOption(story, data, state) {
   const xIndicator = story.x;
   const yIndicator = story.y;
@@ -751,7 +1051,16 @@ function baseOption(story, data, state) {
   // diverging indicator we hold the axis linear and let ECharts frame the full
   // negative-to-positive range.
   const xDiverging = xIndicator === "poverty_change_pp";
+  const yDiverging = yIndicator === "poverty_change_pp";
   const effLogX = logX && !xDiverging;
+  // Cross-year axis lock (Gapminder behavior): both axes hold the indicator's
+  // global extent across every panel year, so bubbles move against a fixed frame
+  // while the timeline plays instead of the axes rescaling per year.
+  const xBounds = lockedAxisBounds(xIndicator, data, state, {
+    log: effLogX,
+    diverging: xDiverging,
+  });
+  const yBounds = lockedAxisBounds(yIndicator, data, state, { diverging: yDiverging });
   return {
     // Bottom margin reserves 200px for: tick labels (~30px), X picker pill (~36px),
     // caption (italic ~14px), timeline component, and the big play button.
@@ -765,15 +1074,19 @@ function baseOption(story, data, state) {
       nameLocation: "middle",
       nameGap: 100,
       nameTextStyle: { fontSize: 11, color: "#6b6b6b", fontStyle: "italic" },
-      // Diverging indicator: no 0-floor (it would clip the negatives); scale lets
-      // ECharts frame the full negative-to-positive range and label its ticks.
-      min: xDiverging || effLogX ? undefined : 0,
+      // Diverging indicator: no 0-floor (it would clip the negatives). Bounds are
+      // the locked cross-year extent so the frame holds during play.
+      min: xBounds.min,
+      max: xBounds.max,
       scale: xDiverging,
       axisLine: { lineStyle: { color: "#ccc" } },
       axisTick: { show: false },
       splitLine: { show: true, lineStyle: { color: "#f0f0f0" } },
       axisLabel: {
         color: "#595959",
+        // The locked extent draws a boundary tick at the global min; on narrow
+        // screens it can land next to a decade tick, so drop whichever collides.
+        hideOverlap: true,
         formatter: (v) => {
           if (xIndicator === "poverty" || xIndicator === "dpwh_share_pct" ||
               xIndicator === "cpi_yoy_pct" || xIndicator === "poverty_change_pp") {
@@ -794,9 +1107,9 @@ function baseOption(story, data, state) {
       nameLocation: "middle",
       nameGap: 0,
       nameTextStyle: { fontSize: 0 },
-      min: yIndicator === "poverty_change_pp" ? undefined : 0,
-      max: yIndicator === "poverty" ? 80 : undefined,
-      scale: yIndicator === "poverty_change_pp",
+      min: yBounds.min,
+      max: yIndicator === "poverty" ? 80 : yBounds.max,
+      scale: yDiverging,
       axisLine: { lineStyle: { color: "#ccc" } },
       axisTick: { show: false },
       splitLine: { show: true, lineStyle: { color: "#f0f0f0" } },
@@ -838,6 +1151,14 @@ function baseOption(story, data, state) {
             ? `${yName} held constant from nearest PSA anchor (PSA does not publish this year)`
             : `${yName} linearly interpolated between PSA anchors`;
           noteHtml = `<div style="color:#595959;font-size:11px;margin-top:6px;border-top:1px solid #eee;padding-top:4px">${escapeHtml(note)}</div>`;
+          // The 2018-2021 interpolation spans the pandemic; flag the two years
+          // where a straight line is least likely to match what really happened.
+          if (interp && (year === 2019 || year === 2020)) {
+            noteHtml +=
+              `<div style="color:#595959;font-size:11px;margin-top:2px">` +
+              `2019-2020 values are linear estimates across the COVID years. ` +
+              `The true path was likely not linear.</div>`;
+          }
         }
         const xPrec = p.data && p.data.xPrec;
         const yPrec = p.data && p.data.yPrec;
@@ -916,6 +1237,7 @@ function buildOption(view, data, state) {
   if (state.chartType === "line") return buildLineOption(view, data, state);
   if (state.chartType === "bar") return buildBarOption(view, data, state);
   if (state.chartType === "map") return buildMapOption(view, data, state);
+  if (state.chartType === "panels") return buildPanelsOption(view, data, state);
   return buildBubbleOption(view, data, state);
 }
 
@@ -957,6 +1279,14 @@ function buildMapOption(view, data, state) {
     } else {
       const prec = state.deflate && DEFLATABLE_INDICATORS.has(yId) ? null : precisionOf(row);
       const imprecise = prec && prec.cv != null && prec.cv > CV_UNRELIABLE;
+      const faded = groupFaded(state, data.provinces[psgc].island_group);
+      const itemStyle = {
+        ...(imprecise
+          ? { borderColor: "#c05621", borderWidth: 1.4, borderType: "dashed" }
+          : {}),
+        // Island-group filter: fade shapes outside the active groups.
+        ...(faded ? { opacity: GROUP_FADE_OPACITY } : {}),
+      };
       rows.push({
         name,
         value: val,
@@ -964,9 +1294,7 @@ function buildMapOption(view, data, state) {
         selected: state.sel.has(psgc),
         prec,
         // Amber outline marks provinces whose estimate is too imprecise to trust.
-        ...(imprecise
-          ? { itemStyle: { borderColor: "#c05621", borderWidth: 1.4, borderType: "dashed" } }
-          : {}),
+        ...(imprecise || faded ? { itemStyle } : {}),
       });
     }
   }
@@ -1054,7 +1382,7 @@ function buildMapOption(view, data, state) {
         type: "map",
         map: "ph-provinces",
         nameProperty: "name",
-        roam: true,
+        roam: "scale", // pinch-zoom only; single-finger drag must scroll the page
         // Fit the (tall) archipelago inside the container instead of sizing by
         // width. Nudged left so the legend has the right margin to itself.
         layoutCenter: ["44%", "50%"],
@@ -1171,6 +1499,11 @@ function buildBubbleOption(story, data, state) {
   const compareSeries = buildCompareSeries(story, data, state);
 
   const xDeflatable = DEFLATABLE_INDICATORS.has(story.x);
+  const yDeflatable = DEFLATABLE_INDICATORS.has(story.y);
+  // Non-empty only when an axis carries the poverty indicator; gates the
+  // "estimated, not surveyed" pill on years between PSA survey anchors.
+  const povertyAnchorYears =
+    story.x === "poverty" || story.y === "poverty" ? anchorYearsOf("poverty", data) : [];
   // For the base option we only need an empty stub per province for the connector
   // ids that may be active. Use union of every year's connectors so notMerge:true
   // re-attaches them on each step.
@@ -1242,10 +1575,12 @@ function buildBubbleOption(story, data, state) {
         padding: [3, 9],
       });
     }
-    if (xDeflatable && state.deflate && year < CPI_BASE_YEAR) {
+    const deflateBannerShown =
+      (xDeflatable || yDeflatable) && state.deflate && year < CPI_BASE_YEAR;
+    if (deflateBannerShown) {
       titleBlocks.push({
         text:
-          "Showing nominal PHP only. PSA CPI 2018-base does not cover this year, so 2018-real values cannot be computed.",
+          "Spend bubbles hidden for this year. PSA CPI 2018-base does not cover years before 2018. Switch to nominal pesos to see them.",
         left: "center",
         top: 4,
         textStyle: {
@@ -1260,6 +1595,29 @@ function buildBubbleOption(story, data, state) {
         borderWidth: 1,
         borderRadius: 4,
         padding: [4, 10],
+      });
+    }
+    // Quiet pill for years PSA did not survey: poverty values there are model
+    // estimates, not measurements. Anchor years are read from the data rows.
+    // Stacks below the pre-2018 deflate banner when both apply (e.g. 2015 with
+    // deflate on), so the two never overprint.
+    if (povertyAnchorYears.length && !povertyAnchorYears.includes(year)) {
+      titleBlocks.push({
+        text: `${year}: estimated, not surveyed. PSA anchors: ${povertyAnchorYears.join(", ")}.`,
+        left: "center",
+        top: deflateBannerShown ? 36 : 4,
+        textStyle: {
+          fontSize: 11,
+          fontWeight: 500,
+          color: "#6b6b6b",
+          fontFamily:
+            "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial, sans-serif",
+        },
+        backgroundColor: "rgba(247, 247, 248, 0.92)",
+        borderColor: "#e6e6e6",
+        borderWidth: 1,
+        borderRadius: 99,
+        padding: [3, 9],
       });
     }
     if (state.arc && state.arc.annotation) {
@@ -1374,6 +1732,8 @@ function buildLineOption(view, data, state) {
     // Drop provinces with no data for this indicator at all.
     if (pts.every((v) => v === null)) continue;
     const isHi = highlighted.has(psgc);
+    // Island-group filter: lines outside the active groups fade to ghosts.
+    const fadeMul = groupFaded(state, info.island_group) ? 0.2 : 1;
     series.push({
       id: `line_${psgc}`,
       name: info.name,
@@ -1385,14 +1745,14 @@ function buildLineOption(view, data, state) {
       lineStyle: {
         color,
         width: isHi ? 2.2 : 1,
-        opacity: isHi ? 0.85 : 0.26,
+        opacity: (isHi ? 0.85 : 0.26) * fadeMul,
       },
-      itemStyle: { color, opacity: isHi ? 0.95 : 0.4 },
+      itemStyle: { color, opacity: (isHi ? 0.95 : 0.4) * fadeMul },
       emphasis: {
         focus: "series",
         lineStyle: { width: 3, opacity: 1 },
       },
-      endLabel: isHi
+      endLabel: isHi && fadeMul === 1
         ? {
             show: true,
             formatter: info.name,
@@ -1565,7 +1925,11 @@ function buildBarOption(view, data, state) {
         type: "bar",
         data: rows.map((r) => ({
           value: r.value,
-          itemStyle: { color: PALETTE[r.island] || "#999", opacity: 0.92 },
+          itemStyle: {
+            color: PALETTE[r.island] || "#999",
+            // Island-group filter: bars outside the active groups fade.
+            opacity: groupFaded(state, r.island) ? GROUP_FADE_OPACITY : 0.92,
+          },
         })),
         // No fixed barWidth: let ECharts size bars to fit all 82 areas in
         // the column (a fixed 12px overflowed and clipped the bottom ~37).
@@ -1588,6 +1952,186 @@ function buildBarOption(view, data, state) {
   };
 }
 
+// ---------- side-by-side panels (A2: spend vs GDP, both against poverty) ----------
+
+// The two fixed X indicators of the contrast. Y is always poverty (the view is
+// only offered when poverty is on the Y axis).
+const PANELS_LEFT_X = "dpwh_spend_per_capita";
+const PANELS_RIGHT_X = "gdp_per_capita";
+
+// Years where BOTH panels have data: intersection of the poverty panel with the
+// two X indicators' coverage (GDP per capita is the short one, 2022-2024).
+function panelsYears(data) {
+  const ids = [PANELS_LEFT_X, PANELS_RIGHT_X, "poverty"];
+  let years = null;
+  for (const id of ids) {
+    const meta = data.indicators[id] || {};
+    const set = new Set(meta.panel_years || []);
+    years = years === null ? [...set] : years.filter((y) => set.has(y));
+  }
+  return (years || []).sort((a, b) => a - b);
+}
+
+// Rho for one panel at the displayed year. When a preset story computed its
+// finding at this exact year and pair, reuse it (stories.json); otherwise compute
+// live with the same Spearman + permutation machinery the custom picker uses.
+function panelRho(xId, year, data, state) {
+  const preset = (data.stories || []).find(
+    (s) => s.x === xId && s.y === "poverty" && s.finding && s.finding.year === year,
+  );
+  if (preset && preset.finding.available && typeof preset.finding.spearman === "number") {
+    return { rho: preset.finding.spearman, pValue: preset.finding.p_value };
+  }
+  const live = computeLiveFinding({ x: xId, y: "poverty" }, data, {
+    ...state,
+    year,
+  });
+  return live ? { rho: live.rho, pValue: live.pValue } : null;
+}
+
+function buildPanelsOption(view, data, state) {
+  const stacked = window.innerWidth <= 520;
+  const panels = [
+    { x: PANELS_LEFT_X, title: "Road money: no pattern" },
+    { x: PANELS_RIGHT_X, title: "Wealth: a clear slope" },
+  ];
+
+  // Shared Y range across both panels so the two clouds are read against the
+  // same poverty scale (the whole point of the contrast).
+  const grids = stacked
+    ? [
+        { left: 64, right: 24, top: 64, height: "28%" },
+        { left: 64, right: 24, top: "58%", height: "26%" },
+      ]
+    : [
+        { left: 64, width: "37%", top: 78, bottom: 96 },
+        { left: "57%", width: "37%", top: 78, bottom: 96 },
+      ];
+
+  const xAxes = [];
+  const yAxes = [];
+  const series = [];
+  const titles = [
+    // Faint year watermark between/above the panels so the year control reads.
+    {
+      text: `${state.year}`,
+      left: "center",
+      top: stacked ? 4 : 8,
+      textStyle: { fontSize: 34, fontWeight: 700, color: "rgba(0,0,0,0.08)" },
+    },
+  ];
+
+  panels.forEach((p, i) => {
+    const xMeta = data.indicators[p.x] || {};
+    const bounds = lockedAxisBounds(p.x, data, state, { log: true });
+    xAxes.push({
+      gridIndex: i,
+      type: "log",
+      min: bounds.min,
+      max: bounds.max,
+      name: `${xMeta.name || p.x} · log scale`,
+      nameLocation: "middle",
+      nameGap: 26,
+      nameTextStyle: { fontSize: 11, color: "#6b6b6b", fontStyle: "italic" },
+      axisLine: { lineStyle: { color: "#ccc" } },
+      axisTick: { show: false },
+      splitLine: { show: true, lineStyle: { color: "#f0f0f0" } },
+      axisLabel: {
+        color: "#595959",
+        hideOverlap: true,
+        formatter: (v) => {
+          if (v >= 1_000_000) return (v / 1_000_000).toFixed(1) + "M";
+          if (v >= 1000) return (v / 1000).toFixed(0) + "k";
+          return v.toString();
+        },
+      },
+    });
+    yAxes.push({
+      gridIndex: i,
+      type: "value",
+      min: 0,
+      max: 80,
+      name: i === 0 || stacked ? "poverty incidence (%)" : "",
+      nameLocation: "middle",
+      nameGap: 38,
+      nameTextStyle: { fontSize: 11, color: "#6b6b6b", fontStyle: "italic" },
+      axisLine: { lineStyle: { color: "#ccc" } },
+      axisTick: { show: false },
+      splitLine: { show: true, lineStyle: { color: "#f0f0f0" } },
+      axisLabel: { color: "#595959", formatter: (v) => v + "%" },
+    });
+    // Reuse the bubble builder with a pseudo-story carrying this panel's axes.
+    const pseudo = { ...view, x: p.x, y: "poverty" };
+    const rows = buildSeriesData(state.year, pseudo, data, state).map((r) => ({
+      ...r,
+      id: `p${i}_${r.id}`,
+      // Two side-by-side half-width grids: outlier labels overflow, keep only
+      // user-selected labels.
+      label: { ...r.label, show: state.sel.has(r.id) },
+    }));
+    series.push({
+      id: `panel_${i}`,
+      type: "scatter",
+      xAxisIndex: i,
+      yAxisIndex: i,
+      data: rows,
+      emphasis: { focus: "self", scale: 1.2 },
+    });
+    const rhoInfo = panelRho(p.x, state.year, data, state);
+    const rhoTxt = rhoInfo
+      ? `rho = ${rhoInfo.rho >= 0 ? "+" : ""}${rhoInfo.rho.toFixed(2)}` +
+        (rhoInfo.pValue != null ? ` (${formatPValue(rhoInfo.pValue)})` : "")
+      : "rho unavailable";
+    titles.push({
+      text: p.title,
+      subtext: `${xMeta.name || p.x} vs poverty, ${state.year}. ${rhoTxt}`,
+      left: stacked ? "center" : i === 0 ? "21%" : "71%",
+      top: stacked ? (i === 0 ? 22 : "50%") : 30,
+      // left:"center" already centers the block; adding textAlign would shift
+      // it half a width left. Only the percent-anchored desktop titles need it.
+      ...(stacked ? {} : { textAlign: "center" }),
+      textStyle: {
+        fontSize: stacked ? 13 : 14,
+        fontWeight: 600,
+        color: "#333",
+        fontFamily: "Georgia, 'Times New Roman', serif",
+      },
+      subtextStyle: { fontSize: 11, color: "#6b6b6b" },
+    });
+  });
+
+  return {
+    grid: grids,
+    xAxis: xAxes,
+    yAxis: yAxes,
+    title: titles,
+    series,
+    tooltip: {
+      trigger: "item",
+      triggerOn: IS_TOUCH ? "click" : "mousemove|click",
+      enterable: false,
+      backgroundColor: "rgba(255,255,255,0.97)",
+      borderColor: "#ddd",
+      textStyle: { color: "#111" },
+      formatter: (p) => {
+        if (!p.value || p.value.length < 8) return "";
+        const xId = p.seriesId === "panel_0" ? PANELS_LEFT_X : PANELS_RIGHT_X;
+        const [x, y, pop, name, year, , island] = p.value;
+        const color = PALETTE[island] || "#999";
+        const swatch = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px;vertical-align:middle"></span>`;
+        return (
+          `<div style="font-weight:600;margin-bottom:4px">${swatch}${escapeHtml(name)} · ${year}</div>` +
+          `<div>${escapeHtml(shortAxisName(xId, state))}: <b>${escapeHtml(formatValue(x, xId))}</b></div>` +
+          `<div>${escapeHtml(shortAxisName("poverty", state))}: <b>${escapeHtml(formatValue(y, "poverty"))}</b></div>` +
+          `<div>Population (2020 Census): ${escapeHtml(COUNT.format(pop))}</div>`
+        );
+      },
+    },
+    animationDurationUpdate: 700,
+    animationEasingUpdate: "cubicInOut",
+  };
+}
+
 // ---------- URL hash state ----------
 
 function parseHash(stories) {
@@ -1603,8 +2147,19 @@ function parseHash(stories) {
   const xParam = params.get("x");
   const yParam = params.get("y");
   const ctParam = (params.get("ct") || "bubbles").toLowerCase();
-  const chartType = ["bubbles", "line", "bar", "map"].includes(ctParam) ? ctParam : "bubbles";
+  const chartType = ["bubbles", "line", "bar", "map", "panels"].includes(ctParam)
+    ? ctParam
+    : "bubbles";
   const extrap = params.get("extrap");
+  // Island-group focus filter: comma-joined group keys; unknown keys dropped.
+  const grp = new Set(
+    (params.get("grp") || "")
+      .split(",")
+      .filter((g) => Object.prototype.hasOwnProperty.call(PALETTE, g)),
+  );
+  // Playback speed: only 0.5 / 2 are meaningful in the URL (1 is the default).
+  const spdParam = parseFloat(params.get("spd"));
+  const speed = [0.5, 2].includes(spdParam) ? spdParam : 1;
   return {
     story,
     xIndicator: xParam || story.x,
@@ -1616,6 +2171,9 @@ function parseHash(stories) {
     sel: new Set(sel),
     deflate: deflate === null ? true : deflate === "real",
     extrapolate: extrap === "on",
+    grp,
+    speed,
+    embed: params.get("embed") === "1",
     hadHash: h.length > 0,
   };
 }
@@ -1643,7 +2201,19 @@ function writeHash(state, view) {
   params.set("deflate", state.deflate ? "real" : "nominal");
   if (state.compareYear) params.set("cmp", state.compareYear);
   if (state.sel.size) params.set("sel", [...state.sel].join(","));
+  if (state.grp && state.grp.size) params.set("grp", [...state.grp].join(","));
+  if (state.speed && state.speed !== 1) params.set("spd", String(state.speed));
+  if (state.embed) params.set("embed", "1");
   window.history.replaceState(null, "", "#" + params.toString());
+  // The embed attribution chip links to the full explorer view: the same state
+  // minus the embed flag. Kept in sync here so the link always mirrors the chart.
+  if (state.embed) {
+    const chip = document.getElementById("embed-chip");
+    if (chip) {
+      params.delete("embed");
+      chip.href = `${window.location.origin}${window.location.pathname}#${params.toString()}`;
+    }
+  }
 }
 
 // ---------- search ----------
@@ -1660,6 +2230,27 @@ function wireSearch(input, data, state, render) {
 
   const list = document.getElementById("search-results");
 
+  // Roving keyboard highlight: ArrowUp/ArrowDown move it, Enter picks it. The
+  // input points at the highlighted option via aria-activedescendant, so a
+  // screen reader hears the option without focus ever leaving the input.
+  let activeIdx = -1;
+  const setActive = (idx) => {
+    const items = [...list.children];
+    // idx < 0 clears the highlight (fresh result list, no roving position yet).
+    activeIdx = !items.length || idx < 0 ? -1 : Math.min(idx, items.length - 1);
+    items.forEach((li, i) => li.classList.toggle("kb-active", i === activeIdx));
+    if (activeIdx >= 0) {
+      input.setAttribute("aria-activedescendant", items[activeIdx].id);
+      items[activeIdx].scrollIntoView({ block: "nearest" });
+    } else {
+      input.removeAttribute("aria-activedescendant");
+    }
+  };
+  const closeList = () => {
+    list.replaceChildren();
+    setActive(-1);
+  };
+
   const updateList = () => {
     const q = input.value;
     const ms = matches(q);
@@ -1669,13 +2260,14 @@ function wireSearch(input, data, state, render) {
       const selected = state.sel.has(m.psgc);
       li.textContent = m.name + (selected ? "  ✓" : "");
       li.dataset.psgc = m.psgc;
+      li.id = `search-opt-${m.psgc}`;
       li.tabIndex = 0;
       li.setAttribute("role", "option");
       li.setAttribute("aria-selected", selected ? "true" : "false");
       const choose = () => {
         toggleSel(m.psgc, state, render);
         input.value = "";
-        list.replaceChildren();
+        closeList();
         input.focus();
       };
       li.addEventListener("click", choose);
@@ -1687,20 +2279,36 @@ function wireSearch(input, data, state, render) {
       });
       list.appendChild(li);
     }
+    setActive(-1);
   };
 
   input.addEventListener("input", updateList);
   input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActive(activeIdx + 1);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive(Math.max(0, activeIdx - 1));
+    } else if (e.key === "Enter") {
+      const items = [...list.children];
+      const pick =
+        activeIdx >= 0 && items[activeIdx] ? items[activeIdx].dataset.psgc : null;
+      if (pick) {
+        toggleSel(pick, state, render);
+        input.value = "";
+        closeList();
+        return;
+      }
       const ms = matches(input.value);
       if (ms.length) {
         toggleSel(ms[0].psgc, state, render);
         input.value = "";
-        list.replaceChildren();
+        closeList();
       }
     } else if (e.key === "Escape") {
       input.value = "";
-      list.replaceChildren();
+      closeList();
       input.blur();
     }
   });
@@ -1766,6 +2374,15 @@ function renderYearControls(state, view, render) {
   const display = document.getElementById("year-display");
   if (display) display.textContent = String(state.year);
 
+  // A single-year panel (e.g. the cumulative-spend story, anchored to 2023) has
+  // nothing to scrub: disable the slider and the stepper instead of offering
+  // dead controls.
+  const single = view.panel_years.length <= 1;
+  for (const id of ["year-prev", "year-next"]) {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = single;
+  }
+
   // Native range slider: an AT-accessible year control (real slider role +
   // aria-valuetext), mirroring the stepper buttons and arrow-key scrubbing.
   const range = document.getElementById("year-range");
@@ -1774,6 +2391,7 @@ function renderYearControls(state, view, render) {
     const idx = Math.max(0, years.indexOf(state.year));
     range.max = String(Math.max(0, years.length - 1));
     range.value = String(idx);
+    range.disabled = single;
     range.setAttribute("aria-valuetext", String(state.year));
     range.oninput = () => {
       const y = years[parseInt(range.value, 10)];
@@ -1820,6 +2438,7 @@ function stepYear(state, delta, render) {
 // Award-based spend indicators: PhilGEPS awards, not disbursement.
 const AWARDS_INDICATORS = new Set([
   "dpwh_spend_per_capita",
+  "dpwh_spend_per_capita_cum",
   "all_spend_per_capita",
   "doh_spend_per_capita",
   "infra_spend_per_capita",
@@ -1996,7 +2615,7 @@ function csvEscape(v) {
   return s;
 }
 
-function downloadCsv(story, data, state) {
+function downloadCsv(story, data, state, allYears = false) {
   const headers = [
     "psgc",
     "province",
@@ -2013,34 +2632,41 @@ function downloadCsv(story, data, state) {
     "extrapolated",
   ];
   const rows = [headers.join(",")];
-  for (const psgc of Object.keys(data.provinces)) {
-    const p = pointFor(psgc, state.year, story, data, state);
-    if (!p) continue;
-    rows.push(
-      [
-        p.psgc,
-        p.name,
-        ISLAND_LABEL[p.island] || p.island,
-        p.year,
-        story.x,
-        p.x,
-        unitFor(story.x, state),
-        story.y,
-        p.y,
-        unitFor(story.y, state),
-        p.pop,
-        p.interp ? "true" : "false",
-        p.extrap ? "true" : "false",
-      ]
-        .map(csvEscape)
-        .join(","),
-    );
+  const years = allYears ? story.panel_years || [state.year] : [state.year];
+  for (const year of years) {
+    for (const psgc of Object.keys(data.provinces)) {
+      const p = pointFor(psgc, year, story, data, state);
+      if (!p) continue;
+      rows.push(
+        [
+          p.psgc,
+          p.name,
+          ISLAND_LABEL[p.island] || p.island,
+          p.year,
+          story.x,
+          p.x,
+          unitFor(story.x, state),
+          story.y,
+          p.y,
+          unitFor(story.y, state),
+          p.pop,
+          p.interp ? "true" : "false",
+          p.extrap ? "true" : "false",
+        ]
+          .map(csvEscape)
+          .join(","),
+      );
+    }
   }
   const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
+  // Custom picker pairs have no story id; name the file after the pair instead.
+  const pairName = story.isCustom ? `${story.x}-vs-${story.y}` : story.id;
   a.href = url;
-  a.download = `dataviz-ph-${story.id}-${state.year}.csv`;
+  a.download = allYears
+    ? `dataviz-ph-${pairName}-all-years.csv`
+    : `dataviz-ph-${pairName}-${state.year}.csv`;
   document.body.appendChild(a);
   a.click();
   setTimeout(() => {
@@ -2427,6 +3053,9 @@ async function main() {
     sel: initial.sel,
     deflate: initial.deflate,
     extrapolate: initial.extrapolate,
+    grp: initial.grp,
+    speed: initial.speed,
+    embed: initial.embed,
     view: null,
     howtoDismissed: readHowtoDismissed(),
     // Guided-narrative arc state (Rosling hook->reveal->twist->release). null when
@@ -2434,6 +3063,27 @@ async function main() {
     // while the arc is running. render() reads it to overlay on-chart narration.
     arc: null,
   };
+
+  // Embed mode: a chrome-less chart for iframes. The CSS class hides topbar,
+  // sidebar, footer and how-to; a small fixed chip credits the source and links
+  // to the full explorer view (same state, minus the embed flag). Applied
+  // before echarts.init so the chart sizes to the embed layout.
+  function syncEmbedMode() {
+    document.body.classList.toggle("embed-mode", !!state.embed);
+    let chip = document.getElementById("embed-chip");
+    if (state.embed && !chip) {
+      chip = document.createElement("a");
+      chip.id = "embed-chip";
+      chip.target = "_blank";
+      chip.rel = "noopener";
+      chip.textContent = "dataviz.ph";
+      chip.href = `${window.location.origin}${window.location.pathname}`;
+      document.body.appendChild(chip);
+    } else if (!state.embed && chip) {
+      chip.remove();
+    }
+  }
+  syncEmbedMode();
 
   const chart = echarts.init(root, null, { renderer: "canvas" });
   renderFreshness(data.manifest);
@@ -2445,6 +3095,52 @@ async function main() {
     render();
   };
 
+  // Computed finding: the data-grounded answer to the story's question.
+  // Presets ship a precomputed finding; custom picker pairs get the same
+  // sentence computed live in the browser at the displayed year. Year-dependent
+  // (the live finding and the "chart is showing YEAR" note both move with the
+  // year), so both render() and the autoplay fast path renderFrame() call it.
+  function updateFindingBox(view) {
+    const findingEl = document.getElementById("story-finding");
+    if (!findingEl) return;
+    const f = !view.isCustom ? view.finding : null;
+    if (view.isCustom) {
+      const lf = computeLiveFinding(view, data, state);
+      if (lf) {
+        findingEl.textContent = `What the data shows. ${lf.sentence} ${lf.caveat}`;
+        findingEl.hidden = false;
+      } else {
+        findingEl.textContent = "";
+        findingEl.hidden = true;
+      }
+    } else if (f && f.available && f.sentence) {
+      // On the DPWH-vs-poverty story, set the non-result against the one
+      // pairing that does track poverty: per-capita GDP. The contrast is the
+      // point, so pull the GDP story's own computed rho (no hardcoded number).
+      let contrast = "";
+      if (state.story && state.story.id === "spend-vs-poverty") {
+        const g = (data.stories || []).find((s) => s.id === "gdp-vs-poverty");
+        const gs = g && g.finding && typeof g.finding.spearman === "number" ? g.finding.spearman : null;
+        if (gs !== null) {
+          const r = (Math.sign(gs) * Math.round(Math.abs(gs) * 100)) / 100;
+          contrast = ` Per-capita GDP, by contrast, does track lower poverty (rho = ${r >= 0 ? "+" : ""}${r.toFixed(2)}).`;
+        }
+      }
+      // The finding is a fixed-reference-year correlation; when the reader has
+      // scrubbed elsewhere, say so rather than let the year control and the
+      // finding silently disagree.
+      const yearNote =
+        f.year != null && state.year != null && state.year !== f.year
+          ? ` (Chart is showing ${state.year}; this correlation is measured at ${f.year}.)`
+          : "";
+      findingEl.textContent = `What the data shows. ${f.sentence}${contrast} ${f.caveat || ""}${yearNote}`;
+      findingEl.hidden = false;
+    } else {
+      findingEl.textContent = "";
+      findingEl.hidden = true;
+    }
+  }
+
   let rendering = false;
   function render() {
     if (rendering) return;
@@ -2453,6 +3149,21 @@ async function main() {
       // Compute the active view (preset overlaid with any custom indicator picks).
       // Clamp year to the view's effective panel before any sub-render uses it.
       const view = makeView(state, data);
+      // Panels only makes sense with poverty on the Y axis; if state landed there
+      // anyway (hash, story switch, axis pick), fall back to bubbles and say so.
+      if (state.chartType === "panels" && view.y !== "poverty") {
+        state.chartType = "bubbles";
+        showChartNotice("Panels needs poverty on the Y axis. Showing bubbles instead.");
+      }
+      // In Panels the playable years are the overlap of both X indicators'
+      // coverage (per-capita GDP is the short one), not the story's full panel.
+      if (state.chartType === "panels") {
+        const py = panelsYears(data);
+        if (py.length) {
+          view.panel_years = py;
+          if (!py.includes(view.default_year)) view.default_year = py[py.length - 1];
+        }
+      }
       state.view = view;
       if (!view.panel_years.includes(state.year)) {
         state.year = view.default_year;
@@ -2460,6 +3171,8 @@ async function main() {
       if (state.compareYear && !view.panel_years.includes(state.compareYear)) {
         state.compareYear = null;
       }
+      // A single-year panel has nothing to animate or scrub.
+      const singleYear = view.panel_years.length <= 1;
 
       const xIndicator = data.indicators[view.x];
       // Headline + tagline update with view (preset or custom)
@@ -2481,37 +3194,8 @@ async function main() {
         }
       }
       // Computed finding: the data-grounded answer to the story's question.
-      // Preset views only (custom picks have no precomputed correlation).
-      const findingEl = document.getElementById("story-finding");
-      if (findingEl) {
-        const f = !view.isCustom ? view.finding : null;
-        if (f && f.available && f.sentence) {
-          // On the DPWH-vs-poverty story, set the non-result against the one
-          // pairing that does track poverty: per-capita GDP. The contrast is the
-          // point, so pull the GDP story's own computed rho (no hardcoded number).
-          let contrast = "";
-          if (state.story && state.story.id === "spend-vs-poverty") {
-            const g = (data.stories || []).find((s) => s.id === "gdp-vs-poverty");
-            const gs = g && g.finding && typeof g.finding.spearman === "number" ? g.finding.spearman : null;
-            if (gs !== null) {
-              const r = (Math.sign(gs) * Math.round(Math.abs(gs) * 100)) / 100;
-              contrast = ` Per-capita GDP, by contrast, does track lower poverty (rho = ${r >= 0 ? "+" : ""}${r.toFixed(2)}).`;
-            }
-          }
-          // The finding is a fixed-reference-year correlation; when the reader has
-          // scrubbed elsewhere, say so rather than let the year control and the
-          // finding silently disagree.
-          const yearNote =
-            f.year != null && state.year != null && state.year !== f.year
-              ? ` (Chart is showing ${state.year}; this correlation is measured at ${f.year}.)`
-              : "";
-          findingEl.textContent = `What the data shows. ${f.sentence}${contrast} ${f.caveat || ""}${yearNote}`;
-          findingEl.hidden = false;
-        } else {
-          findingEl.textContent = "";
-          findingEl.hidden = true;
-        }
-      }
+      // (Year-dependent, so the autoplay fast path renderFrame() calls it too.)
+      updateFindingBox(view);
       // Axis caveats: awards-not-disbursement, single-snapshot, short-panel.
       const caveatEl = document.getElementById("story-caveat");
       if (caveatEl) {
@@ -2569,30 +3253,39 @@ async function main() {
       renderStorySwitcher(data.stories, state, view, render);
       // Year stepper + compare year selector
       renderYearControls(state, view, render);
-      // Chart-type strip active state
+      // Chart-type strip active state. The Panels tab (the side-by-side
+      // spend-vs-GDP contrast) is only offered when poverty is the Y axis.
       document.querySelectorAll(".chart-type-btn").forEach((b) => {
         const active = b.dataset.type === state.chartType;
         b.classList.toggle("active", active);
         b.setAttribute("aria-pressed", active ? "true" : "false");
+        if (b.dataset.type === "panels") b.hidden = view.y !== "poverty";
+      });
+      // Island-group filter buttons mirror the active set (empty = all normal).
+      document.querySelectorAll(".legend-toggle").forEach((b) => {
+        const on = state.grp.has(b.dataset.group);
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+        b.classList.toggle("on", on);
+        b.classList.toggle("dimmed", state.grp.size > 0 && !on);
       });
       // Expose the active chart type so CSS can move the play button clear of the
       // left-hand province labels in the bar view on narrow screens.
       const chartWrap = document.getElementById("chart-wrap");
       if (chartWrap) chartWrap.dataset.ct = state.chartType;
-      // Island-group legend only applies to the views coloured by island
-      // (bubbles/line/bar). Map is coloured by the value scale, so hide it there
-      // to avoid implying the map colours mean island groups.
+      // Island-group legend doubles as the focus filter, so it stays visible on
+      // every view (the map is coloured by the value scale, but its shapes still
+      // fade by group when the filter is active).
       const islandLegend = document.getElementById("island-legend");
-      if (islandLegend) islandLegend.hidden = state.chartType === "map";
+      if (islandLegend) islandLegend.hidden = false;
       // In line mode most provinces are faint context, so the saturated island
       // key over-promises. The note tells the reader what bold vs faint means.
       const islandNote = document.getElementById("island-legend-note");
       if (islandNote) islandNote.hidden = state.chartType !== "line";
-      // Size key: only bubbles encode the 4th variable (population) as area.
-      // Line/bar/map drop it, so the key would be a lie there.
+      // Size key: bubbles and panels encode the 4th variable (population) as
+      // area. Line/bar/map drop it, so the key would be a lie there.
       const sizeLegend = document.getElementById("size-legend");
       if (sizeLegend) {
-        const showSize = state.chartType === "bubbles";
+        const showSize = state.chartType === "bubbles" || state.chartType === "panels";
         sizeLegend.hidden = !showSize;
         if (showSize) renderSizeLegend();
       }
@@ -2616,15 +3309,31 @@ async function main() {
       }
       const selHint = document.getElementById("selected-hint");
       if (selHint) {
-        selHint.textContent =
-          state.chartType === "map"
-            ? "Click a province to keep it labeled."
+        // On touch, the first tap on a bubble shows the tooltip and the second
+        // tap pins, so "click to keep it labeled" would describe the wrong
+        // gesture. Map taps pin on the first tap on every input type.
+        if (state.chartType === "map") {
+          selHint.textContent = IS_TOUCH
+            ? "Tap a province to keep it labeled."
+            : "Click a province to keep it labeled.";
+        } else {
+          selHint.textContent = IS_TOUCH
+            ? "Tap a bubble for details. Tap again to keep it labeled."
             : "Click a bubble to keep it labeled.";
+        }
       }
-      // Big play button: hidden only in line mode (X axis is already year).
-      // Bubbles and bar both benefit from year animation.
+      // Big play button: hidden in line mode (X axis is already year) and on
+      // single-year panels (nothing to animate). Same for the speed control.
       const bp = document.getElementById("big-play");
-      if (bp) bp.hidden = state.chartType === "line";
+      const hidePlay = state.chartType === "line" || singleYear;
+      if (bp) bp.hidden = hidePlay;
+      const spdBtn = document.getElementById("play-speed");
+      if (spdBtn) {
+        spdBtn.hidden = hidePlay;
+        const spdLabel = state.speed === 0.5 ? "0.5x" : `${state.speed}x`;
+        spdBtn.textContent = spdLabel;
+        spdBtn.setAttribute("aria-label", `playback speed: ${spdLabel}`);
+      }
       // Chart (notMerge:true so a fresh axis indicator triggers full re-render).
       // Map mode needs the province polygons registered first; lazy-load them
       // on first use and re-render once ready (fall back to bubbles on failure).
@@ -2639,6 +3348,7 @@ async function main() {
           () => render(),
           () => {
             state.chartType = "bubbles";
+            showChartNotice("Map could not load. Showing bubbles instead.");
             render();
           },
         );
@@ -2665,7 +3375,59 @@ async function main() {
     }
   }
 
+  // ---------- autoplay fast path ----------
+  // Each play tick used to rerun the full render(): rebuild the per-year step
+  // options for EVERY panel year, the sidebar DOM, and the screen-reader table,
+  // then setOption(notMerge:true) — ~11x the necessary work per frame. The
+  // bubble chart is a timeline option, so the chart already holds every year's
+  // step option from the last full render(); switching frames only needs the
+  // timeline index plus the year-dependent DOM. Anything other than a play tick
+  // (manual scrub, story/axis/selection/compare/deflate/log/group changes) still
+  // goes through render(), which rebuilds the step options from current state.
+  let suppressTimelineEvent = false;
+  // SR table during play: rebuilding the 82-row mirror table every ~1.1s frame
+  // is wasted DOM work for a sighted reader and churn for an AT one. Throttle it
+  // mid-play; stopPlay() ends with a full render() so the final frame is exact.
+  let srTableLastAt = 0;
+  const SR_TABLE_PLAY_THROTTLE_MS = 900;
+  function renderFrame() {
+    const view = state.view;
+    // Only the bubble chart is a timeline option; every other type (and any
+    // year not in the panel) takes the full path.
+    if (!view || state.chartType !== "bubbles") {
+      render();
+      return;
+    }
+    const idx = view.panel_years.indexOf(state.year);
+    if (idx < 0) {
+      render();
+      return;
+    }
+    // The chart applies the prebuilt step option for this year (trails, compare
+    // connectors, CI whiskers, arc quadrant/annotation blocks were all baked
+    // per-year by the last full render). Suppress our own timelinechanged
+    // handler: renderFrame does its DOM/hash updates itself, throttled.
+    suppressTimelineEvent = true;
+    try {
+      chart.dispatchAction({ type: "timelineChange", currentIndex: idx });
+    } finally {
+      suppressTimelineEvent = false;
+    }
+    // Year-dependent DOM: stepper label + slider position, the finding box
+    // (custom pairs compute live findings at the displayed year; presets carry
+    // a "chart is showing YEAR" note), and the URL hash.
+    renderYearControls(state, view, render);
+    updateFindingBox(view);
+    writeHash(state, view);
+    const now = Date.now();
+    if (now - srTableLastAt >= SR_TABLE_PLAY_THROTTLE_MS) {
+      srTableLastAt = now;
+      renderSrTable(view, data, state);
+    }
+  }
+
   chart.on("timelinechanged", (e) => {
+    if (suppressTimelineEvent) return; // renderFrame already did these updates
     const panel = (state.view && state.view.panel_years) || state.story.panel_years;
     state.year = panel[e.currentIndex];
     writeHash(state, state.view);
@@ -2725,8 +3487,39 @@ async function main() {
     if (howto) howto.hidden = true;
   });
 
+  const noticeDismiss = document.getElementById("chart-notice-dismiss");
+  if (noticeDismiss) noticeDismiss.addEventListener("click", hideChartNotice);
+
+  // Optional indicator files that failed to fetch degraded to empty series
+  // (population also drives bubble size). Tell the reader once, quietly.
+  if (data.optionalFailures && data.optionalFailures.length) {
+    console.warn("optional data files failed to load:", data.optionalFailures);
+    const optNotice = document.getElementById("optional-load-notice");
+    if (optNotice) optNotice.hidden = false;
+    // Without a signal, a corrupt or missing optional file degrades every
+    // visitor's chart for weeks before anyone notices.
+    track("soft_fail", { files: data.optionalFailures.join(",").slice(0, 200) });
+  }
+
   document.getElementById("csv").addEventListener("click", () => {
     downloadCsv(state.view || state.story, data, state);
+  });
+
+  document.getElementById("csv-all").addEventListener("click", () => {
+    downloadCsv(state.view || state.story, data, state, true);
+  });
+
+  // Island-group focus filter: each legend row toggles its group in/out of the
+  // active set. Empty set = everything at full strength.
+  document.querySelectorAll(".legend-toggle").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const g = btn.dataset.group;
+      if (!g) return;
+      if (state.grp.has(g)) state.grp.delete(g);
+      else state.grp.add(g);
+      track("group_filter", { groups: [...state.grp].join(",") || "none" });
+      render();
+    });
   });
 
   // Chart-type strip: switch between bubble / line / bar.
@@ -2772,12 +3565,24 @@ async function main() {
     // supersedes this one before paint, no flicker.
     if (wasPlaying) render();
   }
+  const panelYears = () =>
+    (state.view && state.view.panel_years) || state.story.panel_years;
+  // One autoplay step: advance to the next panel year and draw it via the fast
+  // path (renderFrame reuses the timeline step options already on the chart
+  // instead of rebuilding every year's option; non-timeline chart types fall
+  // back to a full render inside renderFrame). Returns false at the panel end.
+  function playTick() {
+    const cur = panelYears();
+    const idx = cur.indexOf(state.year);
+    if (idx < 0 || idx >= cur.length - 1) return false;
+    state.year = cur[idx + 1];
+    renderFrame();
+    return true;
+  }
   function startPlay(onComplete) {
     if (playTimer) return;
     if (state.chartType === "line") return;
     playOnComplete = onComplete || null;
-    const panelYears = () =>
-      (state.view && state.view.panel_years) || state.story.panel_years;
     // If we're sitting on the last year, rewind to the first so play means
     // "watch the full animation" rather than "do nothing."
     let ys = panelYears();
@@ -2788,24 +3593,27 @@ async function main() {
     }
     setPlayingState(true);
     IS_AUTOPLAYING = true;
-    const interval = ys.length <= 3 ? 1500 : 1100;
+    // The speed control scales free-explore playback only. The guided arc keeps
+    // its scripted pacing (its beat timers assume the 1x sweep duration).
+    const speedFactor = state.arc ? 1 : state.speed || 1;
+    const interval = (ys.length <= 3 ? 1500 : 1100) / speedFactor;
     playTimer = setInterval(() => {
-      const cur = panelYears();
-      const idx = cur.indexOf(state.year);
-      if (idx < 0 || idx >= cur.length - 1) {
+      if (!playTick()) {
         const cb = playOnComplete;
         stopPlay();
         if (cb) cb();
-        return;
       }
-      state.year = cur[idx + 1];
-      render();
     }, interval);
   }
   // Expose for the chart-type strip handler so switching away from bubbles
   // stops the timer.
   window.__datavizph_stopPlay = stopPlay;
   window.__datavizph_startPlay = startPlay;
+  // Read-mostly test accessors (same pattern as __datavizph_chartOption): the
+  // perf script and browser tests time the full render vs the play-tick frame
+  // path directly instead of guessing from wall-clock playback.
+  window.__datavizph_render = render;
+  window.__datavizph_playTick = playTick;
   if (bigPlay) {
     bigPlay.addEventListener("click", () => {
       if (state.chartType === "line") return;
@@ -2814,23 +3622,60 @@ async function main() {
     });
   }
 
+  // Playback speed: cycles 1x -> 2x -> 0.5x. Applies mid-play by restarting
+  // the interval at the new pace (the arc keeps its own scripted timing).
+  const SPEED_CYCLE = [1, 2, 0.5];
+  const speedBtn = document.getElementById("play-speed");
+  if (speedBtn) {
+    speedBtn.addEventListener("click", () => {
+      const idx = SPEED_CYCLE.indexOf(state.speed);
+      state.speed = SPEED_CYCLE[(idx + 1) % SPEED_CYCLE.length];
+      track("play_speed", { speed: state.speed });
+      if (playTimer && !state.arc) {
+        const cb = playOnComplete;
+        clearInterval(playTimer);
+        playTimer = null;
+        startPlay(cb);
+      }
+      render(); // refresh the button label + hash
+    });
+  }
+
   // ---------- Guided narrative arc (Rosling: hook -> reveal -> twist -> release) ----------
   // A small scene sequencer that scripts the default first-visit view into a
   // 4-beat story, then hands control back to the explorer. Every beat drives the
   // same render() path a user click uses, so nothing here forks the chart engine.
   const ARC_SEEN_KEY = "datavizph_arc_seen_v1";
+  // Fallback chain: localStorage (persists) -> sessionStorage (tab-lifetime) ->
+  // in-memory flag (private browsing where both storages throw). Without the chain
+  // a private-browsing visitor replays the arc on every page load within the same
+  // tab, which is disruptive once they've already dismissed it.
+  let _arcSeenMemory = false;
   function readArcSeen() {
     try {
-      return localStorage.getItem(ARC_SEEN_KEY) === "1";
-    } catch (e) {
-      return false;
+      if (localStorage.getItem(ARC_SEEN_KEY) === "1") return true;
+    } catch {
+      /* localStorage unavailable */
     }
+    try {
+      if (sessionStorage.getItem(ARC_SEEN_KEY) === "1") return true;
+    } catch {
+      /* sessionStorage unavailable */
+    }
+    return _arcSeenMemory;
   }
   function writeArcSeen() {
+    _arcSeenMemory = true;
     try {
       localStorage.setItem(ARC_SEEN_KEY, "1");
-    } catch (e) {
-      /* private mode: fall through, arc just replays next visit */
+      return;
+    } catch {
+      /* localStorage unavailable — try sessionStorage */
+    }
+    try {
+      sessionStorage.setItem(ARC_SEEN_KEY, "1");
+    } catch {
+      /* both unavailable; in-memory flag is set above */
     }
   }
 
@@ -2926,8 +3771,12 @@ async function main() {
 
   function runArc() {
     if (arcRunning) return;
+    // Never narrate inside an iframe: an embed is someone else's page, and the
+    // chrome the arc relies on (skip/replay, finding box) is hidden there.
+    if (state.embed) return;
+    // Stop any live autoplay loop so startPlay() in beat REVEAL doesn't early-return.
+    stopPlay();
     arcRunning = true;
-    writeArcSeen();
     arcPriorSel = new Set(state.sel);
     showReplay(false);
     showSkip(true);
@@ -3051,6 +3900,9 @@ async function main() {
       });
       pulseControls();
       arcWait(4400, () => {
+        // Full arc completed: mark it seen so returning visits skip to gentle autoplay.
+        writeArcSeen();
+        track("arc_complete");
         state.arc = null;
         arcRunning = false;
         arcPriorSel = null;
@@ -3061,22 +3913,49 @@ async function main() {
     }
   }
 
-  // First user gesture during the arc takes control: abort and drop into explore.
-  // Capture phase + swallow so the same gesture doesn't also scrub/select.
-  const arcGestureGuard = (e) => {
+  // First deliberate user gesture during the arc hands control to the explorer.
+  // A scroll (pointerdown + move >= 10px) must NOT abort the arc — the user is
+  // just scrolling past. Only a tap (pointerup at nearly the same position as
+  // pointerdown) aborts. We never call stopImmediatePropagation/preventDefault so
+  // the aborting tap's click still reaches the freshly-restored explorer UI.
+  // Keydown still aborts (but no preventDefault so Tab/Space work normally).
+  let _arcTapOrigin = null;
+  const TAP_THRESHOLD_PX = 10;
+  const arcPointerDown = (e) => {
     if (!arcRunning && !state.arc) return;
-    if (e.target && e.target.closest && e.target.closest("#arc-skip, #replay-arc")) {
-      return;
-    }
-    e.stopImmediatePropagation();
-    if (e.type === "keydown") e.preventDefault();
+    if (e.target && e.target.closest && e.target.closest("#arc-skip, #replay-arc")) return;
+    _arcTapOrigin = { x: e.clientX, y: e.clientY };
+  };
+  const arcPointerUp = (e) => {
+    if (!arcRunning && !state.arc) return;
+    if (e.target && e.target.closest && e.target.closest("#arc-skip, #replay-arc")) return;
+    if (!_arcTapOrigin) return;
+    const dx = e.clientX - _arcTapOrigin.x;
+    const dy = e.clientY - _arcTapOrigin.y;
+    _arcTapOrigin = null;
+    // Scroll-like gesture: don't abort.
+    if (Math.sqrt(dx * dx + dy * dy) >= TAP_THRESHOLD_PX) return;
+    writeArcSeen();
+    track("arc_abort", { via: "tap", beat: state.arc ? state.arc.beat : "" });
     abortArc();
   };
-  document.addEventListener("pointerdown", arcGestureGuard, true);
-  window.addEventListener("keydown", arcGestureGuard, true);
+  const arcKeyGuard = (e) => {
+    if (!arcRunning && !state.arc) return;
+    if (e.target && e.target.closest && e.target.closest("#arc-skip, #replay-arc")) return;
+    // No preventDefault: Tab, Space, arrow keys must reach their targets.
+    writeArcSeen();
+    track("arc_abort", { via: "key", beat: state.arc ? state.arc.beat : "" });
+    abortArc();
+  };
+  document.addEventListener("pointerdown", arcPointerDown, true);
+  document.addEventListener("pointerup", arcPointerUp, true);
+  window.addEventListener("keydown", arcKeyGuard, true);
   if (skipBtn) {
     skipBtn.addEventListener("click", (e) => {
       e.preventDefault();
+      // Explicit skip counts as seen: don't replay on next visit.
+      writeArcSeen();
+      track("arc_skip", { beat: state.arc ? state.arc.beat : "" });
       abortArc();
     });
   }
@@ -3092,6 +3971,9 @@ async function main() {
   // and the screenshot harness sync to a beat deterministically instead of racing
   // wall-clock timers.
   window.__datavizph_arcBeat = () => (state.arc ? state.arc.beat : null);
+  // Read-only accessor for the rendered ECharts option (titles, grids, series).
+  // Canvas text is invisible to the DOM, so browser tests assert through this.
+  window.__datavizph_chartOption = () => chart.getOption();
 
   document.getElementById("png").addEventListener("click", () => {
     const url = chart.getDataURL({
@@ -3136,6 +4018,34 @@ async function main() {
     }
   });
 
+  // Copy a ready-to-paste iframe snippet for the current view. Same clipboard
+  // try/fallback pattern as the copy-link button above.
+  document.getElementById("embed-code").addEventListener("click", async () => {
+    const status = document.getElementById("share-status");
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    params.set("embed", "1");
+    const src = `https://dataviz.ph/#${params.toString()}`;
+    const code =
+      `<iframe src="${src}" width="800" height="560" style="border:0" ` +
+      `loading="lazy" title="dataviz.ph chart"></iframe>`;
+    try {
+      await navigator.clipboard.writeText(code);
+      const btn = document.getElementById("embed-code");
+      const prev = btn.textContent;
+      btn.textContent = "Copied";
+      if (status) status.textContent = "Embed code copied to clipboard.";
+      setTimeout(() => {
+        btn.textContent = prev;
+        if (status) status.textContent = "";
+      }, 1800);
+    } catch (e) {
+      console.error("clipboard failed", e);
+      if (status)
+        status.textContent =
+          "Could not copy the embed code. Copy the page link and add &embed=1 to it.";
+    }
+  });
+
   wireSearch(document.getElementById("search"), data, state, render);
 
   // Keyboard year scrubbing (arrow keys when nothing else has focus).
@@ -3160,6 +4070,7 @@ async function main() {
   // Re-place the finding/caveat when crossing the mobile breakpoint (rotate/resize).
   window.matchMedia("(max-width: 1099px)").addEventListener("change", syncDetailPlacement);
   window.addEventListener("hashchange", () => {
+    if (state.arc) abortArc();
     // Pure in-page anchors (e.g. #methodology) carry no chart state. Ignore them
     // so an anchor click never resets the visualization to defaults.
     const rawHash = window.location.hash.replace(/^#/, "");
@@ -3173,6 +4084,13 @@ async function main() {
     state.logX = next.logX;
     state.sel = next.sel;
     state.deflate = next.deflate;
+    state.grp = next.grp;
+    state.speed = next.speed;
+    if (next.embed !== state.embed) {
+      state.embed = next.embed;
+      syncEmbedMode();
+      chart.resize();
+    }
     // If chart type changes via URL nav, stop any running play loop so the
     // year-stepper doesn't keep firing while the chart re-renders as a
     // non-bubble view.
@@ -3219,12 +4137,30 @@ async function main() {
 
 main().catch((e) => {
   console.error(e);
+  track("client_error", {
+    message: String((e && e.message) || e).slice(0, 200),
+    source: "load",
+  });
   const root = document.getElementById("chart");
   root.replaceChildren();
   const msg = document.createElement("div");
   msg.id = "loading";
-  msg.role = "alert";
-  msg.textContent =
+  msg.setAttribute("role", "alert");
+  const text = document.createElement("p");
+  text.textContent =
     "Chart could not load. Refresh the page, or check the browser console for details.";
+  msg.appendChild(text);
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.id = "retry-load";
+  retry.textContent = "Retry";
+  retry.addEventListener("click", () => location.reload());
+  msg.appendChild(retry);
   root.appendChild(msg);
+  // Without data every control is dead weight; hide the shell so the page does
+  // not look interactive when nothing behind it works.
+  for (const id of ["controls", "chart-type-strip", "big-play"]) {
+    const el = document.getElementById(id);
+    if (el) el.hidden = true;
+  }
 });

@@ -25,10 +25,21 @@
   <meta name="twitter:image" content="https://dataviz.ph/og.png">
 
   <link rel="stylesheet" href="style.css">
-  <script src="vendor/echarts.min.js"
-          integrity="sha384-Mx5lkUEQPM1pOJCwFtUICyX45KNojXbkWdYhkKUKsbv391mavbfoAmONbzkgYPzR"
+  <link rel="modulepreload" href="app.js">
+  <link rel="preload" as="fetch" crossorigin href="data/provinces.json">
+  <link rel="preload" as="fetch" crossorigin href="data/poverty.json">
+  <link rel="preload" as="fetch" crossorigin href="data/dpwh_spend_per_capita.json">
+  <link rel="preload" as="fetch" crossorigin href="data/gdp_per_capita.json">
+  <link rel="preload" as="fetch" crossorigin href="data/indicators.json">
+  <link rel="preload" as="fetch" crossorigin href="data/stories.json">
+  <script src="vendor/echarts-custom-5.6.0.min.js"
+          integrity="sha384-8tVVM8FVXhA2om9KnCZ3CcK0W73phciOw915kWI1Swb4/GK3iXIjytDvFyss7EGs"
           crossorigin="anonymous"
-          referrerpolicy="no-referrer"></script>
+          referrerpolicy="no-referrer"
+          defer></script>
+  <!-- Vercel Web Analytics: same-origin, cookieless, allowed by the strict CSP.
+       404s harmlessly on local servers and until enabled on the project. -->
+  <script defer src="/_vercel/insights/script.js"></script>
 </head>
 <body>
   <!-- Slim top bar: brand on the left, preset tabs in the middle, source link on the right -->
@@ -71,6 +82,12 @@
         <span class="ct-icon" aria-hidden="true">◍</span>
         <span class="ct-label">Map</span>
       </button>
+      <!-- Side-by-side spend-vs-GDP contrast. Only offered when poverty is on
+           the Y axis (JS toggles the hidden attr). -->
+      <button type="button" class="chart-type-btn" data-type="panels" aria-pressed="false" title="Panels" hidden>
+        <span class="ct-icon" aria-hidden="true">▦</span>
+        <span class="ct-label">Panels</span>
+      </button>
     </nav>
   </section>
 
@@ -79,6 +96,12 @@
       <p id="chart-howto" hidden>
         <span id="chart-howto-text"></span>
         <button type="button" id="chart-howto-dismiss" aria-label="dismiss how-to-read hint">&times;</button>
+      </p>
+      <!-- Transient status strip (e.g. map fell back to bubbles). Same shape as
+           the howto strip; JS fills the text, auto-hides after a few seconds. -->
+      <p id="chart-notice" role="status" hidden>
+        <span id="chart-notice-text"></span>
+        <button type="button" id="chart-notice-dismiss" aria-label="dismiss notice">&times;</button>
       </p>
       <div
         id="chart"
@@ -112,6 +135,8 @@
         <span class="bp-icon bp-play" aria-hidden="true">▶</span>
         <span class="bp-icon bp-pause" aria-hidden="true">❚❚</span>
       </button>
+      <!-- Playback speed: cycles 1x -> 2x -> 0.5x. Sits beside the play button. -->
+      <button id="play-speed" type="button" aria-label="playback speed: 1x">1x</button>
       <!-- Guided-arc controls. Skip shows only while the arc runs; Replay shows
            once it ends or after a returning visit. JS toggles their hidden attr. -->
       <button id="arc-skip" type="button" hidden>Skip the story ›</button>
@@ -157,12 +182,14 @@
       <div class="block" id="island-legend">
         <h2>Island groups</h2>
         <ul class="legend-list">
-          <li><span class="dot" data-group="luzon"></span>Luzon</li>
-          <li><span class="dot" data-group="visayas"></span>Visayas</li>
-          <li><span class="dot" data-group="mindanao"></span>Mindanao</li>
-          <li><span class="dot" data-group="ncr"></span>NCR</li>
-          <li><span class="dot" data-group="barmm"></span>BARMM</li>
+          <li><button type="button" class="legend-toggle" data-group="luzon" aria-pressed="false"><span class="dot" data-group="luzon"></span>Luzon</button></li>
+          <li><button type="button" class="legend-toggle" data-group="visayas" aria-pressed="false"><span class="dot" data-group="visayas"></span>Visayas</button></li>
+          <li><button type="button" class="legend-toggle" data-group="mindanao" aria-pressed="false"><span class="dot" data-group="mindanao"></span>Mindanao</button></li>
+          <li><button type="button" class="legend-toggle" data-group="ncr" aria-pressed="false"><span class="dot" data-group="ncr"></span>NCR</button></li>
+          <li><button type="button" class="legend-toggle" data-group="barmm" aria-pressed="false"><span class="dot" data-group="barmm"></span>BARMM</button></li>
+          <li class="legend-imprecise"><span class="ring-imprecise" aria-hidden="true"></span>Dashed ring: PSA flags the estimate as imprecise (CV above 30 percent).</li>
         </ul>
+        <p class="hint" id="island-filter-hint">Click a group to focus it. Others fade. Click again to restore.</p>
         <p class="hint legend-note" id="island-legend-note" hidden>In Lines, bold lines are the selected or most-changed provinces. The rest stay faint for context.</p>
       </div>
 
@@ -190,23 +217,28 @@
       <div class="block" id="log-block">
         <h2>Axis</h2>
         <button id="log-toggle" type="button">X: log</button>
+        <p class="hint">Log scale spreads out the crowded low-spend provinces.</p>
       </div>
 
       <div class="block" id="deflate-block" hidden>
         <h2>Currency</h2>
         <button id="deflate-toggle" type="button">PHP, 2018-real</button>
+        <p class="hint">Adjusted for inflation to constant 2018 pesos using the PSA CPI.</p>
       </div>
 
       <div class="block">
         <h2>Projection</h2>
         <button id="extrap-toggle" type="button" aria-pressed="false">Project past anchors: off</button>
+        <p class="hint">Linearly extends poverty past the last PSA survey year.</p>
       </div>
 
       <div class="block">
         <h2>Download</h2>
         <button id="csv" type="button">CSV</button>
+        <button id="csv-all" type="button">CSV (all years)</button>
         <button id="png" type="button">PNG</button>
         <button id="share" type="button">Link</button>
+        <button id="embed-code" type="button">Embed</button>
         <p class="hint" id="share-status" role="status" aria-live="polite"></p>
       </div>
     </aside>
@@ -229,6 +261,9 @@
       <a href="/methodology">Full methodology</a>
     </p>
     <p id="data-freshness" class="freshness"></p>
+    <p id="optional-load-notice" class="freshness" role="status" hidden>
+      Some optional indicators could not load. Refresh to retry.
+    </p>
     <p class="disclaimer">
       All data sourced from public records (PSA OpenStat, PhilGEPS, PSA Census).
       This tool visualizes statistical indicators only. Specific allegations, if

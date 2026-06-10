@@ -198,6 +198,10 @@ body {
 
 .chart-type-btn:hover { border-color: var(--ink); color: var(--ink); }
 
+/* The Panels tab is data-gated (poverty on Y only); display:inline-flex above
+   would otherwise defeat the hidden attribute. */
+.chart-type-btn[hidden] { display: none !important; }
+
 .chart-type-btn.active {
   background: var(--brand);
   color: #fff;
@@ -282,6 +286,44 @@ main {
 #chart-howto-dismiss:hover { color: var(--ink); background: var(--soft2); }
 #chart-howto-dismiss:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 
+/* Transient chart status strip (map fallback etc). Same look as the howto
+   strip but amber-tinted so it reads as a notice, not instruction. */
+#chart-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.3rem 0.6rem 0.3rem 0.85rem;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: #7a3c10;
+  background: #fcefea;
+  border-bottom: 1px solid var(--rule);
+}
+
+#chart-notice[hidden] { display: none; }
+
+#chart-notice-text { flex: 1 1 auto; }
+
+#chart-notice-dismiss {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  line-height: 1;
+  color: #7a3c10;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#chart-notice-dismiss:hover { color: var(--ink); background: var(--soft2); }
+#chart-notice-dismiss:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+
 #chart {
   width: 100%;
   height: 720px;
@@ -294,11 +336,35 @@ main {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 0.6rem;
   color: var(--muted);
   font-size: 0.9rem;
   background: var(--soft);
   border-radius: 10px;
 }
+
+#loading p { margin: 0; }
+
+/* Reload-the-page button inside the data-load failure alert. */
+#retry-load {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.45rem 0.9rem;
+  min-height: 44px;
+  color: #fff;
+  background: var(--brand);
+  border: 1px solid var(--brand);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#retry-load:hover { background: var(--brand-hot); border-color: var(--brand-hot); }
+
+/* The data-load failure path hides the dead control shell with the hidden
+   attribute; these elements set their own display, so make hidden win. */
+#chart-type-strip[hidden],
+#controls[hidden] { display: none !important; }
 
 /* Spinner on the initial load only (role=status); the error state is role=alert. */
 #loading[role="status"]::before {
@@ -461,6 +527,13 @@ select:focus-visible {
 #search-results li:last-child { border-bottom: none; }
 #search-results li:hover { background: var(--soft); }
 
+/* Keyboard roving highlight (ArrowUp/ArrowDown from the search input). */
+#search-results li.kb-active {
+  background: var(--soft);
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
 #selected-chips {
   display: flex;
   flex-wrap: wrap;
@@ -509,6 +582,31 @@ select:focus-visible {
   padding: 0.18rem 0;
 }
 
+/* Island legend rows double as focus-filter toggles: clicking a group fades
+   every other group's marks. aria-pressed mirrors the .on class. */
+.legend-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0.18rem 0.4rem 0.18rem 0.2rem;
+  cursor: pointer;
+  min-height: 28px;
+}
+
+.legend-toggle:hover { background: var(--soft); }
+.legend-toggle.on {
+  background: var(--soft2);
+  border-color: var(--rule);
+  font-weight: 600;
+}
+.legend-toggle.dimmed { opacity: 0.45; }
+
 .legend-list .dot {
   width: 10px;
   height: 10px;
@@ -521,6 +619,27 @@ select:focus-visible {
 .legend-list .dot[data-group="mindanao"] { background: var(--mindanao); }
 .legend-list .dot[data-group="ncr"] { background: var(--ncr); }
 .legend-list .dot[data-group="barmm"] { background: var(--barmm); }
+
+/* Imprecise-estimate key: mirrors the amber dashed ring the chart draws on
+   bubbles/provinces whose PSA CV exceeds 30 percent. */
+.legend-list li.legend-imprecise {
+  align-items: flex-start;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.4;
+  margin-top: 0.3rem;
+}
+
+.legend-list .ring-imprecise {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.6px dashed #c05621;
+  background: transparent;
+  display: inline-block;
+  margin-top: 0.2rem;
+}
 
 /* --- Bubble-size legend (sidebar, bubble mode only) -------------------- */
 
@@ -619,8 +738,10 @@ select:focus-visible {
 }
 
 #controls #csv,
+#controls #csv-all,
 #controls #png,
-#controls #share {
+#controls #share,
+#controls #embed-code {
   display: inline-block;
   width: auto !important;
   flex: 1;
@@ -880,6 +1001,31 @@ select:focus-visible {
 
 #big-play[hidden] { display: none !important; }
 
+/* Playback-speed pill beside the play button. Cycles 1x -> 2x -> 0.5x. */
+#play-speed {
+  position: absolute;
+  left: 74px;
+  bottom: 24px;
+  z-index: 6;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1;
+  min-width: 38px;
+  min-height: 32px;
+  padding: 0.35rem 0.5rem;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+#play-speed:hover { color: var(--ink); border-color: var(--ink); }
+#play-speed:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+#play-speed[hidden] { display: none !important; }
+
 /* --- Guided narrative arc --------------------------------------------- */
 
 /* Cross-fade between stories on the twist beat (axis swap reads as a transition,
@@ -1107,6 +1253,18 @@ footer .disclaimer {
      Move it to the right edge AND lift it above the x-axis value row so it stops
      covering both the bottom labels and the axis numbers. */
   #chart-wrap[data-ct="bar"] #big-play { left: auto; right: 14px; bottom: 44px; }
+  #chart-wrap[data-ct="bar"] #play-speed { left: auto; right: 74px; bottom: 54px; }
+
+  /* On a phone the absolute bottom-right pills sit on top of the timeline year
+     labels (bubbles) and the southern provinces (map). Drop them into the flow
+     below the chart frame instead. The [hidden] display:none rule still wins. */
+  #arc-skip,
+  #replay-arc {
+    position: static;
+    display: block;
+    width: max-content;
+    margin: 0.45rem auto 0.6rem;
+  }
 }
 
 /* Landscape phones: a 460-540px chart overflows a ~375px-tall viewport and pushes
@@ -1120,3 +1278,56 @@ footer .disclaimer {
   #topbar { padding-top: 0.35rem; padding-bottom: 0.35rem; }
   #chart-howto { display: none; }
 }
+
+/* --- Embed mode --------------------------------------------------------- */
+
+/* A chrome-less chart for iframes (#...&embed=1). Topbar, sidebar, footer and
+   the how-to strip disappear; the chart-type strip stays so an embedded reader
+   can still flip views. A small fixed chip credits dataviz.ph and links out. */
+body.embed-mode #topbar,
+body.embed-mode #controls,
+body.embed-mode footer,
+body.embed-mode #chart-howto,
+body.embed-mode #mobile-detail-slot,
+body.embed-mode #title-strip .title-text,
+body.embed-mode #replay-arc,
+body.embed-mode #arc-skip {
+  display: none !important;
+}
+
+body.embed-mode #title-strip {
+  padding: 0.4rem 0.6rem;
+  border-bottom: none;
+  justify-content: flex-end;
+}
+
+body.embed-mode main { grid-template-columns: minmax(0, 1fr); }
+
+body.embed-mode #chart-wrap {
+  margin: 0 0.4rem 0.4rem;
+}
+
+/* Fill the iframe: viewport height minus the chart-type strip and margins. */
+body.embed-mode #chart {
+  height: calc(100vh - 76px);
+  min-height: 260px;
+}
+
+#embed-chip {
+  position: fixed;
+  right: 10px;
+  bottom: 10px;
+  z-index: 50;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 0.3rem 0.6rem;
+  text-decoration: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+#embed-chip:hover { color: var(--brand-hot); border-color: var(--ink); }
