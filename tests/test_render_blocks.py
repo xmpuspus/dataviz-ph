@@ -131,10 +131,11 @@ def test_finding_and_caveat_react_to_story_switch(page, base_url):
     assert "Awards, not disbursement" in page.inner_text("#story-caveat")
 
     tabs = page.query_selector_all("#story-switcher button.story-btn")
-    assert len(tabs) >= 4, "expected the four preset story tabs"
-    # GDP-vs-poverty (last tab) plots no award-based indicator, so the awards
-    # caveat must drop while the finding stays present and updates.
-    tabs[-1].click()
+    assert len(tabs) == 5, "expected the five preset story tabs"
+    # GDP-vs-poverty (4th tab) plots no award-based indicator, so the awards
+    # caveat must drop while the finding stays present and updates. (The 5th
+    # tab, cumulative spend vs poverty change, is award-based again.)
+    tabs[3].click()
     page.wait_for_function(
         "prev => document.querySelector('#story-finding').textContent !== prev", arg=first
     )

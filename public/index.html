@@ -82,6 +82,12 @@
         <span class="ct-icon" aria-hidden="true">◍</span>
         <span class="ct-label">Map</span>
       </button>
+      <!-- Side-by-side spend-vs-GDP contrast. Only offered when poverty is on
+           the Y axis (JS toggles the hidden attr). -->
+      <button type="button" class="chart-type-btn" data-type="panels" aria-pressed="false" title="Panels" hidden>
+        <span class="ct-icon" aria-hidden="true">▦</span>
+        <span class="ct-label">Panels</span>
+      </button>
     </nav>
   </section>
 
@@ -129,6 +135,8 @@
         <span class="bp-icon bp-play" aria-hidden="true">▶</span>
         <span class="bp-icon bp-pause" aria-hidden="true">❚❚</span>
       </button>
+      <!-- Playback speed: cycles 1x -> 2x -> 0.5x. Sits beside the play button. -->
+      <button id="play-speed" type="button" aria-label="playback speed: 1x">1x</button>
       <!-- Guided-arc controls. Skip shows only while the arc runs; Replay shows
            once it ends or after a returning visit. JS toggles their hidden attr. -->
       <button id="arc-skip" type="button" hidden>Skip the story ›</button>
@@ -174,13 +182,14 @@
       <div class="block" id="island-legend">
         <h2>Island groups</h2>
         <ul class="legend-list">
-          <li><span class="dot" data-group="luzon"></span>Luzon</li>
-          <li><span class="dot" data-group="visayas"></span>Visayas</li>
-          <li><span class="dot" data-group="mindanao"></span>Mindanao</li>
-          <li><span class="dot" data-group="ncr"></span>NCR</li>
-          <li><span class="dot" data-group="barmm"></span>BARMM</li>
+          <li><button type="button" class="legend-toggle" data-group="luzon" aria-pressed="false"><span class="dot" data-group="luzon"></span>Luzon</button></li>
+          <li><button type="button" class="legend-toggle" data-group="visayas" aria-pressed="false"><span class="dot" data-group="visayas"></span>Visayas</button></li>
+          <li><button type="button" class="legend-toggle" data-group="mindanao" aria-pressed="false"><span class="dot" data-group="mindanao"></span>Mindanao</button></li>
+          <li><button type="button" class="legend-toggle" data-group="ncr" aria-pressed="false"><span class="dot" data-group="ncr"></span>NCR</button></li>
+          <li><button type="button" class="legend-toggle" data-group="barmm" aria-pressed="false"><span class="dot" data-group="barmm"></span>BARMM</button></li>
           <li class="legend-imprecise"><span class="ring-imprecise" aria-hidden="true"></span>Dashed ring: PSA flags the estimate as imprecise (CV above 30 percent).</li>
         </ul>
+        <p class="hint" id="island-filter-hint">Click a group to focus it. Others fade. Click again to restore.</p>
         <p class="hint legend-note" id="island-legend-note" hidden>In Lines, bold lines are the selected or most-changed provinces. The rest stay faint for context.</p>
       </div>
 
@@ -226,8 +235,10 @@
       <div class="block">
         <h2>Download</h2>
         <button id="csv" type="button">CSV</button>
+        <button id="csv-all" type="button">CSV (all years)</button>
         <button id="png" type="button">PNG</button>
         <button id="share" type="button">Link</button>
+        <button id="embed-code" type="button">Embed</button>
         <p class="hint" id="share-status" role="status" aria-live="polite"></p>
       </div>
     </aside>
