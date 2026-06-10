@@ -282,6 +282,44 @@ main {
 #chart-howto-dismiss:hover { color: var(--ink); background: var(--soft2); }
 #chart-howto-dismiss:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 
+/* Transient chart status strip (map fallback etc). Same look as the howto
+   strip but amber-tinted so it reads as a notice, not instruction. */
+#chart-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.3rem 0.6rem 0.3rem 0.85rem;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: #7a3c10;
+  background: #fcefea;
+  border-bottom: 1px solid var(--rule);
+}
+
+#chart-notice[hidden] { display: none; }
+
+#chart-notice-text { flex: 1 1 auto; }
+
+#chart-notice-dismiss {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  line-height: 1;
+  color: #7a3c10;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#chart-notice-dismiss:hover { color: var(--ink); background: var(--soft2); }
+#chart-notice-dismiss:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+
 #chart {
   width: 100%;
   height: 720px;
@@ -294,11 +332,35 @@ main {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 0.6rem;
   color: var(--muted);
   font-size: 0.9rem;
   background: var(--soft);
   border-radius: 10px;
 }
+
+#loading p { margin: 0; }
+
+/* Reload-the-page button inside the data-load failure alert. */
+#retry-load {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.45rem 0.9rem;
+  min-height: 44px;
+  color: #fff;
+  background: var(--brand);
+  border: 1px solid var(--brand);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#retry-load:hover { background: var(--brand-hot); border-color: var(--brand-hot); }
+
+/* The data-load failure path hides the dead control shell with the hidden
+   attribute; these elements set their own display, so make hidden win. */
+#chart-type-strip[hidden],
+#controls[hidden] { display: none !important; }
 
 /* Spinner on the initial load only (role=status); the error state is role=alert. */
 #loading[role="status"]::before {
@@ -461,6 +523,13 @@ select:focus-visible {
 #search-results li:last-child { border-bottom: none; }
 #search-results li:hover { background: var(--soft); }
 
+/* Keyboard roving highlight (ArrowUp/ArrowDown from the search input). */
+#search-results li.kb-active {
+  background: var(--soft);
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
 #selected-chips {
   display: flex;
   flex-wrap: wrap;
@@ -521,6 +590,27 @@ select:focus-visible {
 .legend-list .dot[data-group="mindanao"] { background: var(--mindanao); }
 .legend-list .dot[data-group="ncr"] { background: var(--ncr); }
 .legend-list .dot[data-group="barmm"] { background: var(--barmm); }
+
+/* Imprecise-estimate key: mirrors the amber dashed ring the chart draws on
+   bubbles/provinces whose PSA CV exceeds 30 percent. */
+.legend-list li.legend-imprecise {
+  align-items: flex-start;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.4;
+  margin-top: 0.3rem;
+}
+
+.legend-list .ring-imprecise {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.6px dashed #c05621;
+  background: transparent;
+  display: inline-block;
+  margin-top: 0.2rem;
+}
 
 /* --- Bubble-size legend (sidebar, bubble mode only) -------------------- */
 
@@ -1107,6 +1197,17 @@ footer .disclaimer {
      Move it to the right edge AND lift it above the x-axis value row so it stops
      covering both the bottom labels and the axis numbers. */
   #chart-wrap[data-ct="bar"] #big-play { left: auto; right: 14px; bottom: 44px; }
+
+  /* On a phone the absolute bottom-right pills sit on top of the timeline year
+     labels (bubbles) and the southern provinces (map). Drop them into the flow
+     below the chart frame instead. The [hidden] display:none rule still wins. */
+  #arc-skip,
+  #replay-arc {
+    position: static;
+    display: block;
+    width: max-content;
+    margin: 0.45rem auto 0.6rem;
+  }
 }
 
 /* Landscape phones: a 460-540px chart overflows a ~375px-tall viewport and pushes

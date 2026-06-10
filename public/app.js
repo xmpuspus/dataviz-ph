@@ -114,6 +114,15 @@ function makeView(state, data) {
 }
 
 async function loadData() {
+  // Optional files degrade to an empty fallback, but the failure is recorded so
+  // the page can say so (a silently absent population.json would otherwise just
+  // strip the size encoding with no signal to the reader).
+  const optionalFailures = [];
+  const optJson = (path, fallback) =>
+    fetchJson(path).catch(() => {
+      optionalFailures.push(path);
+      return fallback;
+    });
   const [
     provinces,
     poverty,
@@ -134,22 +143,23 @@ async function loadData() {
   ] = await Promise.all([
     fetchJson("data/provinces.json"),
     fetchJson("data/poverty.json"),
-    fetchJson("data/subsistence.json").catch(() => []),
+    optJson("data/subsistence.json", []),
     fetchJson("data/dpwh_spend_per_capita.json"),
     fetchJson("data/all_spend_per_capita.json"),
-    fetchJson("data/doh_spend_per_capita.json").catch(() => []),
-    fetchJson("data/infra_spend_per_capita.json").catch(() => []),
+    optJson("data/doh_spend_per_capita.json", []),
+    optJson("data/infra_spend_per_capita.json", []),
     fetchJson("data/gdp_per_capita.json"),
-    fetchJson("data/dpwh_share_pct.json").catch(() => []),
-    fetchJson("data/cpi_yoy_pct.json").catch(() => []),
-    fetchJson("data/poverty_change_pp.json").catch(() => []),
-    fetchJson("data/population.json").catch(() => []),
+    optJson("data/dpwh_share_pct.json", []),
+    optJson("data/cpi_yoy_pct.json", []),
+    optJson("data/poverty_change_pp.json", []),
+    optJson("data/population.json", []),
     fetchJson("data/indicators.json"),
     fetchJson("data/stories.json"),
-    fetchJson("data/pair_headlines.json").catch(() => ({})),
+    optJson("data/pair_headlines.json", {}),
     fetchJson("data/manifest.json").catch(() => null),
   ]);
   return {
+    optionalFailures,
     provinces,
     indicatorRows: {
       poverty: indexRows(poverty),
@@ -264,6 +274,28 @@ function persistHowtoDismissed() {
   } catch {
     /* storage unavailable: dismissal lasts for this session only */
   }
+}
+
+// Transient chart status strip (e.g. "Map could not load"). The element carries
+// role="status", so unhiding it with fresh text is announced by screen readers.
+// Auto-hides after a few seconds; a dismiss button closes it sooner.
+let _chartNoticeTimer = null;
+function hideChartNotice() {
+  const box = document.getElementById("chart-notice");
+  if (box) box.hidden = true;
+  if (_chartNoticeTimer) {
+    clearTimeout(_chartNoticeTimer);
+    _chartNoticeTimer = null;
+  }
+}
+function showChartNotice(text, ms = 6000) {
+  const box = document.getElementById("chart-notice");
+  const txt = document.getElementById("chart-notice-text");
+  if (!box || !txt) return;
+  txt.textContent = text;
+  box.hidden = false;
+  if (_chartNoticeTimer) clearTimeout(_chartNoticeTimer);
+  _chartNoticeTimer = setTimeout(hideChartNotice, ms);
 }
 
 const DEFLATABLE_INDICATORS = new Set([
@@ -394,6 +426,22 @@ function getAnchors(indicatorId, psgc, data) {
     out.sort((a, b) => a.year - b.year);
   }
   _anchorsCache.set(key, out);
+  return out;
+}
+
+// Survey anchor years for an indicator, read off the data rows (neither interp
+// nor extrap markers), never hardcoded. Cached once per indicator.
+const _anchorYearsCache = new Map();
+function anchorYearsOf(indicatorId, data) {
+  if (_anchorYearsCache.has(indicatorId)) return _anchorYearsCache.get(indicatorId);
+  const rows = data.indicatorRows[indicatorId] || {};
+  const years = new Set();
+  for (const k of Object.keys(rows)) {
+    const r = rows[k];
+    if (r && !r.interp && !r.extrap && r.year !== undefined) years.add(r.year);
+  }
+  const out = [...years].sort((a, b) => a - b);
+  _anchorYearsCache.set(indicatorId, out);
   return out;
 }
 
@@ -840,6 +888,14 @@ function baseOption(story, data, state) {
             ? `${yName} held constant from nearest PSA anchor (PSA does not publish this year)`
             : `${yName} linearly interpolated between PSA anchors`;
           noteHtml = `<div style="color:#595959;font-size:11px;margin-top:6px;border-top:1px solid #eee;padding-top:4px">${escapeHtml(note)}</div>`;
+          // The 2018-2021 interpolation spans the pandemic; flag the two years
+          // where a straight line is least likely to match what really happened.
+          if (interp && (year === 2019 || year === 2020)) {
+            noteHtml +=
+              `<div style="color:#595959;font-size:11px;margin-top:2px">` +
+              `2019-2020 values are linear estimates across the COVID years. ` +
+              `The true path was likely not linear.</div>`;
+          }
         }
         const xPrec = p.data && p.data.xPrec;
         const yPrec = p.data && p.data.yPrec;
@@ -1174,6 +1230,10 @@ function buildBubbleOption(story, data, state) {
 
   const xDeflatable = DEFLATABLE_INDICATORS.has(story.x);
   const yDeflatable = DEFLATABLE_INDICATORS.has(story.y);
+  // Non-empty only when an axis carries the poverty indicator; gates the
+  // "estimated, not surveyed" pill on years between PSA survey anchors.
+  const povertyAnchorYears =
+    story.x === "poverty" || story.y === "poverty" ? anchorYearsOf("poverty", data) : [];
   // For the base option we only need an empty stub per province for the connector
   // ids that may be active. Use union of every year's connectors so notMerge:true
   // re-attaches them on each step.
@@ -1245,7 +1305,9 @@ function buildBubbleOption(story, data, state) {
         padding: [3, 9],
       });
     }
-    if ((xDeflatable || yDeflatable) && state.deflate && year < CPI_BASE_YEAR) {
+    const deflateBannerShown =
+      (xDeflatable || yDeflatable) && state.deflate && year < CPI_BASE_YEAR;
+    if (deflateBannerShown) {
       titleBlocks.push({
         text:
           "Spend bubbles hidden for this year. PSA CPI 2018-base does not cover years before 2018. Switch to nominal pesos to see them.",
@@ -1263,6 +1325,29 @@ function buildBubbleOption(story, data, state) {
         borderWidth: 1,
         borderRadius: 4,
         padding: [4, 10],
+      });
+    }
+    // Quiet pill for years PSA did not survey: poverty values there are model
+    // estimates, not measurements. Anchor years are read from the data rows.
+    // Stacks below the pre-2018 deflate banner when both apply (e.g. 2015 with
+    // deflate on), so the two never overprint.
+    if (povertyAnchorYears.length && !povertyAnchorYears.includes(year)) {
+      titleBlocks.push({
+        text: `${year}: estimated, not surveyed. PSA anchors: ${povertyAnchorYears.join(", ")}.`,
+        left: "center",
+        top: deflateBannerShown ? 36 : 4,
+        textStyle: {
+          fontSize: 11,
+          fontWeight: 500,
+          color: "#6b6b6b",
+          fontFamily:
+            "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial, sans-serif",
+        },
+        backgroundColor: "rgba(247, 247, 248, 0.92)",
+        borderColor: "#e6e6e6",
+        borderWidth: 1,
+        borderRadius: 99,
+        padding: [3, 9],
       });
     }
     if (state.arc && state.arc.annotation) {
@@ -1663,6 +1748,27 @@ function wireSearch(input, data, state, render) {
 
   const list = document.getElementById("search-results");
 
+  // Roving keyboard highlight: ArrowUp/ArrowDown move it, Enter picks it. The
+  // input points at the highlighted option via aria-activedescendant, so a
+  // screen reader hears the option without focus ever leaving the input.
+  let activeIdx = -1;
+  const setActive = (idx) => {
+    const items = [...list.children];
+    // idx < 0 clears the highlight (fresh result list, no roving position yet).
+    activeIdx = !items.length || idx < 0 ? -1 : Math.min(idx, items.length - 1);
+    items.forEach((li, i) => li.classList.toggle("kb-active", i === activeIdx));
+    if (activeIdx >= 0) {
+      input.setAttribute("aria-activedescendant", items[activeIdx].id);
+      items[activeIdx].scrollIntoView({ block: "nearest" });
+    } else {
+      input.removeAttribute("aria-activedescendant");
+    }
+  };
+  const closeList = () => {
+    list.replaceChildren();
+    setActive(-1);
+  };
+
   const updateList = () => {
     const q = input.value;
     const ms = matches(q);
@@ -1672,13 +1778,14 @@ function wireSearch(input, data, state, render) {
       const selected = state.sel.has(m.psgc);
       li.textContent = m.name + (selected ? "  ✓" : "");
       li.dataset.psgc = m.psgc;
+      li.id = `search-opt-${m.psgc}`;
       li.tabIndex = 0;
       li.setAttribute("role", "option");
       li.setAttribute("aria-selected", selected ? "true" : "false");
       const choose = () => {
         toggleSel(m.psgc, state, render);
         input.value = "";
-        list.replaceChildren();
+        closeList();
         input.focus();
       };
       li.addEventListener("click", choose);
@@ -1690,20 +1797,36 @@ function wireSearch(input, data, state, render) {
       });
       list.appendChild(li);
     }
+    setActive(-1);
   };
 
   input.addEventListener("input", updateList);
   input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActive(activeIdx + 1);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive(Math.max(0, activeIdx - 1));
+    } else if (e.key === "Enter") {
+      const items = [...list.children];
+      const pick =
+        activeIdx >= 0 && items[activeIdx] ? items[activeIdx].dataset.psgc : null;
+      if (pick) {
+        toggleSel(pick, state, render);
+        input.value = "";
+        closeList();
+        return;
+      }
       const ms = matches(input.value);
       if (ms.length) {
         toggleSel(ms[0].psgc, state, render);
         input.value = "";
-        list.replaceChildren();
+        closeList();
       }
     } else if (e.key === "Escape") {
       input.value = "";
-      list.replaceChildren();
+      closeList();
       input.blur();
     }
   });
@@ -2619,10 +2742,18 @@ async function main() {
       }
       const selHint = document.getElementById("selected-hint");
       if (selHint) {
-        selHint.textContent =
-          state.chartType === "map"
-            ? "Click a province to keep it labeled."
+        // On touch, the first tap on a bubble shows the tooltip and the second
+        // tap pins, so "click to keep it labeled" would describe the wrong
+        // gesture. Map taps pin on the first tap on every input type.
+        if (state.chartType === "map") {
+          selHint.textContent = IS_TOUCH
+            ? "Tap a province to keep it labeled."
+            : "Click a province to keep it labeled.";
+        } else {
+          selHint.textContent = IS_TOUCH
+            ? "Tap a bubble for details. Tap again to keep it labeled."
             : "Click a bubble to keep it labeled.";
+        }
       }
       // Big play button: hidden only in line mode (X axis is already year).
       // Bubbles and bar both benefit from year animation.
@@ -2642,6 +2773,7 @@ async function main() {
           () => render(),
           () => {
             state.chartType = "bubbles";
+            showChartNotice("Map could not load. Showing bubbles instead.");
             render();
           },
         );
@@ -2727,6 +2859,17 @@ async function main() {
     const howto = document.getElementById("chart-howto");
     if (howto) howto.hidden = true;
   });
+
+  const noticeDismiss = document.getElementById("chart-notice-dismiss");
+  if (noticeDismiss) noticeDismiss.addEventListener("click", hideChartNotice);
+
+  // Optional indicator files that failed to fetch degraded to empty series
+  // (population also drives bubble size). Tell the reader once, quietly.
+  if (data.optionalFailures && data.optionalFailures.length) {
+    console.warn("optional data files failed to load:", data.optionalFailures);
+    const optNotice = document.getElementById("optional-load-notice");
+    if (optNotice) optNotice.hidden = false;
+  }
 
   document.getElementById("csv").addEventListener("click", () => {
     downloadCsv(state.view || state.story, data, state);
@@ -3272,8 +3415,22 @@ main().catch((e) => {
   root.replaceChildren();
   const msg = document.createElement("div");
   msg.id = "loading";
-  msg.role = "alert";
-  msg.textContent =
+  msg.setAttribute("role", "alert");
+  const text = document.createElement("p");
+  text.textContent =
     "Chart could not load. Refresh the page, or check the browser console for details.";
+  msg.appendChild(text);
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.id = "retry-load";
+  retry.textContent = "Retry";
+  retry.addEventListener("click", () => location.reload());
+  msg.appendChild(retry);
   root.appendChild(msg);
+  // Without data every control is dead weight; hide the shell so the page does
+  // not look interactive when nothing behind it works.
+  for (const id of ["controls", "chart-type-strip", "big-play"]) {
+    const el = document.getElementById(id);
+    if (el) el.hidden = true;
+  }
 });

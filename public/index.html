@@ -88,6 +88,12 @@
         <span id="chart-howto-text"></span>
         <button type="button" id="chart-howto-dismiss" aria-label="dismiss how-to-read hint">&times;</button>
       </p>
+      <!-- Transient status strip (e.g. map fell back to bubbles). Same shape as
+           the howto strip; JS fills the text, auto-hides after a few seconds. -->
+      <p id="chart-notice" role="status" hidden>
+        <span id="chart-notice-text"></span>
+        <button type="button" id="chart-notice-dismiss" aria-label="dismiss notice">&times;</button>
+      </p>
       <div
         id="chart"
         role="group"
@@ -170,6 +176,7 @@
           <li><span class="dot" data-group="mindanao"></span>Mindanao</li>
           <li><span class="dot" data-group="ncr"></span>NCR</li>
           <li><span class="dot" data-group="barmm"></span>BARMM</li>
+          <li class="legend-imprecise"><span class="ring-imprecise" aria-hidden="true"></span>Dashed ring: PSA flags the estimate as imprecise (CV above 30 percent).</li>
         </ul>
         <p class="hint legend-note" id="island-legend-note" hidden>In Lines, bold lines are the selected or most-changed provinces. The rest stay faint for context.</p>
       </div>
@@ -198,16 +205,19 @@
       <div class="block" id="log-block">
         <h2>Axis</h2>
         <button id="log-toggle" type="button">X: log</button>
+        <p class="hint">Log scale spreads out the crowded low-spend provinces.</p>
       </div>
 
       <div class="block" id="deflate-block" hidden>
         <h2>Currency</h2>
         <button id="deflate-toggle" type="button">PHP, 2018-real</button>
+        <p class="hint">Adjusted for inflation to constant 2018 pesos using the PSA CPI.</p>
       </div>
 
       <div class="block">
         <h2>Projection</h2>
         <button id="extrap-toggle" type="button" aria-pressed="false">Project past anchors: off</button>
+        <p class="hint">Linearly extends poverty past the last PSA survey year.</p>
       </div>
 
       <div class="block">
@@ -237,6 +247,9 @@
       <a href="/methodology">Full methodology</a>
     </p>
     <p id="data-freshness" class="freshness"></p>
+    <p id="optional-load-notice" class="freshness" role="status" hidden>
+      Some optional indicators could not load. Refresh to retry.
+    </p>
     <p class="disclaimer">
       All data sourced from public records (PSA OpenStat, PhilGEPS, PSA Census).
       This tool visualizes statistical indicators only. Specific allegations, if

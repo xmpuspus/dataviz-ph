@@ -172,6 +172,15 @@ def test_fetch_failure_renders_alert(browser, base_url):
         pg.wait_for_selector("[role='alert']", timeout=15000)
         alert_text = pg.inner_text("[role='alert']")
         assert len(alert_text) > 10, f"alert text too short: {alert_text!r}"
+        # The alert offers a Retry button that reloads the page.
+        retry = pg.query_selector("[role='alert'] #retry-load")
+        assert retry is not None, "Retry button missing from the load-failure alert"
+        assert "retry" in retry.inner_text().lower()
+        # The dead control shell is hidden: sidebar, chart-type tabs, play button.
+        for el_id in ("controls", "chart-type-strip", "big-play"):
+            hidden = pg.get_attribute(f"#{el_id}", "hidden")
+            assert hidden is not None, f"#{el_id} must be hidden on load failure"
+            assert not pg.is_visible(f"#{el_id}"), f"#{el_id} still visible"
     finally:
         pg.close()
 
@@ -206,5 +215,10 @@ def test_map_geojson_failure_falls_back_to_bubbles(browser, base_url):
         assert pg.query_selector("#chart canvas") is not None, (
             "chart canvas must still be present after map fallback"
         )
+        # The fallback is no longer silent: a role=status notice names it.
+        notice = pg.query_selector("#chart-notice")
+        assert notice is not None
+        assert pg.get_attribute("#chart-notice", "role") == "status"
+        assert "Map could not load" in pg.inner_text("#chart-notice-text")
     finally:
         pg.close()
