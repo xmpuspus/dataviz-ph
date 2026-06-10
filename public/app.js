@@ -269,6 +269,8 @@ function persistHowtoDismissed() {
 const DEFLATABLE_INDICATORS = new Set([
   "dpwh_spend_per_capita",
   "all_spend_per_capita",
+  "doh_spend_per_capita",
+  "infra_spend_per_capita",
 ]);
 
 // PSA CPI 2018=100 series starts at 2018. Years before that cannot be deflated
@@ -1054,7 +1056,7 @@ function buildMapOption(view, data, state) {
         type: "map",
         map: "ph-provinces",
         nameProperty: "name",
-        roam: true,
+        roam: "scale", // pinch-zoom only; single-finger drag must scroll the page
         // Fit the (tall) archipelago inside the container instead of sizing by
         // width. Nudged left so the legend has the right margin to itself.
         layoutCenter: ["44%", "50%"],
@@ -1171,6 +1173,7 @@ function buildBubbleOption(story, data, state) {
   const compareSeries = buildCompareSeries(story, data, state);
 
   const xDeflatable = DEFLATABLE_INDICATORS.has(story.x);
+  const yDeflatable = DEFLATABLE_INDICATORS.has(story.y);
   // For the base option we only need an empty stub per province for the connector
   // ids that may be active. Use union of every year's connectors so notMerge:true
   // re-attaches them on each step.
@@ -1242,10 +1245,10 @@ function buildBubbleOption(story, data, state) {
         padding: [3, 9],
       });
     }
-    if (xDeflatable && state.deflate && year < CPI_BASE_YEAR) {
+    if ((xDeflatable || yDeflatable) && state.deflate && year < CPI_BASE_YEAR) {
       titleBlocks.push({
         text:
-          "Showing nominal PHP only. PSA CPI 2018-base does not cover this year, so 2018-real values cannot be computed.",
+          "Spend bubbles hidden for this year. PSA CPI 2018-base does not cover years before 2018. Switch to nominal pesos to see them.",
         left: "center",
         top: 4,
         textStyle: {
@@ -2819,18 +2822,36 @@ async function main() {
   // 4-beat story, then hands control back to the explorer. Every beat drives the
   // same render() path a user click uses, so nothing here forks the chart engine.
   const ARC_SEEN_KEY = "datavizph_arc_seen_v1";
+  // Fallback chain: localStorage (persists) -> sessionStorage (tab-lifetime) ->
+  // in-memory flag (private browsing where both storages throw). Without the chain
+  // a private-browsing visitor replays the arc on every page load within the same
+  // tab, which is disruptive once they've already dismissed it.
+  let _arcSeenMemory = false;
   function readArcSeen() {
     try {
-      return localStorage.getItem(ARC_SEEN_KEY) === "1";
-    } catch (e) {
-      return false;
+      if (localStorage.getItem(ARC_SEEN_KEY) === "1") return true;
+    } catch {
+      /* localStorage unavailable */
     }
+    try {
+      if (sessionStorage.getItem(ARC_SEEN_KEY) === "1") return true;
+    } catch {
+      /* sessionStorage unavailable */
+    }
+    return _arcSeenMemory;
   }
   function writeArcSeen() {
+    _arcSeenMemory = true;
     try {
       localStorage.setItem(ARC_SEEN_KEY, "1");
-    } catch (e) {
-      /* private mode: fall through, arc just replays next visit */
+      return;
+    } catch {
+      /* localStorage unavailable — try sessionStorage */
+    }
+    try {
+      sessionStorage.setItem(ARC_SEEN_KEY, "1");
+    } catch {
+      /* both unavailable; in-memory flag is set above */
     }
   }
 
@@ -2926,8 +2947,9 @@ async function main() {
 
   function runArc() {
     if (arcRunning) return;
+    // Stop any live autoplay loop so startPlay() in beat REVEAL doesn't early-return.
+    stopPlay();
     arcRunning = true;
-    writeArcSeen();
     arcPriorSel = new Set(state.sel);
     showReplay(false);
     showSkip(true);
@@ -3051,6 +3073,8 @@ async function main() {
       });
       pulseControls();
       arcWait(4400, () => {
+        // Full arc completed: mark it seen so returning visits skip to gentle autoplay.
+        writeArcSeen();
         state.arc = null;
         arcRunning = false;
         arcPriorSel = null;
@@ -3061,22 +3085,46 @@ async function main() {
     }
   }
 
-  // First user gesture during the arc takes control: abort and drop into explore.
-  // Capture phase + swallow so the same gesture doesn't also scrub/select.
-  const arcGestureGuard = (e) => {
+  // First deliberate user gesture during the arc hands control to the explorer.
+  // A scroll (pointerdown + move >= 10px) must NOT abort the arc — the user is
+  // just scrolling past. Only a tap (pointerup at nearly the same position as
+  // pointerdown) aborts. We never call stopImmediatePropagation/preventDefault so
+  // the aborting tap's click still reaches the freshly-restored explorer UI.
+  // Keydown still aborts (but no preventDefault so Tab/Space work normally).
+  let _arcTapOrigin = null;
+  const TAP_THRESHOLD_PX = 10;
+  const arcPointerDown = (e) => {
     if (!arcRunning && !state.arc) return;
-    if (e.target && e.target.closest && e.target.closest("#arc-skip, #replay-arc")) {
-      return;
-    }
-    e.stopImmediatePropagation();
-    if (e.type === "keydown") e.preventDefault();
+    if (e.target && e.target.closest && e.target.closest("#arc-skip, #replay-arc")) return;
+    _arcTapOrigin = { x: e.clientX, y: e.clientY };
+  };
+  const arcPointerUp = (e) => {
+    if (!arcRunning && !state.arc) return;
+    if (e.target && e.target.closest && e.target.closest("#arc-skip, #replay-arc")) return;
+    if (!_arcTapOrigin) return;
+    const dx = e.clientX - _arcTapOrigin.x;
+    const dy = e.clientY - _arcTapOrigin.y;
+    _arcTapOrigin = null;
+    // Scroll-like gesture: don't abort.
+    if (Math.sqrt(dx * dx + dy * dy) >= TAP_THRESHOLD_PX) return;
+    writeArcSeen();
     abortArc();
   };
-  document.addEventListener("pointerdown", arcGestureGuard, true);
-  window.addEventListener("keydown", arcGestureGuard, true);
+  const arcKeyGuard = (e) => {
+    if (!arcRunning && !state.arc) return;
+    if (e.target && e.target.closest && e.target.closest("#arc-skip, #replay-arc")) return;
+    // No preventDefault: Tab, Space, arrow keys must reach their targets.
+    writeArcSeen();
+    abortArc();
+  };
+  document.addEventListener("pointerdown", arcPointerDown, true);
+  document.addEventListener("pointerup", arcPointerUp, true);
+  window.addEventListener("keydown", arcKeyGuard, true);
   if (skipBtn) {
     skipBtn.addEventListener("click", (e) => {
       e.preventDefault();
+      // Explicit skip counts as seen: don't replay on next visit.
+      writeArcSeen();
       abortArc();
     });
   }
@@ -3160,6 +3208,7 @@ async function main() {
   // Re-place the finding/caveat when crossing the mobile breakpoint (rotate/resize).
   window.matchMedia("(max-width: 1099px)").addEventListener("change", syncDetailPlacement);
   window.addEventListener("hashchange", () => {
+    if (state.arc) abortArc();
     // Pure in-page anchors (e.g. #methodology) carry no chart state. Ignore them
     // so an anchor click never resets the visualization to defaults.
     const rawHash = window.location.hash.replace(/^#/, "");
