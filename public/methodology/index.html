@@ -86,6 +86,31 @@
       reference year; it describes association only, never causation.
     </p>
     <p>
+      <strong>Cumulative spend preset.</strong>
+      The "Spend vs poverty change" preset sums each province's nominal DPWH awards
+      per capita over 2014 to 2023 and plots the total against the change in poverty
+      incidence from 2018 to 2023. The sum stays nominal: the CPI series is 2018-based,
+      so deflating 2014 to 2017 would mean backcasting the index, and the chart never
+      fabricates values it cannot compute. The window ends at 2023 to match the last
+      PSA poverty anchor, so the spend total covers the decade leading into the
+      measured poverty change. On the Y axis, negative means poverty fell; a
+      downward-sloping cloud would mean provinces with more cumulative spend saw
+      larger poverty drops. As everywhere else here, spend is contract awards, not
+      disbursement, and the correlation is association, not causation.
+    </p>
+    <p>
+      <strong>Significance.</strong>
+      Every preset's finding line carries a permutation p-value: the observed
+      Spearman rho is compared against 10,000 random shuffles of the Y values
+      (seeded, computed at build time in <code>etl/build.py</code>), and p is the
+      share of shuffles whose |rho| is at least as large as the observed one. Pick
+      a custom indicator pair and the page computes the same thing live with 1,000
+      shuffles at the displayed year. Read p as the probability of seeing a rank
+      correlation this strong if the two indicators were unrelated; it says nothing
+      about causation or the size of any effect. Because Spearman works on ranks,
+      it is unchanged by the log-axis toggle: log is monotone and preserves ranks.
+    </p>
+    <p>
       <strong>Uncertainty.</strong>
       Poverty and subsistence incidence are survey estimates, not censuses, so PSA
       publishes a 95% confidence interval and a coefficient of variation (CV) for each
@@ -98,6 +123,13 @@
       none.
     </p>
     <p>
+      <strong>COVID years.</strong>
+      PSA's poverty anchors are 2018, 2021, and 2023, so the 2019 and 2020 values
+      are linear interpolations across a period that was anything but linear. The
+      pandemic's poverty spike and recovery are invisible to a straight line drawn
+      between 2018 and 2021, and the tooltips for those two years say so.
+    </p>
+    <p>
       <strong>Honesty notes.</strong>
       About 20 percent of DPWH award value cannot be attributed to a single province
       (null area_of_delivery, multi-province contracts, "Independent City" bucket)
@@ -106,6 +138,25 @@
       unit because PSA's poverty table still reports the rolled-up Maguindanao;
       Maguindanao del Norte / del Sur 2023 rows are intentionally not used. NCR
       is the regional aggregate (16 cities) treated as a single bubble.
+    </p>
+    <p>
+      <strong>Attribution coverage.</strong>
+      The build records each province's share of the attributed DPWH total in
+      <code>manifest.json</code> (<code>derived.dpwh_attribution_share_by_psgc</code>).
+      The roughly 20 percent of award value that cannot be attributed is not spread
+      evenly: BARMM provinces sit near zero on that table because their
+      area_of_delivery strings rarely resolve to a single PSGC code. Per-province
+      spend figures there are a conservative lower bound, so cross-province spend
+      comparisons understate BARMM.
+    </p>
+    <p>
+      <strong>Input provenance.</strong>
+      <code>manifest.json</code> carries an <code>inputs</code> block recording what
+      each build consumed: a sha256 for each of the 15 PhilGEPS parquet chunks (the
+      mirror's raw URLs are mutable, so the local hash is the pin), the sha256 of
+      the cached PSGC reference, and, for the live PSA OpenStat API where pinning
+      is impossible, the fetch date and per-table row counts. A rebuild against a
+      silently changed upstream shows up as a hash or row-count diff.
     </p>
     <p>
       <strong>Fixed denominator.</strong>
