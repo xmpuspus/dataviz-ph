@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import random
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -18,6 +19,16 @@ POVERTY_ANCHORS = [2018, 2021, 2023]
 GDP_PANEL_YEARS = [2022, 2023, 2024]
 GDP_ANCHORS = [2022, 2023, 2024]  # PSA publishes all three; no interpolation needed
 CPI_YOY_YEARS = list(range(2019, 2026))  # need year-prior so series starts at 2019
+
+# Cumulative spend window for spend-vs-poverty-change preset.
+# Uses nominal (not real) per-capita values to avoid CPI extrapolation before 2018.
+# The caveat in the story makes the nominal-vs-real choice explicit.
+CUM_SPEND_START = 2014
+CUM_SPEND_END = 2023  # matches poverty_change 2018->2023 endpoint
+
+# Permutation test parameters. Seeded for reproducibility across builds.
+_PERM_N = 10_000
+_PERM_SEED = 42
 
 
 def compute_dpwh_share(dpwh_spend: list[dict], all_spend: list[dict]) -> list[dict]:
@@ -67,6 +78,33 @@ def compute_poverty_change(poverty_anchors: list[dict]) -> list[dict]:
         change = by_year[2023] - by_year[2018]
         for year in PANEL_YEARS:
             out.append({"psgc": psgc, "year": year, "value": change})
+    return out
+
+
+def compute_dpwh_spend_per_capita_cum(dpwh_spend: list[dict]) -> list[dict]:
+    """Cumulative nominal DPWH spend per capita over CUM_SPEND_START..CUM_SPEND_END.
+
+    Sums the nominal per-capita PHP values per province across the window. Using
+    nominal (not real) values because CPI deflation before 2018 would require
+    backward extrapolation, which is less defensible than a clearly-labelled nominal
+    cumulative. The story caveat states this explicitly.
+
+    Returns one row per province (psgc), year set to CUM_SPEND_END so it pairs
+    with poverty_change_pp whose reference year is also 2023. Repeated across panel
+    years so the indicator picker can pair it with any year-varying Y.
+    """
+    by_psgc: dict[str, float] = {}
+    for r in dpwh_spend:
+        if CUM_SPEND_START <= r["year"] <= CUM_SPEND_END:
+            by_psgc[r["psgc"]] = by_psgc.get(r["psgc"], 0.0) + r["value"]
+
+    # A province with gaps in some years still gets summed over the years present.
+    # Years where spend was dropped as a coverage gap (< MIN_PESO_PER_CAPITA/cap)
+    # simply contribute 0 to the cumulative, which is conservative.
+    out = []
+    for psgc, cum in by_psgc.items():
+        for year in PANEL_YEARS:
+            out.append({"psgc": psgc, "year": year, "value": cum})
     return out
 
 
@@ -124,6 +162,37 @@ def _spearman(xs: list[float], ys: list[float]) -> float | None:
     return _pearson(_rank(xs), _rank(ys))
 
 
+def _permutation_p(
+    xs: list[float],
+    ys: list[float],
+    observed_rho: float,
+    n_perm: int = _PERM_N,
+    seed: int = _PERM_SEED,
+) -> float:
+    """Two-tailed permutation p-value for Spearman's rho.
+
+    Shuffles ys n_perm times, recomputes rho each time, and returns the fraction
+    of permutations whose |rho| >= |observed_rho|. Seeded for reproducibility.
+    """
+    rng = random.Random(seed)
+    ys_list = list(ys)
+    count = 0
+    abs_obs = abs(observed_rho)
+    for _ in range(n_perm):
+        rng.shuffle(ys_list)
+        perm_rho = _spearman(xs, ys_list)
+        if perm_rho is not None and abs(perm_rho) >= abs_obs:
+            count += 1
+    return count / n_perm
+
+
+def _format_p(p: float) -> str:
+    """Format a p-value for the finding sentence."""
+    if p < 0.001:
+        return "p < 0.001"
+    return f"p = {p:.3f}"
+
+
 def _strength_word(rho: float) -> str:
     a = abs(rho)
     if a < 0.2:
@@ -152,10 +221,11 @@ def compute_story_finding(
     """Compute a data-grounded answer to the story's question at its default year.
 
     Returns a finding dict with the Spearman rank correlation (robust to the
-    log axis the chart uses), the Pearson r, the province count, the actual year
-    used, and an off-diagonal quadrant count. The human sentence is assembled
-    here from the computed numbers (never hand-typed) so it can never drift from
-    the data. Every finding carries the correlation-not-causation caveat.
+    log axis the chart uses), a permutation p-value (10k shuffles, seeded),
+    the Pearson r, the province count, the actual year used, and an off-diagonal
+    quadrant count. The human sentence is assembled here from the computed numbers
+    (never hand-typed) so it can never drift from the data. Every finding carries
+    the correlation-not-causation caveat.
     """
     xid, yid, year = story["x"], story["y"], story["default_year"]
     xmap = value_index.get(xid, {})
@@ -172,6 +242,11 @@ def compute_story_finding(
     ys = [p[1] for p in pairs]
     rho = _spearman(xs, ys)
     r = _pearson(xs, ys)
+
+    p_val = None
+    if rho is not None:
+        p_val = _permutation_p(xs, ys, rho)
+
     # Off-diagonal count: provinces above the median on BOTH axes.
     mx, my = _median(xs), _median(ys)
     both_high = sum(1 for x, y in pairs if x > mx and y > my)
@@ -180,9 +255,11 @@ def compute_story_finding(
         "poverty": "poverty incidence",
         "gdp_per_capita": "per-capita GDP",
         "subsistence_incidence": "subsistence incidence",
+        "poverty_change_pp": "poverty change (pp)",
     }.get(yid, yid.replace("_", " "))
     xname = {
         "dpwh_spend_per_capita": "DPWH spend per capita",
+        "dpwh_spend_per_capita_cum": "cumulative DPWH spend per capita (2014-2023)",
         "all_spend_per_capita": "all-government spend per capita",
         "gdp_per_capita": "per-capita GDP",
     }.get(xid, xid.replace("_", " "))
@@ -190,13 +267,15 @@ def compute_story_finding(
     direction = "negative" if (rho is not None and rho < 0) else "positive"
     strength = _strength_word(rho) if rho is not None else "no measurable"
     rho_txt = f"{rho:+.2f}" if rho is not None else "n/a"
+    p_txt = _format_p(p_val) if p_val is not None else ""
     sentence = (
         f"In {year}, across {n} areas, the rank correlation between {xname} and "
-        f"{yname} is rho = {rho_txt}, showing {strength} {direction} link. "
+        f"{yname} is rho = {rho_txt} ({p_txt}), showing {strength} {direction} link. "
         f"{both_high} of {n} areas sat above the median on both axes."
     )
     award_ids = {
         "dpwh_spend_per_capita",
+        "dpwh_spend_per_capita_cum",
         "all_spend_per_capita",
         "doh_spend_per_capita",
         "infra_spend_per_capita",
@@ -213,6 +292,7 @@ def compute_story_finding(
         "n": n,
         "spearman": round(rho, 3) if rho is not None else None,
         "pearson": round(r, 3) if r is not None else None,
+        "p_value": round(p_val, 4) if p_val is not None else None,
         "both_above_median": both_high,
         "sentence": sentence,
         "caveat": caveat,
@@ -236,6 +316,7 @@ def main(no_cache: bool = False) -> None:
 
     print(">> load provinces")
     provinces = load_provinces()
+    n_units = len(provinces)  # 82: 81 provinces + Metro Manila
 
     print(">> fetch 2020 population (with HUC rollup into parent provinces)")
     population = psa_openstat.fetch_population_2020(
@@ -257,19 +338,25 @@ def main(no_cache: bool = False) -> None:
     validate.validate_precision(subsistence_anchors)
 
     print(">> fetch DPWH spend (PhilGEPS, 15 chunks)")
-    dpwh_spend = philgeps.fetch_dpwh_spend(provinces, normalize_name, pop_by_psgc)
+    # Run median-shift check against committed file before overwriting.
+    dpwh_spend_committed_path = "dpwh_spend_per_capita.json"
+    dpwh_spend, dpwh_attribution = philgeps.fetch_dpwh_spend(provinces, normalize_name, pop_by_psgc)
+    validate.validate_median_shift(dpwh_spend, dpwh_spend_committed_path, "dpwh_spend_per_capita")
     validate.validate_all(dpwh_spend, schema="peso_per_capita")
+    validate.validate_yoy_jumps(dpwh_spend, "dpwh_spend_per_capita")
 
     print(">> fetch all PhilGEPS spend (no agency filter)")
-    all_spend = philgeps.fetch_all_spend(provinces, normalize_name, pop_by_psgc)
+    all_spend, all_attribution = philgeps.fetch_all_spend(provinces, normalize_name, pop_by_psgc)
+    validate.validate_median_shift(all_spend, "all_spend_per_capita.json", "all_spend_per_capita")
     validate.validate_all(all_spend, schema="peso_per_capita")
+    validate.validate_yoy_jumps(all_spend, "all_spend_per_capita")
 
     print(">> fetch DOH spend (PhilGEPS, org=DOH)")
-    doh_spend = philgeps.fetch_doh_spend(provinces, normalize_name, pop_by_psgc)
+    doh_spend, _ = philgeps.fetch_doh_spend(provinces, normalize_name, pop_by_psgc)
     validate.validate_all(doh_spend, schema="peso_per_capita")
 
     print(">> fetch infra-only spend (PhilGEPS, construction/road/bridge/etc.)")
-    infra_spend = philgeps.fetch_infra_spend(provinces, normalize_name, pop_by_psgc)
+    infra_spend, _ = philgeps.fetch_infra_spend(provinces, normalize_name, pop_by_psgc)
     validate.validate_all(infra_spend, schema="peso_per_capita")
 
     print(">> fetch CPI annual averages (PSA 2M/PI/CPI, PHILIPPINES national)")
@@ -327,6 +414,30 @@ def main(no_cache: bool = False) -> None:
     population_series = expand_population(provinces_out, PANEL_YEARS)
     validate.validate_all(population_series, schema="population")
 
+    print(">> derive: cumulative DPWH spend per capita 2014-2023 (nominal)")
+    dpwh_cum = compute_dpwh_spend_per_capita_cum(dpwh_spend)
+    # Cumulative values can exceed the single-year peso_per_capita max; use a wide
+    # schema check inline rather than a new schema entry.
+    for r in dpwh_cum:
+        if r["value"] < 0:
+            raise ValueError(f"Negative cumulative spend in row: {r}")
+
+    # Coverage validation: poverty covers all 82 units at every anchor year.
+    # Spend indicators have legitimate gaps so we only assert uniqueness there.
+    validate.validate_coverage(poverty_anchors, n_units, POVERTY_ANCHORS, "poverty_anchors")
+    validate.validate_uniqueness(poverty_anchors, "poverty_anchors")
+    validate.validate_uniqueness(dpwh_spend, "dpwh_spend_per_capita")
+    validate.validate_uniqueness(all_spend, "all_spend_per_capita")
+
+    # Report attribution coverage for DPWH (lowest 5 provinces)
+    if dpwh_attribution:
+        sorted_attr = sorted(dpwh_attribution.items(), key=lambda x: x[1])
+        print("\n>> DPWH attribution coverage per province (lowest 5):")
+        for psgc, share in sorted_attr[:5]:
+            name = provinces_out.get(psgc, {}).get("name", psgc)
+            print(f"   {name} ({psgc}): {share * 100:.1f}%")
+        print()
+
     write_json("provinces.json", provinces_out)
     write_json("poverty.json", poverty)
     write_json("subsistence.json", subsistence)
@@ -340,6 +451,7 @@ def main(no_cache: bool = False) -> None:
     write_json("cpi_yoy_pct.json", cpi_yoy)
     write_json("poverty_change_pp.json", poverty_change)
     write_json("population.json", population_series)
+    write_json("dpwh_spend_per_capita_cum.json", dpwh_cum)
 
     indicators = [
         {
@@ -592,6 +704,35 @@ def main(no_cache: bool = False) -> None:
             "anchor_years": CPI_YOY_YEARS,
             "national_only": True,
         },
+        {
+            "id": "dpwh_spend_per_capita_cum",
+            "name": "Cumulative DPWH spend per capita 2014-2023",
+            "unit": "PHP per person (cumulative, nominal)",
+            "source": "PhilGEPS awards (DPWH subset) / PSA 2020 Census population",
+            "source_url": "https://github.com/csiiiv/philgeps-awards-dashboard",
+            "definition": (
+                "Sum of annual nominal DPWH spend per capita over 2014-2023 (ten years). "
+                "Represents the total PhilGEPS-tracked road and infrastructure commitment "
+                "per person that could be attributed to a single province over the decade "
+                "preceding the 2023 PSA poverty survey."
+            ),
+            "vintage": (
+                "Summed from dpwh_spend_per_capita annual rows 2014-2023 (nominal PHP). "
+                "Nominal, not real, because CPI deflation before 2018 requires backward "
+                "extrapolation. Province-years dropped as coverage gaps (< PHP 100/cap) "
+                "contribute 0 to the cumulative, so values are conservative lower bounds. "
+                "Constant across panel years (single window, not rolling)."
+            ),
+            "log_natural": True,
+            "panel_years": PANEL_YEARS,
+            "anchor_years": [CUM_SPEND_END],
+            "can_deflate": False,
+            "static_snapshot": True,
+            "snapshot_label": (
+                f"Cumulative 2014-{CUM_SPEND_END}. A single value per province, "
+                "not a yearly series."
+            ),
+        },
     ]
     write_json("indicators.json", indicators)
 
@@ -704,17 +845,54 @@ def main(no_cache: bool = False) -> None:
             "default_year": 2023,
             "default_log_x": True,
         },
+        {
+            "id": "spend-vs-poverty-change",
+            "tab_label": "Spend vs poverty change",
+            "headline": "More road spending, more poverty reduction?",
+            "tagline": (
+                "Cumulative DPWH spend per capita over 2014-2023 against the "
+                "change in poverty incidence from 2018 to 2023. One snapshot, "
+                "81 provinces and Metro Manila."
+            ),
+            "why": (
+                "The year-by-year scatter shows no consistent pattern (rho near zero). "
+                "This panel asks the same question differently: did the provinces that "
+                "received the most road funding over a decade also see the largest "
+                "reductions in poverty? Cumulative spend is matched to the 2018-to-2023 "
+                "poverty change, the longest available window where both indicators overlap. "
+                "A negative correlation would mean higher cumulative spend associates with "
+                "larger poverty falls (which is what the headline question implies). "
+                "A near-zero result means spending and poverty outcomes are effectively "
+                "independent at the province level."
+            ),
+            "source_url": "https://github.com/csiiiv/philgeps-awards-dashboard",
+            "x": "dpwh_spend_per_capita_cum",
+            "y": "poverty_change_pp",
+            "size": "population_2020",
+            "panel_years": PANEL_YEARS,
+            "default_year": 2023,
+            "default_log_x": True,
+            "awards_caveat": AWARDS_CAVEAT,
+            "caveat_cum": (
+                "X axis is cumulative nominal PHP per capita (2014-2023), not real. "
+                "CPI deflation before 2018 requires extrapolation so nominal is used "
+                "for transparency. Negative Y means poverty fell; positive means it rose."
+            ),
+        },
     ]
+
     # Compute a data-grounded finding per story so each question gets an answer
     # on the page, not just a chart. Built from the same series the chart plots.
     value_index = {
         "poverty": {(r["psgc"], r["year"]): r["value"] for r in poverty},
         "subsistence_incidence": {(r["psgc"], r["year"]): r["value"] for r in subsistence},
         "dpwh_spend_per_capita": {(r["psgc"], r["year"]): r["value"] for r in dpwh_spend},
+        "dpwh_spend_per_capita_cum": {(r["psgc"], r["year"]): r["value"] for r in dpwh_cum},
         "all_spend_per_capita": {(r["psgc"], r["year"]): r["value"] for r in all_spend},
         "doh_spend_per_capita": {(r["psgc"], r["year"]): r["value"] for r in doh_spend},
         "infra_spend_per_capita": {(r["psgc"], r["year"]): r["value"] for r in infra_spend},
         "gdp_per_capita": {(r["psgc"], r["year"]): r["value"] for r in gdp},
+        "poverty_change_pp": {(r["psgc"], r["year"]): r["value"] for r in poverty_change},
     }
     for s in stories:
         s["finding"] = compute_story_finding(s, value_index)
@@ -722,6 +900,49 @@ def main(no_cache: bool = False) -> None:
 
     # Write manifest LAST so its sha256 covers every freshly-written file.
     dpwh_total = compute_dpwh_attributed_total(dpwh_spend, pop_by_psgc)
+
+    # Per-province attribution coverage for manifest
+    dpwh_attr_coverage = {psgc: round(share, 4) for psgc, share in dpwh_attribution.items()}
+
+    # Compute sha256 of each fetched input for input pinning record.
+    # Live API responses (PSA) are recorded by fetch date + row counts instead.
+    psgc_cache = Path(__file__).resolve().parent.parent / ".etl_cache" / "psgc" / "provinces.json"
+    psgc_sha = hashlib.sha256(psgc_cache.read_bytes()).hexdigest() if psgc_cache.exists() else None
+    inputs = {
+        "philgeps_chunks": {
+            "source": philgeps.CHUNK_BASE,
+            "note": (
+                "mutable GitHub raw URL (no commit SHA available on this mirror). "
+                "Pinning via local sha256 of each chunk at build time."
+            ),
+            "chunks": {},
+        },
+        "psgc": {
+            "source": "https://psgc.gitlab.io/api/provinces.json",
+            "note": "mutable community mirror. Cached copy sha256 recorded.",
+            "cached_sha256": psgc_sha,
+        },
+        "psa_openstat": {
+            "source": "https://openstat.psa.gov.ph/PXWeb/api/v1/en/DB",
+            "note": "live API; pinning impossible. Fetch date and row counts recorded.",
+            "fetch_date": datetime.now(UTC).date().isoformat(),
+            "row_counts": {
+                "poverty_anchors": len(poverty_anchors),
+                "subsistence_anchors": len(subsistence_anchors),
+                "population": len(population),
+                "gdp": len(gdp),
+                "cpi_years": len(cpi),
+            },
+        },
+    }
+
+    # Record sha256 for each PhilGEPS chunk (immutable once cached).
+    for i in range(1, philgeps.N_CHUNKS + 1):
+        cp = philgeps._chunk_path(i)
+        if cp.exists():
+            sha = hashlib.sha256(cp.read_bytes()).hexdigest()
+            inputs["philgeps_chunks"]["chunks"][f"chunk_{i:02d}"] = sha
+
     manifest = build_manifest(
         derived={
             "dpwh_attributed_php_total": dpwh_total,
@@ -731,6 +952,7 @@ def main(no_cache: bool = False) -> None:
                 "DPWH award value is unattributable and excluded, so this is a floor. "
                 "Rounds to ~5 trillion PHP nominal; cited by the DPWH story headline."
             ),
+            "dpwh_attribution_share_by_psgc": dpwh_attr_coverage,
         },
         row_counts={
             "provinces": len(provinces_out),
@@ -746,9 +968,11 @@ def main(no_cache: bool = False) -> None:
             "cpi_yoy_pct": len(cpi_yoy),
             "poverty_change_pp": len(poverty_change),
             "population": len(population_series),
+            "dpwh_spend_per_capita_cum": len(dpwh_cum),
             "stories": len(stories),
             "indicators": len(indicators),
         },
+        inputs=inputs,
     )
     write_json("manifest.json", manifest)
 
@@ -766,10 +990,12 @@ def main(no_cache: bool = False) -> None:
     print(f"  dpwh share rows: {len(dpwh_share)}")
     print(f"  cpi yoy rows: {len(cpi_yoy)}")
     print(f"  poverty change rows: {len(poverty_change)}")
+    print(f"  dpwh cum rows: {len(dpwh_cum)}")
     print(f"  population rows: {len(population_series)}")
     print(f"  stories: {len(stories)}")
     print(f"  indicators: {len(indicators)}")
     print(f"  manifest built_at: {manifest['built_at']}")
+    print(f"  dpwh attributed total: PHP {dpwh_total:,}")
 
 
 def compute_dpwh_attributed_total(dpwh_spend: list[dict], pop_by_psgc: dict[str, int]) -> int:
@@ -789,7 +1015,11 @@ def compute_dpwh_attributed_total(dpwh_spend: list[dict], pop_by_psgc: dict[str,
     return round(total)
 
 
-def build_manifest(row_counts: dict[str, int], derived: dict | None = None) -> dict:
+def build_manifest(
+    row_counts: dict[str, int],
+    derived: dict | None = None,
+    inputs: dict | None = None,
+) -> dict:
     """Build a manifest of every JSON in public/data/ with sha256 + row count.
 
     Run AFTER all data files are written. Excludes manifest.json itself.
@@ -811,6 +1041,7 @@ def build_manifest(row_counts: dict[str, int], derived: dict | None = None) -> d
             "population": "PSA 2020 Census of Population and Housing",
             "psgc": "psgc.gitlab.io community mirror",
         },
+        "inputs": inputs or {},
         "row_counts": row_counts,
         "derived": derived or {},
         "file_bytes": sizes,

@@ -7,6 +7,12 @@ Two fetchers:
 Both reuse the 15 cached parquet chunks under .etl_cache/philgeps/ (~620 MB on disk),
 attribute via area_of_delivery -> PSGC, group by (province, year), and divide by 2020
 Census whole-province population for per-capita output.
+
+Dedup note: PhilGEPS assigns a globally unique integer 'id' to each award notice. The
+15 chunks are non-overlapping slices of the full dataset (verified: 0 id overlap across
+chunks). We de-duplicate on 'id' before groupby to guard against any future re-crawl
+overlap. contract_number is NOT a reliable dedup key - it is human-typed, nullable, and
+legitimately repeated for multi-lot contracts (lot A, lot B of the same tender).
 """
 
 from __future__ import annotations
@@ -68,7 +74,14 @@ def _aggregate(
     normalize_name,
     population_by_psgc: dict[str, int],
     label: str,
-) -> list[dict]:
+) -> tuple[list[dict], dict[str, float]]:
+    """Aggregate awards per (province, year).
+
+    Returns (rows, attribution_share) where attribution_share maps psgc ->
+    fraction of the agency's raw peso total that was attributed to that province.
+    Rows where area_of_delivery could not be mapped (null, multi-province, etc.)
+    count toward the denominator but not the attributed numerator.
+    """
     frames: list[pd.DataFrame] = []
     for i in range(1, N_CHUNKS + 1):
         if not _chunk_path(i).exists():
@@ -82,15 +95,33 @@ def _aggregate(
         df = df[df["year"].between(PANEL_START, PANEL_END)]
         if df.empty:
             continue
-        df = df[["area_of_delivery", "year", "contract_amount"]]
         frames.append(df)
 
     if not frames:
-        return []
+        return [], {}
 
     big = pd.concat(frames, ignore_index=True)
+
+    # De-duplicate on the globally unique PhilGEPS award id. The 15 chunks are
+    # non-overlapping by id (verified), but this guard protects against any future
+    # re-crawl that re-slices the dataset differently.
+    before_dedup = len(big)
+    big = big.drop_duplicates(subset=["id"])
+    after_dedup = len(big)
+    if before_dedup != after_dedup:
+        print(
+            f"philgeps ({label}): dropped {before_dedup - after_dedup:,} duplicate ids "
+            f"({before_dedup:,} -> {after_dedup:,} rows)"
+        )
+
+    # Total peso value before province attribution (denominator for coverage share).
+    total_peso = big["contract_amount"].sum()
+
     big["psgc"] = big["area_of_delivery"].apply(lambda s: normalize_name(s, provinces))
     big = big.dropna(subset=["psgc", "contract_amount"])
+
+    # Per-province attributed total (numerator for coverage share).
+    attributed_by_psgc = big.groupby("psgc")["contract_amount"].sum().to_dict()
 
     agg = (
         big.groupby(["psgc", "year"], as_index=False)["contract_amount"]
@@ -117,7 +148,15 @@ def _aggregate(
             f"philgeps ({label}): dropped {len(dropped_low)} province-years with "
             f"per-capita < PHP {MIN_PESO_PER_CAPITA:.0f} (likely coverage gaps): {msg}"
         )
-    return rows
+
+    # Compute per-province attribution share (attributed psgc total / grand total).
+    # total_peso is the filtered-agency total; if zero, no share can be computed.
+    attribution_share: dict[str, float] = {}
+    if total_peso > 0:
+        for psgc, peso in attributed_by_psgc.items():
+            attribution_share[psgc] = peso / total_peso
+
+    return rows, attribution_share
 
 
 def _dpwh_filter(df: pd.DataFrame) -> pd.DataFrame:
@@ -150,8 +189,11 @@ def fetch_dpwh_spend(
     provinces: dict,
     normalize_name,
     population_by_psgc: dict[str, int],
-) -> list[dict]:
-    """DPWH contracts grouped by (province, year), divided by 2020 population."""
+) -> tuple[list[dict], dict[str, float]]:
+    """DPWH contracts grouped by (province, year), divided by 2020 population.
+
+    Returns (rows, attribution_share_by_psgc).
+    """
     return _aggregate(_dpwh_filter, provinces, normalize_name, population_by_psgc, "dpwh")
 
 
@@ -159,7 +201,7 @@ def fetch_doh_spend(
     provinces: dict,
     normalize_name,
     population_by_psgc: dict[str, int],
-) -> list[dict]:
+) -> tuple[list[dict], dict[str, float]]:
     """DOH-attributable contracts per (province, year), per capita."""
     return _aggregate(_doh_filter, provinces, normalize_name, population_by_psgc, "doh")
 
@@ -168,7 +210,7 @@ def fetch_infra_spend(
     provinces: dict,
     normalize_name,
     population_by_psgc: dict[str, int],
-) -> list[dict]:
+) -> tuple[list[dict], dict[str, float]]:
     """Infra-tagged contracts (construction, road, bridge, flood, drainage, etc.) per capita."""
     return _aggregate(_infra_filter, provinces, normalize_name, population_by_psgc, "infra")
 
@@ -177,12 +219,14 @@ def fetch_all_spend(
     provinces: dict,
     normalize_name,
     population_by_psgc: dict[str, int],
-) -> list[dict]:
+) -> tuple[list[dict], dict[str, float]]:
     """All province-attributable PhilGEPS contracts per (province, year), per capita.
 
     No agency filter; covers every implementing agency whose awards can be tied to a
     PSGC via area_of_delivery. About 20 percent of all PhilGEPS award value carries
     no province tag (null / 'Independent City' / multi-province / 'Philippines') and
     is excluded.
+
+    Returns (rows, attribution_share_by_psgc).
     """
     return _aggregate(None, provinces, normalize_name, population_by_psgc, "all")
