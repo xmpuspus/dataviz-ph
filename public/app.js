@@ -3095,6 +3095,52 @@ async function main() {
     render();
   };
 
+  // Computed finding: the data-grounded answer to the story's question.
+  // Presets ship a precomputed finding; custom picker pairs get the same
+  // sentence computed live in the browser at the displayed year. Year-dependent
+  // (the live finding and the "chart is showing YEAR" note both move with the
+  // year), so both render() and the autoplay fast path renderFrame() call it.
+  function updateFindingBox(view) {
+    const findingEl = document.getElementById("story-finding");
+    if (!findingEl) return;
+    const f = !view.isCustom ? view.finding : null;
+    if (view.isCustom) {
+      const lf = computeLiveFinding(view, data, state);
+      if (lf) {
+        findingEl.textContent = `What the data shows. ${lf.sentence} ${lf.caveat}`;
+        findingEl.hidden = false;
+      } else {
+        findingEl.textContent = "";
+        findingEl.hidden = true;
+      }
+    } else if (f && f.available && f.sentence) {
+      // On the DPWH-vs-poverty story, set the non-result against the one
+      // pairing that does track poverty: per-capita GDP. The contrast is the
+      // point, so pull the GDP story's own computed rho (no hardcoded number).
+      let contrast = "";
+      if (state.story && state.story.id === "spend-vs-poverty") {
+        const g = (data.stories || []).find((s) => s.id === "gdp-vs-poverty");
+        const gs = g && g.finding && typeof g.finding.spearman === "number" ? g.finding.spearman : null;
+        if (gs !== null) {
+          const r = (Math.sign(gs) * Math.round(Math.abs(gs) * 100)) / 100;
+          contrast = ` Per-capita GDP, by contrast, does track lower poverty (rho = ${r >= 0 ? "+" : ""}${r.toFixed(2)}).`;
+        }
+      }
+      // The finding is a fixed-reference-year correlation; when the reader has
+      // scrubbed elsewhere, say so rather than let the year control and the
+      // finding silently disagree.
+      const yearNote =
+        f.year != null && state.year != null && state.year !== f.year
+          ? ` (Chart is showing ${state.year}; this correlation is measured at ${f.year}.)`
+          : "";
+      findingEl.textContent = `What the data shows. ${f.sentence}${contrast} ${f.caveat || ""}${yearNote}`;
+      findingEl.hidden = false;
+    } else {
+      findingEl.textContent = "";
+      findingEl.hidden = true;
+    }
+  }
+
   let rendering = false;
   function render() {
     if (rendering) return;
@@ -3148,47 +3194,8 @@ async function main() {
         }
       }
       // Computed finding: the data-grounded answer to the story's question.
-      // Presets ship a precomputed finding; custom picker pairs get the same
-      // sentence computed live in the browser at the displayed year.
-      const findingEl = document.getElementById("story-finding");
-      if (findingEl) {
-        const f = !view.isCustom ? view.finding : null;
-        if (view.isCustom) {
-          const lf = computeLiveFinding(view, data, state);
-          if (lf) {
-            findingEl.textContent = `What the data shows. ${lf.sentence} ${lf.caveat}`;
-            findingEl.hidden = false;
-          } else {
-            findingEl.textContent = "";
-            findingEl.hidden = true;
-          }
-        } else if (f && f.available && f.sentence) {
-          // On the DPWH-vs-poverty story, set the non-result against the one
-          // pairing that does track poverty: per-capita GDP. The contrast is the
-          // point, so pull the GDP story's own computed rho (no hardcoded number).
-          let contrast = "";
-          if (state.story && state.story.id === "spend-vs-poverty") {
-            const g = (data.stories || []).find((s) => s.id === "gdp-vs-poverty");
-            const gs = g && g.finding && typeof g.finding.spearman === "number" ? g.finding.spearman : null;
-            if (gs !== null) {
-              const r = (Math.sign(gs) * Math.round(Math.abs(gs) * 100)) / 100;
-              contrast = ` Per-capita GDP, by contrast, does track lower poverty (rho = ${r >= 0 ? "+" : ""}${r.toFixed(2)}).`;
-            }
-          }
-          // The finding is a fixed-reference-year correlation; when the reader has
-          // scrubbed elsewhere, say so rather than let the year control and the
-          // finding silently disagree.
-          const yearNote =
-            f.year != null && state.year != null && state.year !== f.year
-              ? ` (Chart is showing ${state.year}; this correlation is measured at ${f.year}.)`
-              : "";
-          findingEl.textContent = `What the data shows. ${f.sentence}${contrast} ${f.caveat || ""}${yearNote}`;
-          findingEl.hidden = false;
-        } else {
-          findingEl.textContent = "";
-          findingEl.hidden = true;
-        }
-      }
+      // (Year-dependent, so the autoplay fast path renderFrame() calls it too.)
+      updateFindingBox(view);
       // Axis caveats: awards-not-disbursement, single-snapshot, short-panel.
       const caveatEl = document.getElementById("story-caveat");
       if (caveatEl) {
@@ -3368,7 +3375,59 @@ async function main() {
     }
   }
 
+  // ---------- autoplay fast path ----------
+  // Each play tick used to rerun the full render(): rebuild the per-year step
+  // options for EVERY panel year, the sidebar DOM, and the screen-reader table,
+  // then setOption(notMerge:true) — ~11x the necessary work per frame. The
+  // bubble chart is a timeline option, so the chart already holds every year's
+  // step option from the last full render(); switching frames only needs the
+  // timeline index plus the year-dependent DOM. Anything other than a play tick
+  // (manual scrub, story/axis/selection/compare/deflate/log/group changes) still
+  // goes through render(), which rebuilds the step options from current state.
+  let suppressTimelineEvent = false;
+  // SR table during play: rebuilding the 82-row mirror table every ~1.1s frame
+  // is wasted DOM work for a sighted reader and churn for an AT one. Throttle it
+  // mid-play; stopPlay() ends with a full render() so the final frame is exact.
+  let srTableLastAt = 0;
+  const SR_TABLE_PLAY_THROTTLE_MS = 900;
+  function renderFrame() {
+    const view = state.view;
+    // Only the bubble chart is a timeline option; every other type (and any
+    // year not in the panel) takes the full path.
+    if (!view || state.chartType !== "bubbles") {
+      render();
+      return;
+    }
+    const idx = view.panel_years.indexOf(state.year);
+    if (idx < 0) {
+      render();
+      return;
+    }
+    // The chart applies the prebuilt step option for this year (trails, compare
+    // connectors, CI whiskers, arc quadrant/annotation blocks were all baked
+    // per-year by the last full render). Suppress our own timelinechanged
+    // handler: renderFrame does its DOM/hash updates itself, throttled.
+    suppressTimelineEvent = true;
+    try {
+      chart.dispatchAction({ type: "timelineChange", currentIndex: idx });
+    } finally {
+      suppressTimelineEvent = false;
+    }
+    // Year-dependent DOM: stepper label + slider position, the finding box
+    // (custom pairs compute live findings at the displayed year; presets carry
+    // a "chart is showing YEAR" note), and the URL hash.
+    renderYearControls(state, view, render);
+    updateFindingBox(view);
+    writeHash(state, view);
+    const now = Date.now();
+    if (now - srTableLastAt >= SR_TABLE_PLAY_THROTTLE_MS) {
+      srTableLastAt = now;
+      renderSrTable(view, data, state);
+    }
+  }
+
   chart.on("timelinechanged", (e) => {
+    if (suppressTimelineEvent) return; // renderFrame already did these updates
     const panel = (state.view && state.view.panel_years) || state.story.panel_years;
     state.year = panel[e.currentIndex];
     writeHash(state, state.view);
@@ -3506,12 +3565,24 @@ async function main() {
     // supersedes this one before paint, no flicker.
     if (wasPlaying) render();
   }
+  const panelYears = () =>
+    (state.view && state.view.panel_years) || state.story.panel_years;
+  // One autoplay step: advance to the next panel year and draw it via the fast
+  // path (renderFrame reuses the timeline step options already on the chart
+  // instead of rebuilding every year's option; non-timeline chart types fall
+  // back to a full render inside renderFrame). Returns false at the panel end.
+  function playTick() {
+    const cur = panelYears();
+    const idx = cur.indexOf(state.year);
+    if (idx < 0 || idx >= cur.length - 1) return false;
+    state.year = cur[idx + 1];
+    renderFrame();
+    return true;
+  }
   function startPlay(onComplete) {
     if (playTimer) return;
     if (state.chartType === "line") return;
     playOnComplete = onComplete || null;
-    const panelYears = () =>
-      (state.view && state.view.panel_years) || state.story.panel_years;
     // If we're sitting on the last year, rewind to the first so play means
     // "watch the full animation" rather than "do nothing."
     let ys = panelYears();
@@ -3527,22 +3598,22 @@ async function main() {
     const speedFactor = state.arc ? 1 : state.speed || 1;
     const interval = (ys.length <= 3 ? 1500 : 1100) / speedFactor;
     playTimer = setInterval(() => {
-      const cur = panelYears();
-      const idx = cur.indexOf(state.year);
-      if (idx < 0 || idx >= cur.length - 1) {
+      if (!playTick()) {
         const cb = playOnComplete;
         stopPlay();
         if (cb) cb();
-        return;
       }
-      state.year = cur[idx + 1];
-      render();
     }, interval);
   }
   // Expose for the chart-type strip handler so switching away from bubbles
   // stops the timer.
   window.__datavizph_stopPlay = stopPlay;
   window.__datavizph_startPlay = startPlay;
+  // Read-mostly test accessors (same pattern as __datavizph_chartOption): the
+  // perf script and browser tests time the full render vs the play-tick frame
+  // path directly instead of guessing from wall-clock playback.
+  window.__datavizph_render = render;
+  window.__datavizph_playTick = playTick;
   if (bigPlay) {
     bigPlay.addEventListener("click", () => {
       if (state.chartType === "line") return;
