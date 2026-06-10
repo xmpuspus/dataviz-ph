@@ -55,7 +55,7 @@ Viewports used: **mobile 375x812**, **small 600x900**, **tablet 880x1000**, **de
 
 - **T26 Empty-pair empty-state.** Construct a pair with zero overlapping years (e.g. an indicator panel that doesn't intersect). Expect a visible "no data for this combination" message, not a blank canvas. **Known FAIL on HEAD** — gate for Reliability High.
 - **T27 Deflate to real PHP (post-2018).** On a deflatable indicator at year 2020, toggle real. Expect values change to constant-2018 PHP, axis title notes "real". Visual: axis label shows real-PHP.
-- **T28 Deflate pre-2018 shows the honesty banner.** Set deflate=real, scrub to 2015. Expect the inline "Showing nominal PHP only. PSA CPI 2018-base does not cover this year." banner and dropped bubbles. Visual: banner text present.
+- **T28 Deflate pre-2018 shows the honesty banner.** Set deflate=real, scrub to 2015. Expect the inline "Spend bubbles hidden for this year. PSA CPI 2018-base does not cover years before 2018." banner with bubbles dropped. Visual: banner text present.
 - **T29 Log↔linear X.** Toggle log off on a spend indicator. Expect axis ticks switch to linear, bubbles re-spread, no NaN. Visual: tick labels change from log spacing.
 
 ## G. Selection, trails, compare (T30–T32)

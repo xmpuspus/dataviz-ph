@@ -25,10 +25,18 @@
   <meta name="twitter:image" content="https://dataviz.ph/og.png">
 
   <link rel="stylesheet" href="style.css">
-  <script src="vendor/echarts.min.js"
+  <link rel="modulepreload" href="app.js">
+  <link rel="preload" as="fetch" crossorigin href="data/provinces.json">
+  <link rel="preload" as="fetch" crossorigin href="data/poverty.json">
+  <link rel="preload" as="fetch" crossorigin href="data/dpwh_spend_per_capita.json">
+  <link rel="preload" as="fetch" crossorigin href="data/gdp_per_capita.json">
+  <link rel="preload" as="fetch" crossorigin href="data/indicators.json">
+  <link rel="preload" as="fetch" crossorigin href="data/stories.json">
+  <script src="vendor/echarts-5.6.0.min.js"
           integrity="sha384-Mx5lkUEQPM1pOJCwFtUICyX45KNojXbkWdYhkKUKsbv391mavbfoAmONbzkgYPzR"
           crossorigin="anonymous"
-          referrerpolicy="no-referrer"></script>
+          referrerpolicy="no-referrer"
+          defer></script>
 </head>
 <body>
   <!-- Slim top bar: brand on the left, preset tabs in the middle, source link on the right -->
