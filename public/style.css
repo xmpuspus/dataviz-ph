@@ -141,6 +141,21 @@ body {
   font-size: 0.85rem;
 }
 
+/* EN/Tagalog toggle: a quiet pill that matches the topbar links. */
+#lang-toggle {
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-radius: 99px;
+  padding: 0.15rem 0.55rem;
+  cursor: pointer;
+}
+
+#lang-toggle:hover { color: var(--ink); border-color: var(--ink); }
+
 /* --- Compact title strip directly above the chart ----------------------- */
 
 #title-strip {
@@ -495,7 +510,9 @@ select:focus-visible {
 }
 
 #search,
-#compare-select {
+#compare-select,
+#color-by,
+#size-by {
   width: 100%;
   padding: 0.45rem 0.6rem;
   font: inherit;
@@ -504,6 +521,9 @@ select:focus-visible {
   border-radius: 6px;
   background: var(--soft);
 }
+
+#encode-block label.hint { display: block; margin-bottom: 0.2rem; }
+#encode-block select { margin-bottom: 0.45rem; }
 
 #search-results {
   list-style: none;
@@ -740,6 +760,7 @@ select:focus-visible {
 #controls #csv,
 #controls #csv-all,
 #controls #png,
+#controls #svg,
 #controls #share,
 #controls #embed-code {
   display: inline-block;
