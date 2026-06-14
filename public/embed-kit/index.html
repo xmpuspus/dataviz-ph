@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Embed kit — dataviz.ph</title>
+  <meta name="description" content="Embed any dataviz.ph chart in your story. Copy-paste iframe snippets, responsive, attribution-ready.">
+  <link rel="canonical" href="https://dataviz.ph/embed-kit">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://dataviz.ph/embed-kit">
+  <meta property="og:title" content="Embed kit — dataviz.ph">
+  <meta property="og:description" content="Drop any dataviz.ph chart into your article with one line of HTML. Free, open data, attribution-ready.">
+  <meta property="og:image" content="https://dataviz.ph/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://dataviz.ph/og.png">
+  <style>
+    /* Self-contained: the embed kit deliberately does NOT pull the site's
+       style.css (its topbar/sidebar/grid rules reflow this single-column page). */
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#fff;color:#111;-webkit-font-smoothing:antialiased;
+      font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial,sans-serif}
+    .ek{max-width:880px;margin:0 auto;padding:32px 20px 80px}
+    .ek .lead{color:#444;font-size:17px;line-height:1.6;margin:10px 0 8px}
+    .ek h1{font-family:Georgia,serif;font-weight:600;font-size:32px;letter-spacing:-0.01em}
+    .ek .brand{font-weight:700;font-size:16px}
+    .ek .brand span{color:#0e7c86}
+    .ek h2{font-family:Georgia,serif;font-weight:600;font-size:22px;margin:0 0 4px}
+    .ek .story{border-top:1px solid #e6e6e6;padding-top:26px;margin-top:30px}
+    .ek .tagline{color:#666;font-size:14px;line-height:1.5;margin-bottom:14px}
+    .ek .preview{border:1px solid #e6e6e6;border-radius:10px;overflow:hidden;margin-bottom:14px;background:#fff}
+    .ek .preview iframe{display:block;width:100%;height:460px;border:0}
+    .ek label{display:block;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;color:#888;margin-bottom:6px}
+    .ek .codewrap{position:relative;display:flex;gap:8px;align-items:flex-start}
+    .ek pre{flex:1;background:#0f172a;color:#e2e8f0;border-radius:8px;padding:14px 16px;overflow:auto;
+      font-family:"SF Mono",Menlo,Consolas,monospace;font-size:13px;line-height:1.5;margin:0}
+    .ek .copy{flex:0 0 auto;background:#0e7c86;color:#fff;border:0;border-radius:8px;padding:10px 16px;
+      font-size:14px;font-weight:600;cursor:pointer;min-height:44px}
+    .ek .copy:hover{background:#0b6670}
+    .ek .copy.done{background:#2f855a}
+    .ek .meta{margin-top:40px;border-top:1px solid #e6e6e6;padding-top:22px;color:#555;font-size:14px;line-height:1.7}
+    .ek .meta a{color:#0e7c86}
+    .ek .home{display:inline-block;margin-top:8px;color:#0e7c86;font-weight:600;text-decoration:none}
+  </style>
+</head>
+<body>
+  <main class="ek">
+    <div class="brand">dataviz.<span>ph</span></div>
+    <h1>Embed kit for journalists & researchers</h1>
+    <p class="lead">Every chart on dataviz.ph embeds in one line of HTML. The embed is the
+      live, animated chart — readers can hit play and scrub the years inside your article.
+      Pick a story below, copy the snippet, paste it into your CMS.</p>
+    <p class="lead">All figures are computed from public data (PSA OpenStat, PhilGEPS, PSA
+      Census). Correlation, not causation; spend is contract awards, not verified disbursement.</p>
+    
+    <section class="story">
+      <h2>Eleven years, five trillion in roads. Did poverty improve?</h2>
+      <p class="tagline">DPWH spend per capita against poverty incidence. 81 provinces and Metro Manila. 2014 to 2024. Hit play, or use the arrow keys.</p>
+      <div class="preview">
+        <iframe src="https://dataviz.ph/#story=spend-vs-poverty&amp;embed=1" loading="lazy" title="Live preview: Eleven years, five trillion in roads. Did poverty improve?"></iframe>
+      </div>
+      <label>Copy-paste embed code</label>
+      <div class="codewrap">
+        <pre><code>&lt;iframe src=&quot;https://dataviz.ph/#story=spend-vs-poverty&amp;embed=1&quot; width=&quot;800&quot; height=&quot;560&quot; style=&quot;border:0;width:100%;max-width:800px;aspect-ratio:800/560&quot; loading=&quot;lazy&quot; title=&quot;dataviz.ph: Eleven years, five trillion in roads. Did poverty improve?&quot;&gt;&lt;/iframe&gt;</code></pre>
+        <button class="copy" type="button" data-copy="&lt;iframe src=&quot;https://dataviz.ph/#story=spend-vs-poverty&amp;embed=1&quot; width=&quot;800&quot; height=&quot;560&quot; style=&quot;border:0;width:100%;max-width:800px;aspect-ratio:800/560&quot; loading=&quot;lazy&quot; title=&quot;dataviz.ph: Eleven years, five trillion in roads. Did poverty improve?&quot;&gt;&lt;/iframe&gt;">Copy</button>
+      </div>
+    </section>
+    <section class="story">
+      <h2>All government spending. Does it reach the poor?</h2>
+      <p class="tagline">Every province-attributable PhilGEPS contract per capita against poverty incidence. 81 provinces and Metro Manila, 2014 to 2024. Scrub the years.</p>
+      <div class="preview">
+        <iframe src="https://dataviz.ph/#story=all-spend-vs-poverty&amp;embed=1" loading="lazy" title="Live preview: All government spending. Does it reach the poor?"></iframe>
+      </div>
+      <label>Copy-paste embed code</label>
+      <div class="codewrap">
+        <pre><code>&lt;iframe src=&quot;https://dataviz.ph/#story=all-spend-vs-poverty&amp;embed=1&quot; width=&quot;800&quot; height=&quot;560&quot; style=&quot;border:0;width:100%;max-width:800px;aspect-ratio:800/560&quot; loading=&quot;lazy&quot; title=&quot;dataviz.ph: All government spending. Does it reach the poor?&quot;&gt;&lt;/iframe&gt;</code></pre>
+        <button class="copy" type="button" data-copy="&lt;iframe src=&quot;https://dataviz.ph/#story=all-spend-vs-poverty&amp;embed=1&quot; width=&quot;800&quot; height=&quot;560&quot; style=&quot;border:0;width:100%;max-width:800px;aspect-ratio:800/560&quot; loading=&quot;lazy&quot; title=&quot;dataviz.ph: All government spending. Does it reach the poor?&quot;&gt;&lt;/iframe&gt;">Copy</button>
+      </div>
+    </section>
+    <section class="story">
+      <h2>Does spending follow wealth, or chase poverty?</h2>
+      <p class="tagline">81 provinces and Metro Manila. 2022 to 2024. All government contracts per capita against per-capita GDP.</p>
+      <div class="preview">
+        <iframe src="https://dataviz.ph/#story=all-spend-vs-gdp&amp;embed=1" loading="lazy" title="Live preview: Does spending follow wealth, or chase poverty?"></iframe>
+      </div>
+      <label>Copy-paste embed code</label>
+      <div class="codewrap">
+        <pre><code>&lt;iframe src=&quot;https://dataviz.ph/#story=all-spend-vs-gdp&amp;embed=1&quot; width=&quot;800&quot; height=&quot;560&quot; style=&quot;border:0;width:100%;max-width:800px;aspect-ratio:800/560&quot; loading=&quot;lazy&quot; title=&quot;dataviz.ph: Does spending follow wealth, or chase poverty?&quot;&gt;&lt;/iframe&gt;</code></pre>
+        <button class="copy" type="button" data-copy="&lt;iframe src=&quot;https://dataviz.ph/#story=all-spend-vs-gdp&amp;embed=1&quot; width=&quot;800&quot; height=&quot;560&quot; style=&quot;border:0;width:100%;max-width:800px;aspect-ratio:800/560&quot; loading=&quot;lazy&quot; title=&quot;dataviz.ph: Does spending follow wealth, or chase poverty?&quot;&gt;&lt;/iframe&gt;">Copy</button>
+      </div>
+    </section>
+    <section class="story">
+      <h2>Wealthier provinces, lower poverty?</h2>
+      <p class="tagline">Per capita GDP (constant 2018 PHP) against poverty incidence. Three years of PSA province data, 2022 to 2024.</p>
+      <div class="preview">
+        <iframe src="https://dataviz.ph/#story=gdp-vs-poverty&amp;embed=1" loading="lazy" title="Live preview: Wealthier provinces, lower poverty?"></iframe>
+      </div>
+      <label>Copy-paste embed code</label>
+      <div class="codewrap">
+        <pre><code>&lt;iframe src=&quot;https://dataviz.ph/#story=gdp-vs-poverty&amp;embed=1&quot; width=&quot;800&quot; height=&quot;560&quot; style=&quot;border:0;width:100%;max-width:800px;aspect-ratio:800/560&quot; loading=&quot;lazy&quot; title=&quot;dataviz.ph: Wealthier provinces, lower poverty?&quot;&gt;&lt;/iframe&gt;</code></pre>
+        <button class="copy" type="button" data-copy="&lt;iframe src=&quot;https://dataviz.ph/#story=gdp-vs-poverty&amp;embed=1&quot; width=&quot;800&quot; height=&quot;560&quot; style=&quot;border:0;width:100%;max-width:800px;aspect-ratio:800/560&quot; loading=&quot;lazy&quot; title=&quot;dataviz.ph: Wealthier provinces, lower poverty?&quot;&gt;&lt;/iframe&gt;">Copy</button>
+      </div>
+    </section>
+    <section class="story">
+      <h2>More road spending, more poverty reduction?</h2>
+      <p class="tagline">Cumulative DPWH spend per capita over 2014-2023 against the change in poverty incidence from 2018 to 2023. One snapshot, 81 provinces and Metro Manila.</p>
+      <div class="preview">
+        <iframe src="https://dataviz.ph/#story=spend-vs-poverty-change&amp;embed=1" loading="lazy" title="Live preview: More road spending, more poverty reduction?"></iframe>
+      </div>
+      <label>Copy-paste embed code</label>
+      <div class="codewrap">
+        <pre><code>&lt;iframe src=&quot;https://dataviz.ph/#story=spend-vs-poverty-change&amp;embed=1&quot; width=&quot;800&quot; height=&quot;560&quot; style=&quot;border:0;width:100%;max-width:800px;aspect-ratio:800/560&quot; loading=&quot;lazy&quot; title=&quot;dataviz.ph: More road spending, more poverty reduction?&quot;&gt;&lt;/iframe&gt;</code></pre>
+        <button class="copy" type="button" data-copy="&lt;iframe src=&quot;https://dataviz.ph/#story=spend-vs-poverty-change&amp;embed=1&quot; width=&quot;800&quot; height=&quot;560&quot; style=&quot;border:0;width:100%;max-width:800px;aspect-ratio:800/560&quot; loading=&quot;lazy&quot; title=&quot;dataviz.ph: More road spending, more poverty reduction?&quot;&gt;&lt;/iframe&gt;">Copy</button>
+      </div>
+    </section>
+    <section class="story">
+      <h2>Where prices rise fastest, who already lives poor?</h2>
+      <p class="tagline">Regional CPI inflation (year-on-year) against poverty incidence. PSA publishes CPI by region, not province, so this story drops from the 82 provincial units used elsewhere to 18 regions. PSA survey years 2021 and 2023.</p>
+      <div class="preview">
+        <iframe src="https://dataviz.ph/#story=inflation-vs-poverty&amp;embed=1" loading="lazy" title="Live preview: Where prices rise fastest, who already lives poor?"></iframe>
+      </div>
+      <label>Copy-paste embed code</label>
+      <div class="codewrap">
+        <pre><code>&lt;iframe src=&quot;https://dataviz.ph/#story=inflation-vs-poverty&amp;embed=1&quot; width=&quot;800&quot; height=&quot;560&quot; style=&quot;border:0;width:100%;max-width:800px;aspect-ratio:800/560&quot; loading=&quot;lazy&quot; title=&quot;dataviz.ph: Where prices rise fastest, who already lives poor?&quot;&gt;&lt;/iframe&gt;</code></pre>
+        <button class="copy" type="button" data-copy="&lt;iframe src=&quot;https://dataviz.ph/#story=inflation-vs-poverty&amp;embed=1&quot; width=&quot;800&quot; height=&quot;560&quot; style=&quot;border:0;width:100%;max-width:800px;aspect-ratio:800/560&quot; loading=&quot;lazy&quot; title=&quot;dataviz.ph: Where prices rise fastest, who already lives poor?&quot;&gt;&lt;/iframe&gt;">Copy</button>
+      </div>
+    </section>
+    <div class="meta">
+      <strong>Sizing.</strong> The snippet is responsive (it scales to its container, capped at 800px).
+      For a fixed size, set <code>width</code> and <code>height</code> directly.<br>
+      <strong>Attribution.</strong> Please credit &ldquo;dataviz.ph&rdquo; with a link to
+      <a href="https://dataviz.ph">https://dataviz.ph</a>. The data and code are open
+      (MIT). Method notes: <a href="/methodology">dataviz.ph/methodology</a>.<br>
+      <strong>Custom views.</strong> Any view you build in the explorer has its own URL —
+      add <code>&amp;embed=1</code> to that link to embed exactly what you see.
+      <a class="home" href="/">&larr; Back to the explorer</a>
+    </div>
+  </main>
+  <script src="/embed-kit.js" defer></script>
+</body>
+</html>
