@@ -2691,6 +2691,7 @@ function renderStorySwitcher(stories, state, view, render) {
       s.tab_label || s.headline.split(".")[0],
     );
     btn.addEventListener("click", () => {
+      track("story", { id: s.id });
       state.story = s;
       state.xIndicator = s.x;
       state.yIndicator = s.y;
@@ -2745,9 +2746,11 @@ function renderIndicatorPickers(state, view, data, render) {
     select.value = currentId;
   };
   wireOne("y-select", view.y, view.x, (val) => {
+    track("axis_pick", { axis: "y", id: val });
     state.yIndicator = val;
   });
   wireOne("x-select", view.x, view.y, (val) => {
+    track("axis_pick", { axis: "x", id: val });
     state.xIndicator = val;
   });
 }
@@ -3324,6 +3327,7 @@ async function main() {
 
   // Wire the axis-picker panel selection back into state.
   _indicatorPickHandler = (kind, id) => {
+    track("axis_pick", { axis: kind, id });
     if (kind === "x") state.xIndicator = id;
     else state.yIndicator = id;
     render();
@@ -3342,11 +3346,25 @@ async function main() {
     if (view.isCustom) {
       const lf = computeLiveFinding(view, data, state);
       if (lf) {
-        findingEl.textContent = `${prefix} ${lf.sentence} ${lf.caveat}`;
+        // The picker lets a reader test any of dozens of indicator pairs, so an
+        // uncorrected p-value here is a multiple-comparison/p-hacking surface.
+        // Say so once, plainly, rather than let a lone low p read as a finding.
+        const exploreNote = t(
+          "finding.exploratory",
+          "Exploratory pairing: this p-value isn't adjusted for the many pairs the picker lets you compare.",
+        );
+        findingEl.textContent = `${prefix} ${lf.sentence} ${lf.caveat} ${exploreNote}`;
         findingEl.hidden = false;
       } else {
-        findingEl.textContent = "";
-        findingEl.hidden = true;
+        // Visible empty state: a custom pair with no overlapping data at this year
+        // would otherwise blank the chart with nothing on screen explaining why
+        // (only the sr-only table said anything). Keep the box visible and say it.
+        const yr = state.year != null ? state.year : "";
+        const tpl = t("finding.no_data", null);
+        findingEl.textContent = tpl
+          ? tFill(tpl, { year: yr })
+          : `Not enough overlapping data to compare these two indicators${yr ? " in " + yr : ""}.`;
+        findingEl.hidden = false;
       }
     } else if (f && f.available && f.sentence) {
       // The preset sentence ships precomputed in English (stories.json). In TL
@@ -3814,10 +3832,12 @@ async function main() {
   }
 
   document.getElementById("csv").addEventListener("click", () => {
+    track("export", { fmt: "csv", scope: "year" });
     downloadCsv(state.view || state.story, data, state);
   });
 
   document.getElementById("csv-all").addEventListener("click", () => {
+    track("export", { fmt: "csv", scope: "all" });
     downloadCsv(state.view || state.story, data, state, true);
   });
 
@@ -3839,6 +3859,7 @@ async function main() {
     btn.addEventListener("click", () => {
       const t = btn.dataset.type;
       if (!t || t === state.chartType) return;
+      track("chart_type", { type: t });
       // Switching away from bubbles stops any running play loop.
       if (t !== "bubbles" && typeof window.__datavizph_stopPlay === "function") {
         window.__datavizph_stopPlay();
@@ -3926,6 +3947,9 @@ async function main() {
   // path directly instead of guessing from wall-clock playback.
   window.__datavizph_render = render;
   window.__datavizph_playTick = playTick;
+  // Read-only: true while the autoplay interval is armed. Lets the visibility
+  // pause/resume test assert timer state without racing wall-clock year advance.
+  window.__datavizph_playing = () => playTimer !== null;
   if (bigPlay) {
     bigPlay.addEventListener("click", () => {
       if (state.chartType === "line") return;
@@ -4033,13 +4057,21 @@ async function main() {
     state.yIndicator = s.y;
     state.logX = !!s.default_log_x;
   };
+  // Arc waits track their fire deadline so the visibility handler can freeze the
+  // chain when the tab is backgrounded and re-arm it with the remaining time on
+  // return, instead of letting a ~24s scripted story run on unseen in a hidden tab.
   const arcWait = (ms, fn) => {
-    const t = setTimeout(fn, ms);
-    arcTimers.push(t);
-    return t;
+    const entry = { fn, deadline: performance.now() + ms, id: null };
+    entry.id = setTimeout(() => {
+      const i = arcTimers.indexOf(entry);
+      if (i >= 0) arcTimers.splice(i, 1);
+      fn();
+    }, ms);
+    arcTimers.push(entry);
+    return entry.id;
   };
   const clearArcTimers = () => {
-    arcTimers.forEach(clearTimeout);
+    arcTimers.forEach((e) => clearTimeout(e.id));
     arcTimers = [];
   };
   const setArc = (beat) => {
@@ -4146,7 +4178,7 @@ async function main() {
             pos: "lowerLeft",
             color: "#111",
             text: `No link. ρ = ${fmtRho(spendRho)}.`,
-            sub: "Across 81 provinces and Metro Manila, higher road spending did not track lower poverty.",
+            sub: "Across the provinces and Metro Manila, higher road spending did not track lower poverty.",
           },
         });
         arcWait(3600, beatSpecific);
@@ -4287,7 +4319,49 @@ async function main() {
   // Canvas text is invisible to the DOM, so browser tests assert through this.
   window.__datavizph_chartOption = () => chart.getOption();
 
+  // Pause autoplay + the guided arc while the tab is hidden; resume on return.
+  // Without this the play setInterval and the arc's chained setTimeouts keep
+  // firing in a backgrounded tab, so a visitor who tab-switches mid-arc comes
+  // back past the story they came to watch.
+  let _hiddenResumePlay = null; // { cb } captured when autoplay was running at hide
+  let _hiddenArcWaits = null; // [{ fn, remaining }] for the frozen arc chain
+  function pauseForHidden() {
+    if (playTimer) {
+      _hiddenResumePlay = { cb: playOnComplete };
+      clearInterval(playTimer);
+      playTimer = null;
+    }
+    if (arcTimers.length) {
+      const now = performance.now();
+      _hiddenArcWaits = arcTimers.map((e) => ({
+        fn: e.fn,
+        remaining: Math.max(0, e.deadline - now),
+      }));
+      arcTimers.forEach((e) => clearTimeout(e.id));
+      arcTimers = [];
+    }
+  }
+  function resumeFromHidden() {
+    if (_hiddenArcWaits) {
+      const waits = _hiddenArcWaits;
+      _hiddenArcWaits = null;
+      waits.forEach((w) => arcWait(w.remaining, w.fn));
+    }
+    if (_hiddenResumePlay) {
+      const { cb } = _hiddenResumePlay;
+      _hiddenResumePlay = null;
+      // Re-arm the loop; startPlay only rewinds if we're sitting on the last year,
+      // which can't happen while a tick interval was still pending.
+      startPlay(cb);
+    }
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) pauseForHidden();
+    else resumeFromHidden();
+  });
+
   document.getElementById("png").addEventListener("click", () => {
+    track("export", { fmt: "png" });
     const url = chart.getDataURL({
       type: "png",
       pixelRatio: 2,
@@ -4308,6 +4382,7 @@ async function main() {
   // SVG-renderer instance in SSR mode and download renderToSVGString()'s
   // output. Map polygons are registered globally, so the map view exports too.
   document.getElementById("svg").addEventListener("click", () => {
+    track("export", { fmt: "svg" });
     const v = state.view || state.story;
     const name = v.isCustom ? `${v.x}-vs-${v.y}` : v.id;
     let svgChart = null;
@@ -4391,6 +4466,14 @@ async function main() {
       applyStaticLocale();
       syncLangButton();
       render();
+      // Be honest that the Tagalog layer is partial: the first-read surface and
+      // controls are translated, but the methodology, footer, and the public-data
+      // disclaimer stay in English. Saying "beta" reads as in-progress, not broken.
+      if (next === "tl") {
+        showChartNotice(
+          "Beta pa ang salin sa Tagalog. Nasa Ingles pa ang ilang label, ang metodolohiya, at ang babala sa datos.",
+        );
+      }
     });
   }
 
@@ -4402,6 +4485,7 @@ async function main() {
   });
 
   document.getElementById("share").addEventListener("click", async () => {
+    track("share_link");
     const status = document.getElementById("share-status");
     try {
       await navigator.clipboard.writeText(window.location.href);
@@ -4424,6 +4508,7 @@ async function main() {
   // Copy a ready-to-paste iframe snippet for the current view. Same clipboard
   // try/fallback pattern as the copy-link button above.
   document.getElementById("embed-code").addEventListener("click", async () => {
+    track("embed_copy");
     const status = document.getElementById("share-status");
     const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     params.set("embed", "1");

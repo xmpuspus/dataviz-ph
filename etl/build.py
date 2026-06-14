@@ -219,16 +219,23 @@ def _median(vals: list[float]) -> float:
 
 
 def compute_story_finding(
-    story: dict, value_index: dict[str, dict[tuple[str, int], float]]
+    story: dict,
+    value_index: dict[str, dict[tuple[str, int], float]],
+    expected_units: int | None = None,
 ) -> dict:
     """Compute a data-grounded answer to the story's question at its default year.
 
     Returns a finding dict with the Spearman rank correlation (robust to the
     log axis the chart uses), a permutation p-value (10k shuffles, seeded),
-    the Pearson r, the province count, the actual year used, and an off-diagonal
+    the unit count actually used, the actual year used, and an off-diagonal
     quadrant count. The human sentence is assembled here from the computed numbers
     (never hand-typed) so it can never drift from the data. Every finding carries
     the correlation-not-causation caveat.
+
+    expected_units is the size of the story's unit universe (82 provincial units
+    or 18 regions). When the year's usable n is short of it (e.g. a unit lacks
+    spend or GDP data), the sentence says "n of expected" so the count never
+    silently disagrees with the "81 provinces and Metro Manila" tagline.
     """
     xid, yid, year = story["x"], story["y"], story["default_year"]
     xmap = value_index.get(xid, {})
@@ -244,7 +251,6 @@ def compute_story_finding(
     xs = [p[0] for p in pairs]
     ys = [p[1] for p in pairs]
     rho = _spearman(xs, ys)
-    r = _pearson(xs, ys)
 
     p_val = None
     if rho is not None:
@@ -273,8 +279,11 @@ def compute_story_finding(
     strength = _strength_word(rho) if rho is not None else "no measurable"
     rho_txt = f"{rho:+.2f}" if rho is not None else "n/a"
     p_txt = _format_p(p_val) if p_val is not None else ""
+    area_clause = f"across {n} areas"
+    if expected_units is not None and n < expected_units:
+        area_clause = f"across {n} of {expected_units} areas with data"
     sentence = (
-        f"In {year}, across {n} areas, the rank correlation between {xname} and "
+        f"In {year}, {area_clause}, the rank correlation between {xname} and "
         f"{yname} is rho = {rho_txt} ({p_txt}), showing {strength} {direction} link. "
         f"{both_high} of {n} areas sat above the median on both axes."
     )
@@ -296,7 +305,6 @@ def compute_story_finding(
         "year": year,
         "n": n,
         "spearman": round(rho, 3) if rho is not None else None,
-        "pearson": round(r, 3) if r is not None else None,
         "p_value": round(p_val, 4) if p_val is not None else None,
         "both_above_median": both_high,
         "sentence": sentence,
@@ -366,9 +374,17 @@ def main(no_cache: bool = False) -> None:
 
     print(">> fetch CPI annual averages (PSA 2M/PI/CPI, PHILIPPINES national)")
     cpi = psa_openstat.fetch_cpi_annual()
-    cpi_2018 = cpi.get(2018, 100.0)
+    # Fail loud rather than fabricate a deflator base: an empty pull or a
+    # missing 2018 row would otherwise default to 100.0 and silently ship
+    # all-null "2018-real" values for every deflatable spend series.
+    if not cpi or 2018 not in cpi:
+        raise RuntimeError(
+            "CPI series is empty or missing the 2018 base year; refusing to "
+            "fabricate a deflator base"
+        )
+    cpi_2018 = cpi[2018]
     if cpi_2018 <= 0:
-        raise RuntimeError("CPI 2018 base is zero, refusing to deflate")
+        raise RuntimeError("CPI 2018 base is non-positive, refusing to deflate")
     deflators = {y: cpi_2018 / cpi[y] for y in cpi if cpi[y] > 0}
 
     for series in (dpwh_spend, all_spend, doh_spend, infra_spend):
@@ -440,10 +456,13 @@ def main(no_cache: bool = False) -> None:
         if r["value"] < 0:
             raise ValueError(f"Negative cumulative spend in row: {r}")
 
-    # Coverage validation: poverty covers all 82 units at every anchor year.
-    # Spend indicators have legitimate gaps so we only assert uniqueness there.
+    # Coverage validation: poverty and population cover all 82 units at every
+    # year (population at every panel year; poverty at every survey anchor).
+    # Spend/GDP indicators have legitimate gaps so we only assert uniqueness there.
     validate.validate_coverage(poverty_anchors, n_units, POVERTY_ANCHORS, "poverty_anchors")
     validate.validate_uniqueness(poverty_anchors, "poverty_anchors")
+    validate.validate_coverage(population_series, n_units, PANEL_YEARS, "population")
+    validate.validate_uniqueness(population_series, "population")
     validate.validate_uniqueness(dpwh_spend, "dpwh_spend_per_capita")
     validate.validate_uniqueness(all_spend, "all_spend_per_capita")
 
@@ -997,7 +1016,11 @@ def main(no_cache: bool = False) -> None:
         "region_poverty": {(r["psgc"], r["year"]): r["value"] for r in region_poverty},
     }
     for s in stories:
-        s["finding"] = compute_story_finding(s, value_index)
+        # Universe size for the "n of expected" clause: 18 regions for the
+        # regional unit set, the 82 provincial units (81 provinces + Metro
+        # Manila) otherwise.
+        expected = len(regions) if s.get("unit_set") == "regions" else n_units
+        s["finding"] = compute_story_finding(s, value_index, expected_units=expected)
     write_json("stories.json", stories)
 
     # Write manifest LAST so its sha256 covers every freshly-written file.
