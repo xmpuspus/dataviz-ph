@@ -7,9 +7,12 @@
   LabelLayout; Canvas + SVG renderers), re-exported as the `echarts` global.
   r2 added SVGRenderer (SVG export button) and DataZoomInsideComponent (bubble
   pinch/wheel zoom) over r1 for +13.3 KB gzip.
-- `echarts-5.6.0.min.js` — the full upstream build, kept unreferenced as
-  rollback safety. To roll back, point the index.html script tag at it and
-  restore its SRI: `sha384-Mx5lkUEQPM1pOJCwFtUICyX45KNojXbkWdYhkKUKsbv391mavbfoAmONbzkgYPzR`.
+Rollback: the full upstream `echarts-5.6.0.min.js` was removed (it was
+unreferenced but still shipped ~1 MB on every deploy). To roll back, re-fetch it
+from the ECharts 5.6.0 release
+(`https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js`), point the
+index.html script tag at it, and set its SRI to
+`sha384-Mx5lkUEQPM1pOJCwFtUICyX45KNojXbkWdYhkKUKsbv391mavbfoAmONbzkgYPzR`.
 
 ## Upgrade / rebuild recipe
 

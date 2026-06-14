@@ -49,6 +49,55 @@ jobs:
           if age_days > 365:
               print(f"ERROR: manifest is {age_days} days old (limit 365)")
               sys.exit(1)
-          elif age_days > 180:
+          elif age_days > 90:
               print(f"::warning::manifest is {age_days} days old; consider refreshing the data")
+          EOF
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.13"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-1.60.0-chromium
+
+      - name: Install Playwright Chromium
+        run: |
+          pip install playwright==1.60.0
+          python -m playwright install --with-deps chromium
+
+      - name: Assert the chart actually renders (HTTP 200 is not enough)
+        run: |
+          python3 - <<'EOF'
+          import sys
+          from playwright.sync_api import sync_playwright
+
+          # A broken JS bundle or an SRI mismatch leaves a green 200 + correct title
+          # while the chart silently fails ("Chart could not load"). The curl checks
+          # above can't see that; this loads the page in a real browser and asserts
+          # ECharts drew a series carrying data, through the site's read-only accessor.
+          with sync_playwright() as p:
+              browser = p.chromium.launch()
+              page = browser.new_page()
+              errors = []
+              page.on("pageerror", lambda e: errors.append(str(e)))
+              page.goto("https://dataviz.ph", wait_until="domcontentloaded")
+              try:
+                  page.wait_for_function(
+                      "() => { const f = window.__datavizph_chartOption; "
+                      "if (!f) return false; const o = f(); "
+                      "return o && Array.isArray(o.series) && "
+                      "o.series.some(s => Array.isArray(s.data) && s.data.length > 0); }",
+                      timeout=30000,
+                  )
+              except Exception:
+                  print("ERROR: chart did not render a data series within 30s")
+                  if errors:
+                      print("page errors:", errors)
+                  browser.close()
+                  sys.exit(1)
+              print("OK: chart rendered with at least one non-empty data series")
+              browser.close()
           EOF

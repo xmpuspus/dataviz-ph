@@ -146,3 +146,41 @@ def test_autoplay_ticks_advance_year_and_keep_bubbles(page, base_url):
     assert f"Chart is showing {years[-1]}" in finding, finding
 
     assert page.console_errors == [], page.console_errors
+
+
+_HIDE = """() => {
+    Object.defineProperty(document, 'visibilityState', {configurable: true, get: () => 'hidden'});
+    Object.defineProperty(document, 'hidden', {configurable: true, get: () => true});
+    document.dispatchEvent(new Event('visibilitychange'));
+}"""
+_SHOW = """() => {
+    Object.defineProperty(document, 'visibilityState', {configurable: true, get: () => 'visible'});
+    Object.defineProperty(document, 'hidden', {configurable: true, get: () => false});
+    document.dispatchEvent(new Event('visibilitychange'));
+}"""
+
+
+def test_autoplay_pauses_while_tab_hidden_and_resumes(page, base_url):
+    # Regression: before the visibilitychange handler, the autoplay setInterval
+    # (and the guided arc's chained setTimeouts) kept firing in a backgrounded
+    # tab, so a visitor who tab-switched mid-arc returned past the story. Deep-link
+    # to skip the arc, run free-explore autoplay, and assert the timer is cleared
+    # while hidden and re-armed when visible again.
+    page.goto(base_url + "#story=spend-vs-poverty&year=2018", wait_until="networkidle")
+    page.wait_for_selector("#chart canvas", timeout=15000)
+
+    page.evaluate("() => window.__datavizph_startPlay()")
+    assert page.evaluate("() => window.__datavizph_playing()") is True
+
+    page.evaluate(_HIDE)
+    assert page.evaluate("() => window.__datavizph_playing()") is False, (
+        "autoplay interval must be cleared while the tab is hidden"
+    )
+
+    page.evaluate(_SHOW)
+    assert page.evaluate("() => window.__datavizph_playing()") is True, (
+        "autoplay must resume when the tab becomes visible again"
+    )
+
+    page.evaluate("() => window.__datavizph_stopPlay()")
+    assert page.console_errors == [], page.console_errors

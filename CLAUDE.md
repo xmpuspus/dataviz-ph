@@ -50,6 +50,18 @@ First-visit (no URL hash, motion on) plays a 4-beat arc, then hands control to t
   - Do NOT try to verify the Vercel branch PREVIEW: it is behind deployment-protection auth (HTTP 401). Verify the public prod domain after merge instead.
 - Re-cut the hero gif: serve on :8099, `node docs/record_demo.js`, then the ffmpeg recipe in the commit that touched it (records the auto-arc; ~1.5x speed, fps 13, scale 900, two-pass palette).
 
+## Current state (2026-06-14)
+
+Product-audit fix pass (branch `enhance/audit-fixes-20260614`) on top of PR #7. 140 tests. Front and back:
+
+- **Data gate to prod.** `tests/test_committed_data_integrity.py` runs validate.py's coverage/uniqueness/range gates against the REAL committed `public/data/*.json` (the other ETL tests only used synthetic fixtures), plus stories-finding sanity. CI now actually blocks a wrong-numbers commit. `smoke.yml` gained a Playwright step that asserts the chart truly rendered a data series (a broken bundle/SRI used to pass the curl 200+title check); staleness warn tightened 180->90 days.
+- **Reproducible build.** Runtime deps pinned exact in `pyproject.toml` (they reproduce the committed data byte-for-byte) + `requirements.lock`. `build.py`: CPI deflator base fails loud if 2018 is missing (was `cpi.get(2018, 100.0)`); population added to the exact-coverage gate.
+- **Finding precision.** `compute_story_finding` takes `expected_units`; when a year's n is short of the 82/18 universe the sentence now says "across 81 of 82 areas with data" (reconciles with the "81 provinces and Metro Manila" tagline). Dropped the unused, sometimes sign-flipped `pearson` field from findings. Arc REVEAL-end text no longer asserts a specific province count. Custom picker pairs carry an "Exploratory: p isn't adjusted for many pairs" note; a custom pair with no data now shows a visible message instead of a blank chart.
+- **Arc/autoplay pause on tab-hide.** `visibilitychange` handler freezes the autoplay `setInterval` and the arc's deadline-tracked `setTimeout` chain when `document.hidden`, resumes on return (was: a backgrounded tab ran the ~24s arc unseen). `window.__datavizph_playing` accessor + regression test.
+- **Telemetry breadth.** New `track()` events: `story`, `chart_type`, `axis_pick`, `export` (png/svg/csv), `embed_copy`, `share_link` — so "which views people use" is measurable once Analytics is on. EN/Tagalog toggle now shows a "beta, partial" notice on switch.
+- **Housekeeping.** Deleted the unreferenced 1 MB `echarts-5.6.0.min.js` (only the 666 KB custom build is loaded); vendor README updated.
+- **Two manual residuals (only Xavier can do):** enable Vercel Web Analytics (makes all `track()` live; until then events queue in `window.vaq` unsent) and decide whether to protect `main` / make CI a required check.
+
 ## Current state (2026-06-10)
 
 Two post-audit passes shipped on top of the audit sweep (PR #5, `faed40d`):
