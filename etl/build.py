@@ -9,7 +9,7 @@ import random
 from datetime import UTC, datetime
 from pathlib import Path
 
-from etl import interpolate, philgeps, psa_inflation, psa_openstat, validate
+from etl import build_share_pages, interpolate, philgeps, psa_inflation, psa_openstat, validate
 from etl.psgc import huc_parent, load_provinces, normalize_name
 
 PUBLIC_DATA = Path(__file__).resolve().parent.parent / "public" / "data"
@@ -1022,6 +1022,13 @@ def main(no_cache: bool = False) -> None:
         expected = len(regions) if s.get("unit_set") == "regions" else n_units
         s["finding"] = compute_story_finding(s, value_index, expected_units=expected)
     write_json("stories.json", stories)
+
+    # Regenerate the per-story social share pages + the journalist embed kit from
+    # the same stories (their OG descriptions are the computed finding, so they must
+    # never be hand-synced). The OG card images are rebuilt separately by
+    # docs/build_og_cards.js when headlines/design change.
+    share_written = build_share_pages.write_share_pages(stories, PUBLIC_DATA.parent)
+    print(f"  share/embed pages: {len(share_written)}")
 
     # Write manifest LAST so its sha256 covers every freshly-written file.
     dpwh_total = compute_dpwh_attributed_total(dpwh_spend, pop_by_psgc)

@@ -50,7 +50,15 @@ First-visit (no URL hash, motion on) plays a 4-beat arc, then hands control to t
   - Do NOT try to verify the Vercel branch PREVIEW: it is behind deployment-protection auth (HTTP 401). Verify the public prod domain after merge instead.
 - Re-cut the hero gif: serve on :8099, `node docs/record_demo.js`, then the ffmpeg recipe in the commit that touched it (records the auto-arc; ~1.5x speed, fps 13, scale 900, two-pass palette).
 
-## Current state (2026-06-14)
+## Current state (2026-06-14) — distribution (OG cards + embed kit)
+
+Distribution pass (branch `feature/og-cards-embed-kit`), on top of the audit fixes. 145 tests.
+
+- **Per-view OG share cards.** A pure static site can't carry per-view Open Graph through a URL hash (crawlers don't run JS or see the fragment), so each preset gets a real page at `/s/<id>` whose `og:*`/`twitter:*` meta is filled from the SAME computed finding the chart ships, with an instant redirect to `/#story=<id>`. Share `/s/<id>` → rich card; the human lands on the live chart. Card images at `/og/<id>.png` (1200×630, serif headline + the computed rho claim + island scatter), one per story.
+- **Journalist embed kit** at `/embed-kit`: live preview + copy-paste responsive iframe snippet per preset (`#story=<id>&embed=1`), sizing/attribution/custom-view notes. Linked from the footer. Self-contained CSS (does NOT pull the site style.css, which would reflow it).
+- **Generators, wired so nothing drifts.** `etl/build_share_pages.py` writes the `/s` pages + embed kit + `embed-kit.js` from stories.json and is called at the end of `etl/build.py` (OG descriptions are computed, never hand-typed). `docs/build_og_cards.js` (Node+Playwright, like record_demo.js) renders the PNGs — rerun when headlines/design change. `tests/test_share_pages.py` is a drift guard: regenerating must reproduce the committed pages byte-for-byte, plus every story has an OG card + correct meta. `vercel.json` caches `/og/` 1 day.
+
+## Current state (2026-06-14) — audit fixes
 
 Product-audit fix pass (branch `enhance/audit-fixes-20260614`) on top of PR #7. 140 tests. Front and back:
 
