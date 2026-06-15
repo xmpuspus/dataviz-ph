@@ -8,7 +8,7 @@ Animated bubble charts of Philippine public data. Pick a story, hit play.
 
 ![square social cut](docs/linkedin-demo.gif)
 
-*Square cut: ₱5 trillion in DPWH road contracts against poverty, then the same provinces pivoted onto per-capita GDP — one cloud becomes two stories because procurement and outcomes are joined on one set of axes.*
+*Square cut: DPWH road contracts vs poverty (₱5 trillion, no link), then the same provinces pivoted onto per-capita GDP (the clean diagonal), then regional inflation vs regional poverty — three public sources joined on one set of axes. A [landscape 16:9 version](docs/linkedin-demo-landscape.gif) is in `docs/` too.*
 
 ## What the data shows
 
