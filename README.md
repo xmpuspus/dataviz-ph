@@ -6,6 +6,10 @@ Animated bubble charts of Philippine public data. Pick a story, hit play.
 
 *In motion: DPWH spend vs poverty has no pattern, GDP vs poverty does, then the map. 2014 to 2024.*
 
+![square social cut](docs/linkedin-demo.gif)
+
+*Square cut: ₱5 trillion in DPWH road contracts against poverty, then the same provinces pivoted onto per-capita GDP — one cloud becomes two stories because procurement and outcomes are joined on one set of axes.*
+
 ## What the data shows
 
 Joining procurement with outcomes on one set of axes lets you ask whether public money tracked need, and see that it mostly did not. Every figure below is computed by the pipeline (and recomputed live in the page) from the sources further down, not hand-typed.
