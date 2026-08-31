@@ -2721,20 +2721,22 @@ function activeCaveats(view, data, state) {
 
 function renderStorySwitcher(stories, state, view, data, render) {
   const nav = document.getElementById("story-switcher");
+  const curated = document.getElementById("curated-view-links");
   nav.replaceChildren();
+  if (curated) curated.replaceChildren();
   // A preset tab counts as active only when the user has not deviated from
   // its X/Y picks (i.e. view is not custom AND its story id matches).
   const activeId = view.isCustom ? null : state.story.id;
   for (const s of stories) {
-    const btn = document.createElement("a");
-    btn.href = `#story=${encodeURIComponent(s.id)}&year=${s.default_year}`;
+    const btn = document.createElement("button");
+    btn.type = "button";
     btn.dataset.storyId = s.id;
     btn.setAttribute("aria-pressed", s.id === activeId ? "true" : "false");
     btn.className = "story-btn" + (s.id === activeId ? " active" : "");
     const unavailable = failedIndicator(data, s.x) || failedIndicator(data, s.y);
     if (unavailable) {
       btn.setAttribute("aria-disabled", "true");
-      btn.removeAttribute("href");
+      btn.disabled = true;
     }
     const label = t(
       `stories.${s.id}.tab_label`,
@@ -2752,6 +2754,18 @@ function renderStorySwitcher(stories, state, view, data, render) {
       render();
     });
     nav.appendChild(btn);
+    if (curated) {
+      const link = document.createElement("a");
+      link.dataset.storyId = s.id;
+      link.href = `#story=${encodeURIComponent(s.id)}&year=${s.default_year}`;
+      link.textContent = label;
+      if (unavailable) {
+        link.removeAttribute("href");
+        link.setAttribute("aria-disabled", "true");
+        link.textContent = `${label} (unavailable)`;
+      }
+      curated.appendChild(link);
+    }
   }
   // Append a "Custom" pill when the user has gone off-preset.
   if (view.isCustom) {
@@ -3085,6 +3099,9 @@ function showIndicatorPanel(anchorBtn, kind, currentId, otherId, data) {
       li.setAttribute("role", "option");
       const sameAsOther = ind.id === otherId || failedIndicator(data, ind.id);
       const isCurrent = ind.id === currentId;
+      const name = document.createElement("div");
+      name.className = "ipanel-name";
+      name.textContent = ind.name;
       if (isCurrent) li.classList.add("active");
       if (sameAsOther) li.classList.add("disabled");
       if (failedIndicator(data, ind.id)) {
@@ -3092,9 +3109,6 @@ function showIndicatorPanel(anchorBtn, kind, currentId, otherId, data) {
         name.textContent = `${ind.name} (unavailable)`;
       }
       li.setAttribute("aria-selected", isCurrent ? "true" : "false");
-      const name = document.createElement("div");
-      name.className = "ipanel-name";
-      name.textContent = ind.name;
       const meta = document.createElement("div");
       meta.className = "ipanel-meta";
       const unit = ind.unit ? ind.unit : "";

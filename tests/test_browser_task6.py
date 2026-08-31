@@ -120,8 +120,8 @@ def test_region_geography_failure_disables_the_active_regional_finding(page, bas
     page.route("**/data/regions.json", lambda route: route.fulfill(status=500))
     _goto(page, base_url, "#story=inflation-vs-poverty&year=2023")
     assert "unavailable" in page.locator("#story-finding").inner_text().lower()
-    story = page.locator('#story-switcher a[data-story-id="inflation-vs-poverty"]')
-    assert story.get_attribute("aria-disabled") == "true"
+    story = page.locator('#story-switcher button[data-story-id="inflation-vs-poverty"]')
+    assert story.is_disabled()
     assert "unavailable" in story.inner_text().lower()
     page.locator("#view-trust summary").click()
     assert "unavailable" in page.locator("#view-trust").inner_text().lower()
@@ -130,10 +130,10 @@ def test_region_geography_failure_disables_the_active_regional_finding(page, bas
 def test_curated_view_anchors_match_story_contract(page, base_url):
     _goto(page, base_url)
     stories = json.loads((PUBLIC / "data" / "stories.json").read_text())
-    links = page.locator("#story-switcher a[data-story-id]")
+    links = page.locator("#curated-view-links a[data-story-id]")
     assert links.count() == len(stories)
     for story in stories:
-        link = page.locator(f'a[data-story-id="{story["id"]}"]')
+        link = page.locator(f'#curated-view-links a[data-story-id="{story["id"]}"]')
         assert f"story={story['id']}" in link.get_attribute("href")
 
 

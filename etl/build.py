@@ -720,7 +720,7 @@ def main(no_cache: bool = False) -> None:
             "id": "poverty",
             "name": "Poverty incidence among families",
             "unit": "%",
-            "source": "PSA OpenStat 1E/FY Table 1a",
+            "source": "PSA OpenStat 1F/FY Table 1a",
             "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1E__FY/"),
             "definition": (
                 "Share of families whose per-capita income falls below the official "
@@ -745,7 +745,7 @@ def main(no_cache: bool = False) -> None:
             "id": "subsistence_incidence",
             "name": "Subsistence incidence among families",
             "unit": "%",
-            "source": "PSA OpenStat 1E/FY Table 3a",
+            "source": "PSA OpenStat 1F/FY Table 3a",
             "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1E__FY/"),
             "definition": (
                 "Share of families whose per-capita income falls below the official "
@@ -934,7 +934,7 @@ def main(no_cache: bool = False) -> None:
             "id": "poverty_change_pp",
             "name": "Poverty change 2018 to 2023 (pp)",
             "unit": "percentage points",
-            "source": "Derived from PSA 1E/FY Table 1a anchors",
+            "source": "Derived from PSA 1F/FY Table 1a anchors",
             "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1E__FY/"),
             "definition": (
                 "Province-level poverty incidence in 2023 minus the same measure in "
@@ -1029,7 +1029,7 @@ def main(no_cache: bool = False) -> None:
             "id": "region_poverty",
             "name": "Poverty incidence among families (regional)",
             "unit": "%",
-            "source": "PSA OpenStat 1E/FY Table 1a, regional rows",
+            "source": "PSA OpenStat 1F/FY Table 1a, regional rows",
             "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1E__FY/"),
             "definition": (
                 "Share of families below the official poverty threshold, as PSA "
