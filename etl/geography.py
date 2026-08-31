@@ -322,7 +322,7 @@ def write_public_artifacts() -> None:
     for path in [PUBLIC_DATA / "geography-crosswalk.json", PUBLIC_DATA / "provinces.json"]:
         manifest["file_bytes"][path.name] = path.stat().st_size
         manifest["sha256_per_file"][path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
-    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, separators=(",", ":")) + "\n")
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
 
 
 if __name__ == "__main__":

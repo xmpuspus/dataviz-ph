@@ -9,6 +9,7 @@ from etl.source_catalog import (
     PSA_TABLES,
     SourceContractDriftError,
     resolve_reviewed_table,
+    source_record,
     validate_table_metadata,
 )
 
@@ -129,3 +130,43 @@ def test_gdp_contract_discovers_from_published_root_and_requires_2025():
     assert contract.directory == "2A/PPA"
     assert contract.expected_years[-1] == 2025
     assert contract.reviewed_fallbacks == ("2A/PPA/0092A5FPPA8.px",)
+
+
+def test_every_catalog_entry_declares_publication_metadata():
+    for contract in PSA_TABLES.values():
+        assert contract.canonical_title
+        assert contract.natural_grain
+        assert contract.source_url.startswith("https://")
+        assert contract.release_status
+        assert contract.expected_update
+        assert contract.coverage_targets
+
+
+def test_source_record_has_a_canonical_metadata_identity():
+    metadata = _poverty_meta()
+    record = source_record(
+        PSA_TABLES["poverty"],
+        "1F/FY/current.px",
+        metadata,
+        fetched_at="2026-08-31T00:00:00Z",
+    )
+
+    assert record["resolved_path"] == "1F/FY/current.px"
+    assert record["upstream_title"] == metadata["title"]
+    assert record["fetched_at"] == "2026-08-31T00:00:00Z"
+    assert len(record["metadata_sha256"]) == 64
+    assert record["expected_update"]
+
+
+def test_declared_years_is_the_one_answer_both_provenance_surfaces_use():
+    """A census table pins a vintage instead of carrying a Year dimension.
+
+    manifest.json and view_evidence.json used to read that two different ways,
+    so the manifest published an empty year list for the two population tables
+    while view_evidence published 2020 and 2024.
+    """
+    assert PSA_TABLES["population"].declared_years() == [2020]
+    assert PSA_TABLES["population_2024"].declared_years() == [2024]
+    assert PSA_TABLES["gdp_total"].declared_years() == list(range(2018, 2026))
+    for name, contract in PSA_TABLES.items():
+        assert contract.declared_years(), f"{name} publishes no years"

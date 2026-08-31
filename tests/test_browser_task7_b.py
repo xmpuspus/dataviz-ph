@@ -9,8 +9,6 @@ import threading
 from pathlib import Path
 
 import pytest
-
-pytest.importorskip("playwright", reason="playwright not installed")
 from playwright.sync_api import Error as PlaywrightError  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
@@ -41,7 +39,7 @@ def browser():
         try:
             instance = pw.chromium.launch()
         except PlaywrightError as error:
-            pytest.skip(f"Chromium unavailable: {error}")
+            pytest.fail(f"Chromium unavailable: {error}", pytrace=False)
         try:
             yield instance
         finally:
@@ -203,3 +201,42 @@ def test_tagalog_region_table_localizes_unavailable_population_text(page, base_u
     assert page.locator("#chart-data-table tbody td").nth(3).inner_text() == (
         "hindi ipinapakita sa antas na ito"
     )
+
+
+def test_table_action_states_whether_the_area_is_already_chosen(page, base_url):
+    """The table button must say which of the two things a press will do.
+
+    ``chooseArea`` toggles, so the same button removes an area that is already
+    chosen. A button that always reads "Select area" tells a screen-reader user
+    the opposite of what it does, and it never states the current state.
+    """
+    _load(page, base_url)
+    page.locator("#chart-data-table > summary").click()
+    button = page.locator('#chart-data-table [data-area-id="141100000"]')
+    assert button.get_attribute("aria-pressed") == "false"
+    assert button.inner_text() == "Select area"
+    assert button.get_attribute("aria-label") == "Select Benguet"
+
+    button.click()
+    button = page.locator('#chart-data-table [data-area-id="141100000"]')
+    assert button.get_attribute("aria-pressed") == "true"
+    assert button.inner_text() == "Remove area"
+    assert button.get_attribute("aria-label") == "Remove Benguet"
+
+    button.click()
+    assert (
+        page.locator('#chart-data-table [data-area-id="141100000"]').get_attribute("aria-pressed")
+        == "false"
+    )
+
+
+def test_tagalog_table_action_localizes_both_states(page, base_url):
+    _load(page, base_url, "#sel=141100000")
+    page.locator("#lang-toggle").click()
+    page.wait_for_function("() => document.documentElement.lang === 'tl'")
+    page.locator("#chart-data-table > summary").click()
+    chosen = page.locator('#chart-data-table [data-area-id="141100000"]')
+    assert chosen.inner_text() == "Alisin ang lugar"
+    assert chosen.get_attribute("aria-label") == "Alisin ang Benguet"
+    other = page.locator('#chart-data-table [data-area-id="012800000"]')
+    assert other.inner_text() == "Piliin ang lugar"

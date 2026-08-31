@@ -9,8 +9,6 @@ import threading
 from pathlib import Path
 
 import pytest
-
-pytest.importorskip("playwright", reason="playwright not installed")
 from playwright.sync_api import Error as PlaywrightError  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
@@ -41,7 +39,7 @@ def browser():
         try:
             instance = pw.chromium.launch()
         except PlaywrightError as error:
-            pytest.skip(f"Chromium unavailable: {error}")
+            pytest.fail(f"Chromium unavailable: {error}", pytrace=False)
         try:
             yield instance
         finally:
@@ -157,5 +155,75 @@ def test_reduced_motion_play_and_replay_stay_static(browser, base_url):
         page.wait_for_timeout(200)
         assert page.locator("#year-display").inner_text() == year
         assert page.evaluate("() => window.__datavizph_playing()") is False
+    finally:
+        context.close()
+
+
+def _shown_year(page):
+    """The year the chart currently draws, read from its own timeline."""
+    return page.evaluate(
+        "() => { const t = window.__datavizph_chartOption().timeline[0];"
+        "  return t.data[t.currentIndex]; }"
+    )
+
+
+def test_home_and_end_do_not_scrub_the_year_from_the_document_body(browser, base_url):
+    """Home and End belong to the page until the chart holds focus.
+
+    With focus on ``body`` the keys did both jobs at once: the page scrolled and
+    the year jumped. Home landed on 2014, where the default real-peso view has
+    no DPWH value, because the deflator starts at the 2018 CPI base year.
+    """
+    context, page = _page(browser, returning=True, reduced_motion="reduce")
+    try:
+        _load(page, base_url)
+        page.evaluate("() => document.activeElement.blur()")
+        start = _shown_year(page)
+        page.keyboard.press("End")
+        assert _shown_year(page) == start
+        page.keyboard.press("Home")
+        assert _shown_year(page) == start
+
+        page.locator("#chart").focus()
+        page.keyboard.press("End")
+        assert _shown_year(page) != start
+    finally:
+        context.close()
+
+
+def test_play_and_explore_move_focus_into_the_chart(browser, base_url):
+    """A keyboard reader who presses the first-use choice must not land on body."""
+    for button in ("#play-guided-story", "#explore-data"):
+        context, page = _page(browser, reduced_motion="reduce")
+        try:
+            _load(page, base_url)
+            page.locator(button).click()
+            assert page.evaluate("() => document.activeElement.id") == "chart", button
+        finally:
+            context.close()
+
+
+def test_reduced_motion_play_shows_the_annotated_static_view(browser, base_url):
+    """Reduced motion replaces the animation, it does not remove the story.
+
+    The button offered a guided story and then set no annotation, no quadrant,
+    and no year change. A reader who asks for less motion still gets the finding.
+    """
+    context, page = _page(browser, reduced_motion="reduce")
+    try:
+        _load(page, base_url)
+        page.locator("#play-guided-story").click()
+        beat = page.evaluate("() => window.__datavizph_arcBeat()")
+        assert beat == "reveal-end", f"reduced motion produced beat {beat!r}"
+        assert page.evaluate("() => window.__datavizph_playing()") is False
+        # The annotation is drawn by ECharts, so read the option, not the DOM.
+        titles = page.evaluate(
+            "() => (window.__datavizph_chartOption().title || []).map(t => t.text).join(' ')"
+        )
+        assert "No link" in titles, titles
+        option = page.evaluate("() => window.__datavizph_chartOption()")
+        assert any((series.get("markArea") or {}).get("data") for series in option["series"]), (
+            "the median-split quadrant is missing from the static view"
+        )
     finally:
         context.close()

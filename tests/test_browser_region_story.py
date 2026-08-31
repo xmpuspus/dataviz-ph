@@ -9,7 +9,7 @@ Covers, against the real page in headless Chromium:
   - the indicator pickers only offer same-grain pairs
   - switching back to a provincial preset restores the 82-unit explorer
 
-Self-skips when Playwright or its Chromium build is absent.
+These tests fail when Playwright or its Chromium build is absent.
 """
 
 from __future__ import annotations
@@ -21,8 +21,6 @@ import threading
 from pathlib import Path
 
 import pytest
-
-pytest.importorskip("playwright", reason="playwright not installed")
 from playwright.sync_api import Error as PlaywrightError  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
@@ -53,7 +51,7 @@ def browser():
         try:
             b = pw.chromium.launch()
         except PlaywrightError as e:
-            pytest.skip(f"Chromium unavailable: {e}")
+            pytest.fail(f"Chromium unavailable: {e}", pytrace=False)
         try:
             yield b
         finally:

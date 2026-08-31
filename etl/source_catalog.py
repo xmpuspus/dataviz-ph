@@ -8,6 +8,8 @@ is unavailable, but are accepted only after the same metadata validation.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
@@ -29,6 +31,29 @@ class TableContract:
     vintage_terms: tuple[str, ...]
     fixed_source_year: int | None
     reviewed_fallbacks: tuple[str, ...]
+    canonical_title: str = ""
+    natural_grain: str = "stable analysis area"
+    source_url: str = "https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/"
+    release_status: str = "official"
+    expected_update: str = "Checked weekly against PSA OpenStat metadata."
+    coverage_targets: tuple[tuple[str, int], ...] = (("analysis_areas", 82),)
+    series_policy: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.canonical_title:
+            object.__setattr__(self, "canonical_title", " ".join(self.title_terms))
+
+    def declared_years(self) -> list[int]:
+        """The years this source publishes, for every provenance surface.
+
+        A census table pins one vintage and carries no Year dimension, so
+        ``expected_years`` is empty and ``fixed_source_year`` holds the answer.
+        Both the manifest and the view-evidence file read this one method, so
+        the two cannot state different years for the same table.
+        """
+        if self.fixed_source_year is not None:
+            return [self.fixed_source_year]
+        return list(self.expected_years)
 
 
 PSA_TABLES: dict[str, TableContract] = {
@@ -64,6 +89,7 @@ PSA_TABLES: dict[str, TableContract] = {
         vintage_terms=("2020",),
         fixed_source_year=2020,
         reviewed_fallbacks=("1A/PO_2020/0011A6DPHH0.px",),
+        series_policy="population",
     ),
     "population_2024": TableContract(
         name="population_2024",
@@ -75,6 +101,7 @@ PSA_TABLES: dict[str, TableContract] = {
         vintage_terms=("2024",),
         fixed_source_year=2024,
         reviewed_fallbacks=("1A/PO_2024/0191A6DTHP8.px",),
+        series_policy="population",
     ),
     "gdp_total": TableContract(
         name="gdp_total",
@@ -86,6 +113,7 @@ PSA_TABLES: dict[str, TableContract] = {
         vintage_terms=(),
         fixed_source_year=None,
         reviewed_fallbacks=("2A/PPA/0012A5FPPA0.px",),
+        series_policy="gdp_recomputation",
     ),
     "gdp_industry": TableContract(
         name="gdp_industry",
@@ -97,6 +125,7 @@ PSA_TABLES: dict[str, TableContract] = {
         vintage_terms=(),
         fixed_source_year=None,
         reviewed_fallbacks=("2A/PPA/0022A5FPPA1.px",),
+        series_policy="gdp_recomputation",
     ),
     "gdp_per_capita": TableContract(
         name="gdp_per_capita",
@@ -108,6 +137,7 @@ PSA_TABLES: dict[str, TableContract] = {
         vintage_terms=(),
         fixed_source_year=None,
         reviewed_fallbacks=("2A/PPA/0092A5FPPA8.px",),
+        series_policy="gdp_recomputation",
     ),
     "cpi": TableContract(
         name="cpi",
@@ -115,10 +145,14 @@ PSA_TABLES: dict[str, TableContract] = {
         title_terms=("consumer price index",),
         dimensions=("Geolocation", "Commodity Description", "Year", "Period"),
         measure_terms=("all items",),
-        expected_years=(2018,),
+        # The deflator uses every CPI year, so the contract asserts every year.
+        # Asserting 2018 alone let PSA drop a recent year without failing a build.
+        expected_years=tuple(range(2018, 2026)),
         vintage_terms=(),
         fixed_source_year=None,
         reviewed_fallbacks=("2M/PI/CPI/2018NEW/0012M4ACP22.px",),
+        natural_grain="national and region",
+        coverage_targets=(("national", 1), ("regions", 18)),
     ),
     "poverty_poor_families": TableContract(
         name="poverty_poor_families",
@@ -130,6 +164,8 @@ PSA_TABLES: dict[str, TableContract] = {
         vintage_terms=(),
         fixed_source_year=None,
         reviewed_fallbacks=("1F/FY/0101F3DF05A.px",),
+        natural_grain="published geolocation",
+        coverage_targets=(("published_locations", 142),),
     ),
     "poverty_income_gap": TableContract(
         name="poverty_income_gap",
@@ -141,6 +177,8 @@ PSA_TABLES: dict[str, TableContract] = {
         vintage_terms=(),
         fixed_source_year=None,
         reviewed_fallbacks=("1F/FY/0191F3DF10A.px",),
+        natural_grain="published geolocation",
+        coverage_targets=(("published_locations", 142),),
     ),
     "poverty_poverty_gap": TableContract(
         name="poverty_poverty_gap",
@@ -152,6 +190,8 @@ PSA_TABLES: dict[str, TableContract] = {
         vintage_terms=(),
         fixed_source_year=None,
         reviewed_fallbacks=("1F/FY/0211F3DF11A.px",),
+        natural_grain="published geolocation",
+        coverage_targets=(("published_locations", 142),),
     ),
     "poverty_severity": TableContract(
         name="poverty_severity",
@@ -163,8 +203,34 @@ PSA_TABLES: dict[str, TableContract] = {
         vintage_terms=(),
         fixed_source_year=None,
         reviewed_fallbacks=("1F/FY/0231F3DF12A.px",),
+        natural_grain="published geolocation",
+        coverage_targets=(("published_locations", 142),),
     ),
 }
+
+
+def source_record(
+    contract: TableContract,
+    resolved_path: str,
+    metadata: dict,
+    *,
+    fetched_at: str,
+) -> dict:
+    """Return the canonical, reviewable identity of one observed PSA table."""
+    encoded = json.dumps(metadata, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return {
+        "title": contract.canonical_title,
+        "upstream_title": str(metadata.get("title") or metadata.get("text") or ""),
+        "grain": contract.natural_grain,
+        "years": contract.declared_years(),
+        "release_status": contract.release_status,
+        "resolved_path": resolved_path,
+        "fetched_at": fetched_at,
+        "metadata_sha256": hashlib.sha256(encoded.encode()).hexdigest(),
+        "coverage_targets": dict(contract.coverage_targets),
+        "source_url": contract.source_url,
+        "expected_update": contract.expected_update,
+    }
 
 
 def _variables_by_code(metadata: dict) -> dict[str, dict]:

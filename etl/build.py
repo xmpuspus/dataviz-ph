@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from etl import build_share_pages, interpolate, philgeps, psa_inflation, psa_openstat, validate
+from etl.geography import ANALYSIS_AREA_COUNT, CURRENT_PSGC_VINTAGE
 from etl.psgc import huc_parent, load_provinces, normalize_name
 from etl.source_catalog import PSA_TABLES
 
@@ -381,7 +382,11 @@ def compute_story_finding(
 def write_json(name: str, payload: object) -> None:
     PUBLIC_DATA.mkdir(parents=True, exist_ok=True)
     out = PUBLIC_DATA / name
-    out.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+    if name == "manifest.json":
+        serialized = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    else:
+        serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    out.write_text(serialized)
     print(f"wrote {out.relative_to(PUBLIC_DATA.parent.parent)}  ({out.stat().st_size:,} bytes)")
 
 
@@ -390,6 +395,111 @@ def write_procurement_status() -> dict:
     status = philgeps.procurement_status(philgeps.load_reviewed_snapshot_inventory())
     write_json("procurement_status.json", status)
     return status
+
+
+SOURCE_IDS_BY_INDICATOR = {
+    "poverty": ["psa:poverty"],
+    "subsistence_incidence": ["psa:subsistence"],
+    "dpwh_spend_per_capita": ["philgeps:reviewed-snapshot", "psa:population"],
+    "all_spend_per_capita": ["philgeps:reviewed-snapshot", "psa:population"],
+    "doh_spend_per_capita": ["philgeps:reviewed-snapshot", "psa:population"],
+    "infra_spend_per_capita": ["philgeps:reviewed-snapshot", "psa:population"],
+    "gdp_per_capita": ["psa:gdp_total", "psa:gdp_per_capita"],
+    "dpwh_share_pct": ["philgeps:reviewed-snapshot"],
+    "population": ["psa:population", "psa:population_2024"],
+    "poverty_change_pp": ["psa:poverty"],
+    "cpi_yoy_pct": ["psa:cpi"],
+    "dpwh_spend_per_capita_cum": ["philgeps:reviewed-snapshot", "psa:population"],
+    "region_cpi_yoy_pct": ["psa:cpi"],
+    "region_poverty": ["psa:poverty"],
+}
+
+
+def _source_registry(procurement: dict) -> dict[str, dict]:
+    sources = {}
+    for name, contract in PSA_TABLES.items():
+        years = contract.declared_years()
+        sources[f"psa:{name}"] = {
+            "title": contract.canonical_title,
+            "grain": contract.natural_grain,
+            "years": years,
+            "release_status": contract.release_status,
+            "snapshot_or_fetch_id": " | ".join(contract.reviewed_fallbacks),
+            "coverage": dict(contract.coverage_targets),
+            "source_url": contract.source_url,
+            "expected_update": contract.expected_update,
+        }
+    sources["philgeps:reviewed-snapshot"] = {
+        "title": "PhilGEPS contract-award snapshot",
+        "grain": "award with province attribution where available",
+        "years": list(range(philgeps.PANEL_START, philgeps.PANEL_END + 1)),
+        "release_status": "reviewed through 2024; 2025 unavailable",
+        "snapshot_or_fetch_id": procurement.get("snapshot_identity")
+        or procurement.get("snapshot_id")
+        or "unavailable",
+        "coverage": {"analysis_areas": ANALYSIS_AREA_COUNT},
+        "source_url": "https://github.com/csiiiv/philgeps-awards-dashboard",
+        "expected_update": "Review a newly acquired snapshot before extending the panel.",
+    }
+    sources["psa:psgc"] = {
+        "title": "Philippine Standard Geographic Code",
+        "grain": "official province identity",
+        "years": [2026],
+        "release_status": "Second Quarter 2026 official release",
+        "snapshot_or_fetch_id": CURRENT_PSGC_VINTAGE,
+        "coverage": {"current_provinces": 82},
+        "source_url": "https://psa.gov.ph/classification/psgc/provinces",
+        "expected_update": "Quarterly; checked by the scheduled source monitor.",
+    }
+    return sources
+
+
+def _coverage_basis(indicator_id: str, row: dict) -> str:
+    if indicator_id in {"poverty", "subsistence_incidence"}:
+        if row.get("extrap"):
+            return "held"
+        if row.get("interp"):
+            return "interpolated"
+        return "published"
+    if indicator_id == "population":
+        if row.get("official"):
+            return "published"
+        if row.get("estimate"):
+            return "interpolated"
+        return "held"
+    if indicator_id == "region_poverty":
+        return "published"
+    return "derived"
+
+
+def _cumulative_window_warnings(indicator_id: str) -> list[str]:
+    """Say how many areas the cumulative sum covers for fewer than every year.
+
+    ``compute_dpwh_spend_per_capita_cum`` adds the annual rows that exist, so an
+    area with a coverage gap contributes zero for the missing year. Its total then
+    sits next to full-window totals and looks the same. The count is measured from
+    the shipped annual file, never typed.
+    """
+    if indicator_id != "dpwh_spend_per_capita_cum":
+        return []
+    annual_path = PUBLIC_DATA / "dpwh_spend_per_capita.json"
+    if not annual_path.exists():
+        return []
+    window = set(range(CUM_SPEND_START, CUM_SPEND_END + 1))
+    seen: dict[str, set[int]] = {}
+    for row in json.loads(annual_path.read_text()):
+        if row["year"] in window:
+            seen.setdefault(row["psgc"], set()).add(row["year"])
+    short = sorted(psgc for psgc, years in seen.items() if years != window)
+    if not short:
+        return []
+    missing = sum(len(window - seen[psgc]) for psgc in short)
+    return [
+        f"{len(short)} of {len(seen)} areas have no award rows for part of "
+        f"{CUM_SPEND_START} to {CUM_SPEND_END} ({missing} area-years in total). "
+        "Those years add zero, so each of those totals is a lower bound over a "
+        "shorter window than the label states."
+    ]
 
 
 def build_view_evidence() -> dict:
@@ -418,6 +528,7 @@ def build_view_evidence() -> dict:
         "national": 1,
     }
     stories = json.loads((PUBLIC_DATA / "stories.json").read_text())
+    sources = _source_registry(procurement)
     out = {}
     for indicator in indicators:
         indicator_id = indicator["id"]
@@ -427,19 +538,29 @@ def build_view_evidence() -> dict:
         rows = json.loads((PUBLIC_DATA / file_by_indicator[indicator_id]).read_text())
         coverage = []
         for year in indicator["panel_years"]:
-            source_units = {
-                row["psgc"]
+            available_rows = [
+                row
                 for row in rows
                 if row["year"] == year
                 and row.get("psgc") is not None
                 and (unit_set == "national" or row.get("psgc") != "000000000")
+            ]
+            available_units = {row["psgc"] for row in available_rows}
+            basis_by_unit = {
+                row["psgc"]: _coverage_basis(indicator_id, row) for row in available_rows
             }
-            count = len(source_units)
+            basis_counts = {
+                basis: sum(value == basis for value in basis_by_unit.values())
+                for basis in ("published", "interpolated", "held", "derived")
+            }
+            count = len(available_units)
             coverage.append(
                 {
                     "year": year,
                     "target_units": geography[unit_set],
-                    "source_units": count,
+                    "available_units": count,
+                    "source_units": basis_counts["published"],
+                    "basis_counts": basis_counts,
                     "status": "full"
                     if count == geography[unit_set]
                     else "partial"
@@ -459,6 +580,8 @@ def build_view_evidence() -> dict:
         }:
             source_url = source_url.replace("DB__1E__FY", "DB__1F__FY")
             source = source.replace("1E/FY", "1F/FY")
+        source_ids = SOURCE_IDS_BY_INDICATOR[indicator_id]
+        primary_source = sources[source_ids[0]]
         out[indicator_id] = {
             "unit_set": unit_set,
             "natural_grain": {"provinces": "province", "regions": "region", "national": "national"}[
@@ -469,14 +592,22 @@ def build_view_evidence() -> dict:
             "source_url": source_url,
             "archive_url": source_url,
             "release": indicator.get("vintage", "Committed data release"),
+            "release_status": primary_source["release_status"],
+            "snapshot_or_fetch_id": primary_source["snapshot_or_fetch_id"],
+            "expected_update": primary_source["expected_update"],
+            "source_ids": source_ids,
             "transforms": indicator.get("definition", "No additional transform."),
-            "warnings": ([indicator["coverage_label"]] if indicator.get("coverage_label") else []),
+            "warnings": (
+                ([indicator["coverage_label"]] if indicator.get("coverage_label") else [])
+                + _cumulative_window_warnings(indicator_id)
+            ),
             "coverage": coverage,
             "source_id": file_by_indicator[indicator_id],
         }
     depth = json.loads((PUBLIC_DATA / "poverty_depth_coverage.json").read_text())
     return {
         "schema_version": 1,
+        "sources": sources,
         "indicators": out,
         "supplemental_coverage": {"poverty_depth": depth},
         "procurement_status": procurement,
@@ -1295,6 +1426,7 @@ def main(no_cache: bool = False) -> None:
             "release": "PPA updated 2026-08-28; poverty-depth tables updated 2024-08-15",
             "note": "live API; pinning impossible. Fetch date and row counts recorded.",
             "fetch_date": datetime.now(UTC).date().isoformat(),
+            "tables": psa_openstat.OBSERVED_SOURCE_RECORDS,
             "population_2024_path": "1A/PO_2024/0191A6DTHP8.px",
             "ppa_industry_contract": ppa_industry,
             "ppa_paths": [
@@ -1549,6 +1681,8 @@ def refresh_automated_psa_public_data() -> None:
     inputs["psa_openstat"] = {
         "source": psa_openstat.API_BASE,
         "release": "PPA updated 2026-08-28; poverty-depth tables updated 2024-08-15",
+        "fetch_date": datetime.now(UTC).date().isoformat(),
+        "tables": psa_openstat.OBSERVED_SOURCE_RECORDS,
         "population_2024_path": "1A/PO_2024/0191A6DTHP8.px",
         "ppa_industry_contract": ppa_industry,
         "ppa_paths": [
@@ -1581,6 +1715,21 @@ def _count_rows(payload: object) -> int:
     if isinstance(payload, dict):
         return len([k for k in payload if k != "_description"])
     return 1
+
+
+# Written only by a full main() build, because it needs the PhilGEPS attribution
+# pass. A manifest-only refresh cannot recompute these, so it must carry them
+# forward instead of publishing a manifest that lost them.
+FULL_BUILD_ONLY_DERIVED = ("dpwh_attribution_share_by_psgc",)
+
+
+def carry_forward_derived(existing: dict, rebuilt: dict) -> dict:
+    """Keep the derived values that only a full build can produce."""
+    merged = dict(rebuilt)
+    for key in FULL_BUILD_ONLY_DERIVED:
+        if key not in merged and key in existing:
+            merged[key] = existing[key]
+    return merged
 
 
 def refresh_manifest() -> None:
@@ -1617,6 +1766,7 @@ def refresh_manifest() -> None:
         )
 
     existing = json.loads((PUBLIC_DATA / "manifest.json").read_text())
+    derived = carry_forward_derived(existing.get("derived", {}), derived)
     inputs = existing.get("inputs", {})
     inputs["philgeps_snapshot"] = procurement_status
     inputs.setdefault(

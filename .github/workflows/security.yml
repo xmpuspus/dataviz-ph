@@ -1,0 +1,64 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "41 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: Scan Git history for secrets
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: "0.9.8"
+
+      - name: Audit the locked Python environment
+        run: uvx --python 3.12.4 pip-audit==2.10.1 --requirement requirements.lock
+
+  browser-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24.20.0"
+          cache: npm
+          cache-dependency-path: vendor/echarts-build/package-lock.json
+
+      - name: Install the locked browser build tools
+        working-directory: vendor/echarts-build
+        run: npm ci
+
+      - name: Audit the browser dependency tree
+        working-directory: vendor/echarts-build
+        run: npm audit --audit-level=moderate
+
+      - name: Rebuild the ECharts bundle
+        working-directory: vendor/echarts-build
+        run: npm run build
+
+      - name: Check that the committed browser bundle is reproducible
+        run: git diff --exit-code -- public/vendor/echarts-custom-6.1.0-r1.min.js

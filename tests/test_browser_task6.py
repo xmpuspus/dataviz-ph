@@ -10,8 +10,6 @@ import threading
 from pathlib import Path
 
 import pytest
-
-pytest.importorskip("playwright", reason="playwright not installed")
 from playwright.sync_api import Error as PlaywrightError  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
@@ -42,7 +40,7 @@ def browser():
         try:
             b = pw.chromium.launch()
         except PlaywrightError as e:
-            pytest.skip(f"Chromium unavailable: {e}")
+            pytest.fail(f"Chromium unavailable: {e}", pytrace=False)
         try:
             yield b
         finally:
@@ -97,6 +95,16 @@ def test_trust_disclosure_covers_partial_rows(page, base_url):
     assert "partial" in coverage
 
 
+def test_trust_disclosure_names_release_source_id_expected_update_and_held_values(page, base_url):
+    _goto(page, base_url, "#story=spend-vs-poverty&year=2024")
+    page.locator("#view-trust > summary").click()
+    trust = page.locator("#view-trust-content").inner_text()
+    assert "Release" in trust
+    assert "Source ID" in trust
+    assert "Expected update" in trust
+    assert "held" in trust
+
+
 def test_view_bundle_downloads_deterministic_metadata_and_citation(page, base_url):
     _goto(page, base_url, "#story=spend-vs-poverty&year=2024")
     with page.expect_download() as metadata_download:
@@ -108,6 +116,7 @@ def test_view_bundle_downloads_deterministic_metadata_and_citation(page, base_ur
     assert metadata["method_url"].endswith("/methodology")
     assert metadata["view_url"].startswith("http://")
     assert metadata["source_ids"]
+    assert metadata["artifact_ids"]
     assert metadata["build_id"]
     assert metadata["coverage"]
     with page.expect_download() as citation_download:

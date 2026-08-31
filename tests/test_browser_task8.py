@@ -9,8 +9,6 @@ import threading
 from pathlib import Path
 
 import pytest
-
-pytest.importorskip("playwright", reason="playwright not installed")
 from playwright.sync_api import Error as PlaywrightError  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
@@ -51,7 +49,7 @@ def browser():
         try:
             instance = pw.chromium.launch()
         except PlaywrightError as error:
-            pytest.skip(f"Chromium unavailable: {error}")
+            pytest.fail(f"Chromium unavailable: {error}", pytrace=False)
         try:
             yield instance
         finally:
@@ -432,5 +430,47 @@ def test_playback_uses_safe_area_insets(browser, base_url):
             })"""
         )
         assert all(position["left"] >= 0 and position["bottom"] >= 0 for position in positions)
+    finally:
+        context.close()
+
+
+def test_embed_fits_the_size_the_embed_kit_hands_out(browser, base_url):
+    """The Embed button writes an 800x560 iframe, so the page must fit in it.
+
+    The trust panel and the data-table disclosure render below the chart. In an
+    iframe they pushed the document to 700px, so a journalist who pasted the
+    supplied snippet got an inner scrollbar and a clipped chart.
+    """
+    context, page = _page(browser, {"width": 800, "height": 560})
+    try:
+        page.goto(f"{base_url}#story=spend-vs-poverty&embed=1", wait_until="networkidle")
+        page.wait_for_selector("#chart canvas", timeout=15000)
+        page.wait_for_timeout(600)
+        overflow = page.evaluate(
+            "() => document.documentElement.scrollHeight - document.documentElement.clientHeight"
+        )
+        assert overflow <= 0, f"embed overflows its own iframe by {overflow}px"
+    finally:
+        context.close()
+
+
+def test_mobile_shell_reserves_no_dead_space_before_an_area_is_chosen(browser, base_url):
+    """The selected-area line is a live region, not a touch target.
+
+    It shared the 44px minimum with the two buttons beside it, so with nothing
+    chosen the shell showed an empty band between them.
+    """
+    context, page = _page(browser, {"width": 390, "height": 844})
+    try:
+        _load(page, base_url)
+        summary = page.locator("#mobile-selected-summary")
+        assert summary.inner_text().strip() == ""
+        assert summary.bounding_box()["height"] < 44
+
+        page.evaluate("() => window.__datavizph_chooseArea('141100000')")
+        page.wait_for_function(
+            "() => document.getElementById('mobile-selected-summary').textContent.trim() !== ''"
+        )
+        assert page.locator("#mobile-selected-summary").bounding_box()["height"] > 0
     finally:
         context.close()

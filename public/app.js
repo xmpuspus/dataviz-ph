@@ -334,10 +334,15 @@ function anomalyScopeLabel(scope) {
 function coverageLabel(row, failed = false) {
   if (failed) return t("trust.unavailable_load", "unavailable, data did not load");
   if (!row) return t("trust.unavailable", "unavailable");
-  return tFill(t("trust.coverage_value", "{status}, {source} of {target}"), {
+  const basis = Object.entries(row.basis_counts || {})
+    .filter(([, count]) => count > 0)
+    .map(([kind, count]) => `${t(`trust.basis_${kind}`, kind)} ${count}`)
+    .join(", ");
+  return tFill(t("trust.coverage_value", "{status}: {available} of {target} available; basis: {basis}"), {
     status: t(`trust.status_${row.status}`, row.status),
-    source: row.source_units,
+    available: row.available_units ?? row.source_units,
     target: row.target_units,
+    basis: basis || t("trust.basis_unknown", "unknown"),
   });
 }
 
@@ -1909,6 +1914,13 @@ function buildBubbleOption(story, data, state) {
         right: 28,
         symbol: "none",
         lineStyle: { color: "#ccc" },
+        // Stated, not inherited: ECharts changed its own progress default from a
+        // strong blue (5.x) to a pale lavender (6.x) that reads the same as the
+        // unplayed #ccc track, so the years already played stopped being visible.
+        progress: {
+          lineStyle: { color: "#0e7c86", width: 2 },
+          itemStyle: { color: "#0e7c86" },
+        },
         checkpointStyle: { color: "#111", borderColor: "#fff", borderWidth: 2 },
         controlStyle: {
           show: false,
@@ -2476,7 +2488,9 @@ function renderViewEvidence(view, data, state) {
       fields.append(dt, dd);
     };
     add(t("trust.source", "Source"), item.source);
-    add(t("trust.update", "Update"), item.release);
+    add(t("trust.release", "Release"), item.release_status);
+    add(t("trust.source_id", "Source ID"), item.snapshot_or_fetch_id);
+    add(t("trust.expected_update", "Expected update"), item.expected_update);
     add(t("trust.grain", "Grain"), item.natural_grain);
     add(t("trust.current_coverage", "Current coverage"), coverageLabel(year, failed));
     const archive = document.createElement("a");
@@ -3017,10 +3031,18 @@ function renderSrTable(story, data, state, render) {
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.areaId = r.psgc;
-    button.textContent = t("controls.select_area", "Select area");
+    // chooseArea toggles, so a button that always reads "Select area" states the
+    // opposite of what it does once the area is chosen.
+    const chosen = state.sel.has(r.psgc);
+    button.setAttribute("aria-pressed", chosen ? "true" : "false");
+    button.textContent = chosen
+      ? t("controls.remove_area_short", "Remove area")
+      : t("controls.select_area", "Select area");
     button.setAttribute(
       "aria-label",
-      tFill(t("controls.select_area_named", "Select {name}"), { name: r.name }),
+      chosen
+        ? tFill(t("controls.remove_area", "Remove {name}"), { name: r.name })
+        : tFill(t("controls.select_area_named", "Select {name}"), { name: r.name }),
     );
     button.addEventListener("click", () => chooseArea(r.psgc, state, render));
     action.appendChild(button);
@@ -3380,6 +3402,10 @@ function showAxisPopover(anchorBtn, info) {
   pop.setAttribute("role", "dialog");
   pop.setAttribute("aria-modal", "false");
   const title = document.createElement("h3");
+  // A role=dialog with no name is announced as an unnamed dialog, so the heading
+  // that already carries the indicator name becomes that name.
+  title.id = "axis-popover-title";
+  pop.setAttribute("aria-labelledby", title.id);
   title.textContent = info.name;
   pop.appendChild(title);
   const body = document.createElement("p");
@@ -4131,7 +4157,15 @@ async function main() {
     const params = canonicalParams(state, view);
     params.delete("embed");
     const viewUrl = `${window.location.origin}${window.location.pathname}#${params.toString()}`;
-    const sourceIds = Object.fromEntries([view.x, view.y].map((id) => [id, data.manifest?.sha256_per_file?.[data.viewEvidence.indicators[id]?.source_id] || null]));
+    const sourceIds = Object.fromEntries(
+      [view.x, view.y].map((id) => [id, data.viewEvidence.indicators[id]?.source_ids || []]),
+    );
+    const artifactIds = Object.fromEntries(
+      [view.x, view.y].map((id) => [
+        id,
+        data.manifest?.sha256_per_file?.[data.viewEvidence.indicators[id]?.source_id] || null,
+      ]),
+    );
     const pairName = view.isCustom ? `${view.x}-vs-${view.y}` : view.id;
     const citation = `dataviz.ph. ${view.headline}. ${viewUrl}. Build timestamp: ${data.manifest?.built_at || "unknown"}.`;
     return {
@@ -4141,6 +4175,7 @@ async function main() {
       method_url: `${window.location.origin}/methodology`,
       view_url: viewUrl,
       source_ids: sourceIds,
+      artifact_ids: artifactIds,
       build_timestamp: data.manifest?.built_at || "unknown",
       build_id: data.manifest?.sha256_per_file?.["view_evidence.json"] || "unknown",
       snapshot_ids: { philgeps: data.viewEvidence.procurement_status?.snapshot_identity || null },
@@ -4350,6 +4385,12 @@ async function main() {
   const showStartChoice = (show) => {
     if (startChoice) startChoice.hidden = !show;
   };
+  // The first-use choice removes itself from the page, so the button that was
+  // pressed disappears and focus falls to the body unless it is moved here.
+  const focusChart = () => {
+    const chartEl = document.getElementById("chart");
+    if (chartEl) queueMicrotask(() => chartEl.focus());
+  };
   function pulseControls() {
     if (bigPlay) {
       bigPlay.classList.add("arc-pulse");
@@ -4446,11 +4487,32 @@ async function main() {
     // chrome the arc relies on (skip/replay, finding box) is hidden there.
     if (state.embed) return;
     if (REDUCE_MOTION) {
+      // Reduced motion drops the animation, not the story. Land straight on the
+      // beat the animation exists to reach: the spend story at its last year,
+      // the median-split quadrant, and the non-result stated on the chart. No
+      // timers, no autoplay, no cross-fade.
       stopPlay();
       writeArcSeen();
       showStartChoice(false);
-      showReplay(true);
       showSkip(false);
+      arcSetStory(spendStory);
+      state.sel = new Set();
+      // The year stays where the reader left it. spendRho is the finding for the
+      // displayed year, so moving the year would print one year's rho over
+      // another year's cloud.
+      setArc({
+        beat: "reveal-end",
+        dim: false,
+        quadrant: true,
+        annotation: {
+          pos: "lowerLeft",
+          color: "#111",
+          text: `No link. ρ = ${fmtRho(spendRho)}.`,
+          sub: "Across the provinces and Metro Manila, higher road spending did not track lower poverty.",
+        },
+      });
+      showReplay(true);
+      focusChart();
       return;
     }
     // Stop any live autoplay loop so startPlay() in beat REVEAL doesn't early-return.
@@ -4656,6 +4718,9 @@ async function main() {
       writeArcSeen();
       showStartChoice(false);
       showReplay(true);
+      // The button the reader just pressed leaves the page, so send focus to the
+      // chart instead of dropping it back on the document body (WCAG 2.4.3).
+      focusChart();
     });
   }
   window.__datavizph_runArc = runArc;
@@ -4936,11 +5001,13 @@ async function main() {
       stepYear(state, +1, render);
     } else if (e.key === "ArrowLeft") {
       stepYear(state, -1, render);
-    } else if (e.key === "Home") {
-      state.year = panel[0];
-      render();
-    } else if (e.key === "End") {
-      state.year = panel[panel.length - 1];
+    } else if (e.key === "Home" || e.key === "End") {
+      // Home and End belong to the page. Scrub only while the chart holds focus,
+      // otherwise one press both scrolled the document and jumped the year.
+      const chartEl = document.getElementById("chart");
+      if (!chartEl || !chartEl.contains(document.activeElement)) return;
+      e.preventDefault();
+      state.year = e.key === "Home" ? panel[0] : panel[panel.length - 1];
       render();
     }
   });

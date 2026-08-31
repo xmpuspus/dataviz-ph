@@ -1,6 +1,6 @@
 """Browser tests for arc replay, gesture abort, and error handling.
 
-Tests self-skip when Playwright or its Chromium build is absent, matching the
+These tests fail when Playwright or its Chromium build is absent, matching the
 pattern in test_render_blocks.py. Each test uses page.route() for network
 interception where needed.
 
@@ -20,8 +20,6 @@ import threading
 from pathlib import Path
 
 import pytest
-
-pytest.importorskip("playwright", reason="playwright not installed")
 from playwright.sync_api import Error as PlaywrightError  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
@@ -52,7 +50,7 @@ def browser():
         try:
             b = pw.chromium.launch()
         except PlaywrightError as e:
-            pytest.skip(f"Chromium unavailable: {e}")
+            pytest.fail(f"Chromium unavailable: {e}", pytrace=False)
         try:
             yield b
         finally:

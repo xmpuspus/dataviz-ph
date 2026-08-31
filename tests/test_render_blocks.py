@@ -11,9 +11,9 @@ when the reader switches stories:
   - #data-freshness  the "Built ..." footer with the poverty-anchor vintage
   - .disclaimer      the public-data disclaimer
 
-They self-skip when Playwright or its Chromium build is absent (the CI deploy
-runner installs only ".[dev]", which omits both), so `pytest -q` stays green
-everywhere and runs the real checks wherever a browser is present.
+They fail when Playwright or its Chromium build is absent. A missing browser
+hides a broken render layer, so CI installs Chromium and runs these checks for
+real instead of reporting a green skip.
 """
 
 from __future__ import annotations
@@ -26,8 +26,6 @@ import threading
 from pathlib import Path
 
 import pytest
-
-pytest.importorskip("playwright", reason="playwright not installed")
 from playwright.sync_api import Error as PlaywrightError  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
@@ -58,7 +56,7 @@ def browser():
         try:
             b = pw.chromium.launch()
         except PlaywrightError as e:  # browser binary not downloaded on this host
-            pytest.skip(f"Chromium unavailable: {e}")
+            pytest.fail(f"Chromium unavailable: {e}", pytrace=False)
         try:
             yield b
         finally:

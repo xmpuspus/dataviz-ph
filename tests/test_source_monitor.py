@@ -10,9 +10,20 @@ from etl.source_monitor import assess_source_state
 
 def test_monitor_reports_source_and_shipped_freshness_without_network():
     report = assess_source_state(
-        contracts={"poverty": {"latest_official_year": 2025, "unit_coverage": 82}},
+        contracts={
+            "poverty": {
+                "latest_official_year": 2025,
+                "coverage": {
+                    "analysis_areas": {
+                        "expected": 82,
+                        "observed": 82,
+                        "missing": [],
+                        "status": "complete",
+                    }
+                },
+            }
+        },
         shipped_years={"poverty": 2023},
-        expected_unit_count=82,
         snapshot_inventory={
             "fetched_at": "2026-08-01T00:00:00Z",
             "supported_date_range": {"start": 2014, "end": 2024},
@@ -30,9 +41,20 @@ def test_monitor_reports_source_and_shipped_freshness_without_network():
 
 def test_monitor_flags_short_unit_coverage():
     report = assess_source_state(
-        contracts={"poverty": {"latest_official_year": 2023, "unit_coverage": 81}},
+        contracts={
+            "poverty": {
+                "latest_official_year": 2023,
+                "coverage": {
+                    "analysis_areas": {
+                        "expected": 82,
+                        "observed": 81,
+                        "missing": ["last-area"],
+                        "status": "short",
+                    }
+                },
+            }
+        },
         shipped_years={"poverty": 2023},
-        expected_unit_count=82,
         snapshot_inventory=None,
         geography_version=None,
         now="2026-08-31T00:00:00Z",
@@ -45,7 +67,6 @@ def test_monitor_reports_philgeps_gate_and_snapshot_age():
     report = assess_source_state(
         contracts={},
         shipped_years={},
-        expected_unit_count=82,
         snapshot_inventory={
             "fetched_at": "2026-05-26T13:17:16.561587Z",
             "snapshot_id": "current",
@@ -90,7 +111,6 @@ def test_monitor_uses_reviewed_candidate_year_and_attestation(monkeypatch):
     report = assess_source_state(
         contracts={},
         shipped_years={},
-        expected_unit_count=82,
         snapshot_inventory={
             "fetched_at": "2026-08-01T00:00:00Z",
             "snapshot_id": "current",
@@ -138,6 +158,69 @@ def test_live_monitor_normalizes_shipped_cpi_object_shape(monkeypatch):
 
     assert report["sources"]["cpi"]["shipped_year"] == 2025
     assert report["sources"]["population"]["latest_official_year"] == 2020
+    assert report["sources"]["cpi"]["coverage"]["regions"]["expected"] == 18
+
+
+def test_metadata_coverage_uses_contract_grain_instead_of_raw_label_count():
+    province_labels = [item["name"] for item in source_monitor.geography.current_province_records()]
+    metadata = {
+        "variables": [
+            {
+                "code": "Geolocation",
+                "values": [str(index) for index in range(142)],
+                "valueTexts": [*province_labels, *[f"Other level {i}" for i in range(60)]],
+            }
+        ]
+    }
+    coverage = source_monitor.probe_metadata_coverage(
+        source_monitor.PSA_TABLES["poverty"], metadata
+    )
+
+    assert coverage["analysis_areas"]["observed"] == 80
+    assert coverage["analysis_areas"]["expected"] == 82
+    assert coverage["analysis_areas"]["status"] == "short"
+    assert coverage["analysis_areas"]["raw_label_count"] == 142
+
+
+def test_cpi_coverage_uses_national_and_regional_targets():
+    labels = ["Philippines", *[item["pattern"] for item in source_monitor.psa_inflation.REGIONS]]
+    metadata = {
+        "variables": [
+            {"code": "Geolocation", "values": labels, "valueTexts": labels},
+        ]
+    }
+    coverage = source_monitor.probe_metadata_coverage(source_monitor.PSA_TABLES["cpi"], metadata)
+
+    assert coverage["national"]["observed"] == coverage["national"]["expected"] == 1
+    assert coverage["regions"]["observed"] == coverage["regions"]["expected"] == 18
+
+
+def test_live_geography_flags_identity_and_release_drift(monkeypatch):
+    records = source_monitor.geography.current_province_records()
+    province_rows = "\n".join(
+        f"{item['name']} | {item['source_psgc']} | {item['correspondence_code'] or ''} | info"
+        for item in records
+    )
+    pages = {
+        source_monitor.PSGC_RELEASE_URL: (
+            "Second Quarter 2026 PSGC Updates\n"
+            "Philippine Standard Geographic Code as of 30 June 2026"
+        ),
+        source_monitor.PSGC_PROVINCES_URL: province_rows,
+    }
+    monkeypatch.setattr(source_monitor, "_get_text", pages.__getitem__)
+    current = source_monitor._live_geography_version()
+    assert current["status"] == "current"
+    assert current["observed_province_count"] == 82
+
+    pages[source_monitor.PSGC_RELEASE_URL] = (
+        "Third Quarter 2026 PSGC Updates\n"
+        "Philippine Standard Geographic Code as of 30 September 2026"
+    )
+    pages[source_monitor.PSGC_PROVINCES_URL] += "\nNew Province | 2099900000 | 209900000 | info"
+    drift = source_monitor._live_geography_version()
+    assert drift["status"] == "drift"
+    assert drift["added_source_psgcs"] == ["2099900000"]
 
 
 def test_shipped_years_use_source_anchors_and_population_vintage(tmp_path, monkeypatch):
@@ -191,3 +274,30 @@ def test_shipped_years_use_source_anchors_and_population_vintage(tmp_path, monke
         "poverty_severity": 2023,
         "cpi": 2025,
     }
+
+
+def test_release_blockers_names_every_unreachable_or_short_psa_source():
+    """A scheduled monitor that cannot fail is not a monitor."""
+    report = {
+        "sources": {
+            "cpi": {"status": "reachable", "coverage_status": "complete"},
+            "poverty": {"status": "unreachable", "coverage_status": "short"},
+            "gdp_total": {"status": "reachable", "coverage_status": "short"},
+        },
+        "geography": {"status": "unreachable"},
+    }
+    blockers = source_monitor.release_blockers(report)
+    assert "poverty is unreachable" in blockers
+    assert "gdp_total coverage is short" in blockers
+    assert not any("cpi" in b for b in blockers)
+    # The official PSGC page answers an unattended request with a WAF 403, so an
+    # unreachable geography page is reported and never fails the scheduled run.
+    assert not any("geography" in b for b in blockers)
+
+
+def test_release_blockers_is_empty_when_every_source_holds():
+    report = {
+        "sources": {"cpi": {"status": "reachable", "coverage_status": "complete"}},
+        "geography": {"status": "current"},
+    }
+    assert source_monitor.release_blockers(report) == []

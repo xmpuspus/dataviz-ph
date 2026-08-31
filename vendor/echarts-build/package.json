@@ -1,0 +1,12 @@
+{
+  "name": "dataviz-ph-echarts-build",
+  "private": true,
+  "version": "6.1.0-r1",
+  "scripts": {
+    "build": "esbuild entry.js --bundle --minify --format=iife --outfile=../../public/vendor/echarts-custom-6.1.0-r1.min.js"
+  },
+  "devDependencies": {
+    "echarts": "6.1.0",
+    "esbuild": "0.28.2"
+  }
+}

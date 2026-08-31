@@ -9,8 +9,9 @@ Covers, against the real page in headless Chromium:
   - the EN/Tagalog scaffold: toggle swaps html lang + headline + finding
     template with identical numbers, persists in localStorage, round-trips back
 
-Self-skips when Playwright or its Chromium build is absent, matching
-test_render_blocks.py, so CI (which installs only .[dev]) stays green.
+These tests fail when Playwright or its Chromium build is absent, matching
+test_render_blocks.py. A missing browser is a broken gate, not a pass, so CI
+installs Chromium and runs them for real.
 """
 
 from __future__ import annotations
@@ -24,8 +25,6 @@ import threading
 from pathlib import Path
 
 import pytest
-
-pytest.importorskip("playwright", reason="playwright not installed")
 from playwright.sync_api import Error as PlaywrightError  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
@@ -56,7 +55,7 @@ def browser():
         try:
             b = pw.chromium.launch()
         except PlaywrightError as e:
-            pytest.skip(f"Chromium unavailable: {e}")
+            pytest.fail(f"Chromium unavailable: {e}", pytrace=False)
         try:
             yield b
         finally:
@@ -216,3 +215,21 @@ def test_lang_persists_across_reload(page, base_url):
     page.wait_for_selector("#chart canvas", timeout=15000)
     page.wait_for_function("() => document.documentElement.lang === 'tl'", timeout=8000)
     assert page.text_content("#lang-toggle").strip() == "EN"
+
+
+# ---- timeline styling is pinned, not inherited from the library --------------------
+
+
+def test_timeline_progress_is_pinned_to_the_site_palette(page, base_url):
+    """The played part of the timeline must stay visible after a library upgrade.
+
+    ECharts ships its own default for ``timeline.progress``. Version 5.6.0 used a
+    strong blue and version 6.1.0 uses a pale lavender that reads as the same
+    colour as the unplayed ``#ccc`` track. The page therefore states the colours
+    itself instead of inheriting whichever default the current release carries.
+    """
+    _goto(page, base_url, "#story=spend-vs-poverty&year=2018&log=x&deflate=real")
+    timeline = page.evaluate("() => window.__datavizph_chartOption().timeline[0]")
+    assert timeline["progress"]["lineStyle"]["color"] == "#0e7c86"
+    assert timeline["progress"]["itemStyle"]["color"] == "#0e7c86"
+    assert timeline["lineStyle"]["color"] == "#ccc"

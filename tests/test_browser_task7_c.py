@@ -9,8 +9,6 @@ import threading
 from pathlib import Path
 
 import pytest
-
-pytest.importorskip("playwright", reason="playwright not installed")
 from playwright.sync_api import Error as PlaywrightError  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
@@ -42,7 +40,7 @@ def browser():
         try:
             instance = pw.chromium.launch()
         except PlaywrightError as error:
-            pytest.skip(f"Chromium unavailable: {error}")
+            pytest.fail(f"Chromium unavailable: {error}", pytrace=False)
         try:
             yield instance
         finally:
@@ -161,3 +159,33 @@ def test_axe_has_no_serious_or_critical_violations(page, base_url, suffix, actio
         page.locator("#lang-toggle").click()
         page.wait_for_function("() => document.documentElement.lang === 'tl'")
     assert _axe_violations(page, base_url) == []
+
+
+def test_axis_definition_popover_carries_an_accessible_name(page, base_url):
+    """A role=dialog with no name is announced as an unnamed dialog.
+
+    The axe run in this file filters to wcag2a and wcag2aa, and
+    ``aria-dialog-name`` carries the best-practice tag, so it slipped through.
+    """
+    _load(page, base_url)
+    for trigger in ("#axis-info-x", "#axis-info-y"):
+        page.locator(trigger).click()
+        popover = page.locator("#axis-popover")
+        labelled_by = popover.get_attribute("aria-labelledby")
+        assert labelled_by, f"{trigger} opens a dialog with no accessible name"
+        heading = page.locator(f"#{labelled_by}")
+        assert heading.count() == 1
+        assert heading.inner_text().strip()
+        page.keyboard.press("Escape")
+
+
+def test_axe_reports_no_dialog_naming_violation_with_a_popover_open(page, base_url):
+    _load(page, base_url)
+    page.locator("#axis-info-x").click()
+    page.add_script_tag(url=f"{base_url}__test__/axe-core-4.12.1.min.js")
+    violations = page.evaluate(
+        """async () => (await axe.run(document, {
+          runOnly: { type: 'rule', values: ['aria-dialog-name'] },
+        })).violations"""
+    )
+    assert violations == []

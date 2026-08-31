@@ -11,8 +11,9 @@ Covers, against the real page in headless Chromium:
   - the Panels chart type: two grids, both panel titles, PNG button still usable
   - island-group filter + playback speed round-tripping through the hash
 
-Self-skips when Playwright or its Chromium build is absent, matching
-test_render_blocks.py, so CI (which installs only .[dev]) stays green.
+These tests fail when Playwright or its Chromium build is absent, matching
+test_render_blocks.py. A missing browser is a broken gate, not a pass, so CI
+installs Chromium and runs them for real.
 """
 
 from __future__ import annotations
@@ -26,12 +27,10 @@ import threading
 from pathlib import Path
 
 import pytest
-
-from etl.build import _spearman
-
-pytest.importorskip("playwright", reason="playwright not installed")
 from playwright.sync_api import Error as PlaywrightError  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
+
+from etl.build import _spearman
 
 PUBLIC = Path(__file__).resolve().parent.parent / "public"
 
@@ -60,7 +59,7 @@ def browser():
         try:
             b = pw.chromium.launch()
         except PlaywrightError as e:
-            pytest.skip(f"Chromium unavailable: {e}")
+            pytest.fail(f"Chromium unavailable: {e}", pytrace=False)
         try:
             yield b
         finally:

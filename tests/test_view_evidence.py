@@ -22,6 +22,10 @@ def test_view_evidence_covers_each_indicator_with_coverage_and_provenance():
         assert item["source_url"]
         assert item["archive_url"]
         assert item["release"]
+        assert item["release_status"]
+        assert item["snapshot_or_fetch_id"]
+        assert item["expected_update"]
+        assert item["source_ids"]
         assert item["transforms"]
         assert item["coverage"]
         assert {row["status"] for row in item["coverage"]} <= {
@@ -29,6 +33,21 @@ def test_view_evidence_covers_each_indicator_with_coverage_and_provenance():
             "partial",
             "unavailable",
         }
+        for row in item["coverage"]:
+            assert row["available_units"] >= row["source_units"]
+            assert sum(row["basis_counts"].values()) == row["available_units"]
+
+    for source in evidence["sources"].values():
+        assert {
+            "title",
+            "grain",
+            "years",
+            "release_status",
+            "snapshot_or_fetch_id",
+            "coverage",
+            "source_url",
+            "expected_update",
+        } <= set(source)
 
 
 def test_view_evidence_marks_poverty_depth_partial_and_procurement_unavailable():
@@ -61,7 +80,9 @@ def test_view_evidence_uses_reviewed_sources_and_geography_contract():
     evidence = json.loads((PUBLIC_DATA / "view_evidence.json").read_text())
     assert evidence["indicators"]["cpi_yoy_pct"]["natural_grain"] == "national"
     assert all(
-        row["status"] == "full" and row["target_units"] == row["source_units"] == 1
+        row["status"] == "full"
+        and row["target_units"] == row["available_units"] == 1
+        and row["basis_counts"] == {"published": 0, "interpolated": 0, "held": 0, "derived": 1}
         for row in evidence["indicators"]["cpi_yoy_pct"]["coverage"]
     )
     for indicator_id in ("poverty", "subsistence_incidence", "poverty_change_pp", "region_poverty"):
@@ -70,6 +91,31 @@ def test_view_evidence_uses_reviewed_sources_and_geography_contract():
         assert "1F__FY" in item["archive_url"]
     assert "philgeps" in evidence["indicators"]["dpwh_share_pct"]["archive_url"]
     assert evidence["curated_views"]
+
+
+def test_coverage_separates_available_from_published_values():
+    evidence = json.loads((PUBLIC_DATA / "view_evidence.json").read_text())
+
+    poverty = {row["year"]: row for row in evidence["indicators"]["poverty"]["coverage"]}
+    assert poverty[2018]["basis_counts"]["published"] == 82
+    assert poverty[2019]["basis_counts"]["interpolated"] == 82
+    assert poverty[2024]["available_units"] == 82
+    assert poverty[2024]["source_units"] == 0
+    assert poverty[2024]["basis_counts"]["held"] == 82
+
+    population = {row["year"]: row for row in evidence["indicators"]["population"]["coverage"]}
+    assert population[2020]["basis_counts"]["published"] == 82
+    assert population[2022]["basis_counts"]["interpolated"] == 82
+    assert population[2024]["basis_counts"]["published"] == 82
+
+
+def test_derived_coverage_remains_analytically_available():
+    evidence = json.loads((PUBLIC_DATA / "view_evidence.json").read_text())
+    gdp = {row["year"]: row for row in evidence["indicators"]["gdp_per_capita"]["coverage"]}
+    assert gdp[2024]["status"] == "full"
+    assert gdp[2024]["available_units"] == 82
+    assert gdp[2024]["source_units"] == 0
+    assert gdp[2024]["basis_counts"]["derived"] == 82
 
 
 def test_psa_refresh_regenerates_evidence_before_manifest(tmp_path, monkeypatch):
@@ -133,3 +179,26 @@ def test_psa_refresh_regenerates_evidence_before_manifest(tmp_path, monkeypatch)
         manifest["sha256_per_file"]["view_evidence.json"]
         == hashlib.sha256(evidence_bytes).hexdigest()
     )
+
+
+def test_cumulative_spend_warns_that_six_areas_have_a_short_window():
+    """A ten-year cumulative that summed four years must say so.
+
+    ``compute_dpwh_spend_per_capita_cum`` sums the annual rows that exist, so a
+    province with a coverage gap contributes zero for that year. The value then
+    sits beside true ten-year sums with no visible difference. The warning names
+    the count and is computed, never typed.
+    """
+    evidence = json.loads((PUBLIC_DATA / "view_evidence.json").read_text())
+    warnings = evidence["indicators"]["dpwh_spend_per_capita_cum"]["warnings"]
+    annual = json.loads((PUBLIC_DATA / "dpwh_spend_per_capita.json").read_text())
+    window = range(build.CUM_SPEND_START, build.CUM_SPEND_END + 1)
+    seen: dict[str, set[int]] = {}
+    for row in annual:
+        if row["year"] in window:
+            seen.setdefault(row["psgc"], set()).add(row["year"])
+    short = {psgc for psgc, years in seen.items() if len(years) < len(window)}
+    assert short, "fixture assumption broken: no area has a short window"
+    joined = " ".join(warnings)
+    assert str(len(short)) in joined, f"warnings do not name the {len(short)} short areas: {joined}"
+    assert "lower bound" in joined.lower()

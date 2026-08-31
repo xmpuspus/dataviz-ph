@@ -37,7 +37,9 @@ PhilGEPS data shows contract awards, but it does not show disbursements. PhilGEP
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+python -m pip install --requirement requirements.lock
+python -m pip install --no-deps -e "."
+python -m pip check
 
 python3 -m etl.build
 python3 -m etl.build --no-cache

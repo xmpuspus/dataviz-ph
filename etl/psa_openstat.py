@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 
@@ -26,10 +27,11 @@ from tenacity import (
     wait_exponential_jitter,
 )
 
-from etl.source_catalog import PSA_TABLES, resolve_reviewed_table
+from etl.source_catalog import PSA_TABLES, resolve_reviewed_table, source_record
 
 API_BASE = "https://openstat.psa.gov.ph/PXWeb/api/v1/en/DB"
 CACHE_DIR = Path(__file__).resolve().parent.parent / ".etl_cache" / "psa"
+OBSERVED_SOURCE_RECORDS: dict[str, dict] = {}
 
 
 def _is_retryable(exc: BaseException) -> bool:
@@ -229,7 +231,14 @@ def discover_table(name: str) -> tuple[str, dict]:
     path = resolve_reviewed_table(
         contract, _directory_paths(contract.directory, contract.title_terms), fetch_metadata
     )
-    return path, fetch_metadata(path)
+    metadata = fetch_metadata(path)
+    OBSERVED_SOURCE_RECORDS[name] = source_record(
+        contract,
+        path,
+        metadata,
+        fetched_at=datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
+    )
+    return path, metadata
 
 
 # Roles we pull from the "Threshold/Incidence/Parameters" dimension of PSA
