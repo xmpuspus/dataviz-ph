@@ -2662,6 +2662,9 @@ function syncMobileControlShell(state, data) {
   shell.hidden = !visible;
   controls.classList.toggle("mobile-controls-open", visible && state.mobileControlsOpen);
   toggle.setAttribute("aria-expanded", visible && state.mobileControlsOpen ? "true" : "false");
+  toggle.textContent = visible && state.mobileControlsOpen
+    ? t("controls.mobile_controls_hide", "Hide controls")
+    : t("controls.mobile_controls", "Show controls");
   const units = unitsOf(state.view || state.story, data);
   const selected = [...state.sel].map((id) => units[id]).filter(Boolean);
   summary.textContent = selected.map((area) => area.name).join(", ");
@@ -4901,6 +4904,11 @@ async function main() {
 
   wireSearch(document.getElementById("search"), data, state, render);
 
+  let lastControlFocusId = null;
+  document.addEventListener("focusin", (e) => {
+    if (e.target.closest?.("#controls")) lastControlFocusId = e.target.id;
+  });
+
   // Keyboard year scrubbing works only from a non-interactive chart surface.
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && state.mobileControlsOpen) {
@@ -4934,8 +4942,11 @@ async function main() {
   });
 
   window.addEventListener("resize", () => {
+    const activeId = document.activeElement?.id || lastControlFocusId;
     chart.resize();
     syncMobileControlShell(state, data);
+    const active = activeId && document.getElementById(activeId);
+    if (active && active.offsetParent) active.focus();
   });
   // Re-place the finding/caveat when crossing the mobile breakpoint (rotate/resize).
   window.matchMedia("(max-width: 1099px)").addEventListener("change", syncDetailPlacement);

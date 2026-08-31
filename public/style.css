@@ -23,7 +23,6 @@ html, body {
   font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 16px;
   line-height: 1.45;
-  overflow-x: clip;
 }
 
 /* Tint the page chrome a hair off-white so the white content column reads as a
@@ -1452,6 +1451,11 @@ footer .disclaimer {
   #story-switcher::-webkit-scrollbar { display: none; }
   .story-btn { white-space: nowrap; flex-shrink: 0; }
   #title-strip { flex-direction: column; align-items: stretch; gap: 0.3rem; }
+  #title-strip,
+  #chart-type-strip,
+  .title-text,
+  #story-headline { min-width: 0; max-width: 100%; }
+  #story-headline { overflow-wrap: anywhere; }
   #title-strip .tagline { display: none; }
   #chart-type-strip { display: flex; overflow-x: auto; }
   .chart-type-btn { flex: 0 0 auto; }
