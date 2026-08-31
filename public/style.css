@@ -1013,6 +1013,15 @@ select:focus-visible {
   pointer-events: auto;
 }
 
+@media (max-width: 1099px) {
+  #search-results li {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  .indicator-panel { width: min(320px, calc(100% - 24px)); }
+}
+
 .ipanel-head {
   display: flex;
   align-items: center;
@@ -1120,8 +1129,8 @@ select:focus-visible {
 
 #big-play {
   position: absolute;
-  left: 14px;
-  bottom: 14px;
+  left: max(14px, env(safe-area-inset-left));
+  bottom: max(14px, env(safe-area-inset-bottom));
   width: 52px;
   height: 52px;
   padding: 0;
@@ -1152,8 +1161,8 @@ select:focus-visible {
 /* Playback-speed pill beside the play button. Cycles 1x -> 2x -> 0.5x. */
 #play-speed {
   position: absolute;
-  left: 74px;
-  bottom: 24px;
+  left: max(74px, calc(env(safe-area-inset-left) + 60px));
+  bottom: max(24px, env(safe-area-inset-bottom));
   z-index: 6;
   font: inherit;
   font-size: 0.74rem;
@@ -1468,8 +1477,16 @@ footer .disclaimer {
   /* Bar view ranks province names down the left, where the play button sits.
      Move it to the right edge AND lift it above the x-axis value row so it stops
      covering both the bottom labels and the axis numbers. */
-  #chart-wrap[data-ct="bar"] #big-play { left: auto; right: 14px; bottom: 44px; }
-  #chart-wrap[data-ct="bar"] #play-speed { left: auto; right: 74px; bottom: 54px; }
+  #chart-wrap[data-ct="bar"] #big-play {
+    left: auto;
+    right: max(14px, env(safe-area-inset-right));
+    bottom: max(44px, calc(env(safe-area-inset-bottom) + 30px));
+  }
+  #chart-wrap[data-ct="bar"] #play-speed {
+    left: auto;
+    right: max(74px, calc(env(safe-area-inset-right) + 60px));
+    bottom: max(54px, calc(env(safe-area-inset-bottom) + 40px));
+  }
 
   /* On a phone the absolute bottom-right pills sit on top of the timeline year
      labels (bubbles) and the southern provinces (map). Drop them into the flow

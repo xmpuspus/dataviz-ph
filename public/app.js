@@ -2619,6 +2619,7 @@ function wireSearch(input, data, state, render) {
         input.focus();
       }
     } else if (e.key === "Escape") {
+      e.stopPropagation();
       input.value = "";
       closeList();
     }
@@ -3339,7 +3340,10 @@ function _outsideIndicatorClick(e) {
 }
 
 function _escIndicatorClose(e) {
-  if (e.key === "Escape") closeIndicatorPanel();
+  if (e.key === "Escape") {
+    e.stopPropagation();
+    closeIndicatorPanel();
+  }
 }
 
 function closeIndicatorPanel(restoreId = null) {

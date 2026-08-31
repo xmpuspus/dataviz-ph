@@ -141,6 +141,7 @@ def test_mobile_shell_keeps_one_control_tree_and_restores_focus(browser, base_ur
         assert toggle.get_attribute("aria-expanded") == "true"
         assert toggle.inner_text() == "Hide controls"
         assert page.locator("#search").is_visible()
+        toggle.focus()
         page.keyboard.press("Escape")
         assert toggle.get_attribute("aria-expanded") == "false"
         assert toggle.inner_text() == "Show controls"
@@ -344,5 +345,92 @@ def test_mobile_open_controls_and_trust_have_no_serious_axe_issues(browser, base
             })).violations.filter(({ impact }) => impact === 'serious' || impact === 'critical')"""
         )
         assert violations == []
+    finally:
+        context.close()
+
+
+def test_nested_escape_keeps_the_mobile_shell_open(browser, base_url):
+    context, page = _page(browser, {"width": 390, "height": 844})
+    try:
+        _load(page, base_url)
+        page.locator("#mobile-controls-toggle").click()
+        page.locator("#axis-pick-y").click()
+        page.wait_for_timeout(10)
+        page.locator("#indicator-panel [role=listbox]").press("Escape")
+        assert page.locator("#indicator-panel").count() == 0
+        assert page.evaluate("() => document.activeElement.id") == "axis-pick-y"
+        assert page.locator("#mobile-controls-toggle").get_attribute("aria-expanded") == "true"
+
+        search = page.locator("#search")
+        search.fill("benguet")
+        search.press("Escape")
+        assert search.input_value() == ""
+        assert search.get_attribute("aria-expanded") == "false"
+        assert page.locator("#mobile-controls-toggle").get_attribute("aria-expanded") == "true"
+    finally:
+        context.close()
+
+
+def test_mobile_open_states_keep_the_picker_inside_the_viewport(browser, base_url):
+    context, page = _page(browser, {"width": 320, "height": 568})
+    try:
+        _load(page, base_url)
+        page.locator("#mobile-controls-toggle").click()
+        page.locator("#mobile-trust-link").click()
+        page.locator("#view-coverage-details > summary").click()
+        page.locator("#chart-data-table > summary").click()
+        page.locator("#axis-pick-y").click()
+        overflow = page.evaluate(
+            """() => [...document.querySelectorAll(
+              '#controls, #view-trust, #view-coverage-details, #chart-data-table, #indicator-panel'
+            )].map(node => {
+              const rect = node.getBoundingClientRect();
+              return { id: node.id, left: rect.left, right: rect.right };
+            }).filter(({ left, right }) => left < 0 || right > innerWidth)"""
+        )
+        assert overflow == []
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize(
+    "viewport",
+    [{"width": 390, "height": 844}, {"width": 320, "height": 568}, {"width": 844, "height": 390}],
+)
+def test_search_options_have_touch_targets(browser, base_url, viewport):
+    context, page = _page(browser, viewport)
+    try:
+        _load(page, base_url)
+        page.locator("#mobile-controls-toggle").click()
+        search = page.locator("#search")
+        search.fill("benguet")
+        targets = page.locator('#search-results [role="option"]')
+        assert targets.count() > 0
+        assert all(
+            box["width"] >= 44 and box["height"] >= 44
+            for box in [targets.nth(index).bounding_box() for index in range(targets.count())]
+        )
+    finally:
+        context.close()
+
+
+def test_playback_uses_safe_area_insets(browser, base_url):
+    css = (PUBLIC / "style.css").read_text()
+    for selector in ["#big-play", "#play-speed", '#chart-wrap[data-ct="bar"] #big-play']:
+        start = css.index(selector)
+        block = css[start : css.index("}", start)]
+        assert "safe-area-inset" in block
+
+    context, page = _page(browser, {"width": 320, "height": 568})
+    try:
+        _load(page, base_url)
+        positions = page.evaluate(
+            """() => ['big-play', 'play-speed'].map(id => {
+              const rect = document.getElementById(id).getBoundingClientRect();
+              const chart = document.getElementById('chart-wrap').getBoundingClientRect();
+              return { id, left: rect.left - chart.left, bottom: chart.bottom - rect.bottom };
+            })"""
+        )
+        assert all(position["left"] >= 0 and position["bottom"] >= 0 for position in positions)
     finally:
         context.close()
