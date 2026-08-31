@@ -200,9 +200,8 @@ def test_howto_scaffold_hidden_outside_bubble_mode(page, base_url):
 # ---- Guided narrative arc (first-visit Rosling-style story) -------------------
 
 
-def test_guided_arc_runs_then_yields_to_explorer(browser, base_url):
-    """First visit (motion on, no hash) plays the guided arc; the first user
-    gesture hands control back to the explorer, which then behaves normally."""
+def test_guided_arc_runs_after_the_reader_chooses_play(browser, base_url):
+    """A first visit stays static until the reader asks for the guided story."""
     errors: list[str] = []
     pg = browser.new_page()  # motion on, fresh context => fresh localStorage
     _stub_insights(pg)
@@ -211,7 +210,9 @@ def test_guided_arc_runs_then_yields_to_explorer(browser, base_url):
     try:
         pg.goto(base_url, wait_until="networkidle")
         pg.wait_for_selector("#story-finding:not([hidden])", timeout=15000)
-        # The arc announces itself: the Skip control is visible while it runs.
+        pg.wait_for_selector("#story-start:not([hidden])", timeout=5000)
+        pg.get_by_role("button", name="Play the guided story").click()
+        # The arc announces itself: the Skip control is visible after Play.
         pg.wait_for_selector("#arc-skip:not([hidden])", timeout=5000)
         # The opening beats sit on spend-vs-poverty (an award-based indicator).
         assert "Awards, not disbursement" in pg.inner_text("#story-caveat")

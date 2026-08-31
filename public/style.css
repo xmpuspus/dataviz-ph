@@ -298,6 +298,56 @@ main {
   cursor: pointer;
 }
 
+#story-start {
+  margin: 0;
+  padding: 0.8rem 0.85rem;
+  background: #e9f5f6;
+  border-bottom: 1px solid #b8dfe2;
+}
+
+#story-start[hidden] { display: none; }
+
+#story-start h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+#story-start p {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.story-start-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+}
+
+.story-start-actions button {
+  min-height: 44px;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--brand);
+  border-radius: 6px;
+  background: var(--brand);
+  color: #fff;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.story-start-actions #explore-data {
+  background: #fff;
+  color: var(--brand-hot);
+}
+
+.story-start-actions button:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+}
+
 #chart-howto-dismiss:hover { color: var(--ink); background: var(--soft2); }
 #chart-howto-dismiss:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 

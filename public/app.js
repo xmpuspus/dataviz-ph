@@ -2786,6 +2786,9 @@ function activeCaveats(view, data, state) {
 function renderStorySwitcher(stories, state, view, data, render) {
   const nav = document.getElementById("story-switcher");
   const curated = document.getElementById("curated-view-links");
+  const focusedStoryId = nav.contains(document.activeElement)
+    ? document.activeElement.dataset.storyId
+    : null;
   nav.replaceChildren();
   if (curated) curated.replaceChildren();
   if (curated) curated.setAttribute("aria-label", t("trust.curated_views", "curated views"));
@@ -2839,6 +2842,10 @@ function renderStorySwitcher(stories, state, view, data, render) {
     tag.textContent = "Custom";
     tag.setAttribute("aria-label", "Custom indicator selection");
     nav.appendChild(tag);
+  }
+  if (focusedStoryId) {
+    const next = nav.querySelector(`[data-story-id="${focusedStoryId}"]`);
+    if (next && !next.disabled) next.focus();
   }
 }
 
@@ -4210,11 +4217,17 @@ async function main() {
 
   const replayBtn = document.getElementById("replay-arc");
   const skipBtn = document.getElementById("arc-skip");
+  const startChoice = document.getElementById("story-start");
+  const playGuidedBtn = document.getElementById("play-guided-story");
+  const exploreBtn = document.getElementById("explore-data");
   const showReplay = (show) => {
     if (replayBtn) replayBtn.hidden = !show;
   };
   const showSkip = (show) => {
     if (skipBtn) skipBtn.hidden = !show;
+  };
+  const showStartChoice = (show) => {
+    if (startChoice) startChoice.hidden = !show;
   };
   function pulseControls() {
     if (bigPlay) {
@@ -4503,6 +4516,19 @@ async function main() {
       runArc();
     });
   }
+  if (playGuidedBtn) {
+    playGuidedBtn.addEventListener("click", () => {
+      showStartChoice(false);
+      runArc();
+    });
+  }
+  if (exploreBtn) {
+    exploreBtn.addEventListener("click", () => {
+      writeArcSeen();
+      showStartChoice(false);
+      showReplay(true);
+    });
+  }
   window.__datavizph_runArc = runArc;
   // Read-only accessor for the current arc beat (null in free explore). Lets tests
   // and the screenshot harness sync to a beat deterministically instead of racing
@@ -4735,10 +4761,18 @@ async function main() {
 
   wireSearch(document.getElementById("search"), data, state, render);
 
-  // Keyboard year scrubbing (arrow keys when nothing else has focus).
+  // Keyboard year scrubbing works only from a non-interactive chart surface.
   window.addEventListener("keydown", (e) => {
-    const tag = (e.target.tagName || "").toLowerCase();
-    if (tag === "input" || tag === "textarea" || tag === "select") return;
+    const target = e.target;
+    if (
+      target &&
+      target.closest &&
+      target.closest(
+        "a[href], button, input, textarea, select, summary, [contenteditable]:not([contenteditable='false']), [role=button], [role=combobox], [role=link], [role=listbox], [role=menuitem], [role=option]",
+      )
+    ) {
+      return;
+    }
     const panel = (state.view && state.view.panel_years) || state.story.panel_years;
     if (e.key === "ArrowRight") {
       stepYear(state, +1, render);
@@ -4807,21 +4841,10 @@ async function main() {
     state.year = panel.includes(safeFirstYear) ? safeFirstYear : panel[0];
     render();
 
-    if (REDUCE_MOTION) {
-      // No auto-run under reduced motion. Offer the narrated story on demand; the
-      // default annotated view + finding box already make the point statically.
-      showReplay(true);
-    } else if (!readArcSeen()) {
-      // First visit: the full guided arc (hook -> reveal -> twist -> release).
-      runArc();
-    } else {
-      // Returning visitor: the familiar gentle autoplay, plus a button to replay
-      // the guided story for anyone who wants the narration again.
-      setTimeout(() => {
-        if (!arcRunning) startPlay();
-      }, 500);
-      showReplay(true);
-    }
+    // Keep every first and returning view static. Readers choose whether to run
+    // the guided narrative, including when reduced motion is active.
+    if (readArcSeen()) showReplay(true);
+    else showStartChoice(true);
   }
 }
 

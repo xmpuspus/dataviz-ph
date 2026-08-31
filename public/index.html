@@ -104,6 +104,14 @@
         <span id="chart-notice-text"></span>
         <button type="button" id="chart-notice-dismiss" aria-label="dismiss notice">&times;</button>
       </p>
+      <section id="story-start" aria-labelledby="story-start-title" hidden>
+        <h2 id="story-start-title" data-i18n="controls.story_start_title">Choose how to begin</h2>
+        <p data-i18n="controls.story_start_text">Watch the guided story, or explore the current data at your own pace.</p>
+        <div class="story-start-actions">
+          <button id="play-guided-story" type="button" data-i18n="controls.play_guided_story">Play the guided story</button>
+          <button id="explore-data" type="button" data-i18n="controls.explore_data">Explore the data</button>
+        </div>
+      </section>
       <div
         id="chart"
         role="group"
@@ -144,7 +152,7 @@
            once it ends or after a returning visit. JS toggles their hidden attr. -->
       <button id="arc-skip" type="button" hidden>Skip the story ›</button>
       <button id="replay-arc" type="button" hidden>
-        <span aria-hidden="true">↻</span> Play the guided story
+        <span aria-hidden="true">↻</span> <span data-i18n="controls.replay_guided_story">Play the guided story</span>
       </button>
     </section>
 
