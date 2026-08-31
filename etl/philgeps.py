@@ -17,9 +17,15 @@ legitimately repeated for multi-lot contracts (lot A, lot B of the same tender).
 
 from __future__ import annotations
 
+import hashlib
+import json
+import os
+import tempfile
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 
+import httpx
 import pandas as pd
 import pyarrow.parquet as pq
 
@@ -29,7 +35,11 @@ CHUNK_BASE = (
 )
 N_CHUNKS = 15
 CACHE_DIR = Path(__file__).resolve().parent.parent / ".etl_cache" / "philgeps"
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
+INVENTORY_FILENAME = "snapshot_inventory.json"
+SNAPSHOT_CORRECTION_POLICY = (
+    "Cached chunks are immutable inputs. Acquire a new snapshot explicitly, compare "
+    "hashes and row counts, then review source corrections before rebuilding published data."
+)
 
 DPWH_PATTERN = "PUBLIC WORKS AND HIGHWAYS"
 DOH_PATTERNS = ("DEPARTMENT OF HEALTH",)
@@ -54,6 +64,98 @@ MIN_PESO_PER_CAPITA = 100.0
 
 def _chunk_path(i: int) -> Path:
     return CACHE_DIR / f"facts_awards_chunk_{i:02d}.parquet"
+
+
+def _inventory_path() -> Path:
+    return CACHE_DIR / INVENTORY_FILENAME
+
+
+def _chunk_url(i: int) -> str:
+    return f"{CHUNK_BASE}/facts_awards_chunk_{i:02d}.parquet"
+
+
+def write_snapshot_inventory(*, fetched_at: str | None = None) -> dict:
+    """Inventory a complete local snapshot without contacting the upstream mirror."""
+    chunks: dict[str, dict[str, int | str]] = {}
+    for i in range(1, N_CHUNKS + 1):
+        chunk = _chunk_path(i)
+        if not chunk.exists():
+            raise FileNotFoundError(
+                f"Missing PhilGEPS chunk {i}. Acquire a complete snapshot first."
+            )
+        chunks[f"chunk_{i:02d}"] = {
+            "sha256": hashlib.sha256(chunk.read_bytes()).hexdigest(),
+            "row_count": pq.ParquetFile(chunk).metadata.num_rows,
+        }
+    inventory = {
+        "schema_version": 1,
+        "upstream_identity": {
+            "name": "csiiiv/philgeps-awards-dashboard mirror",
+            "url": CHUNK_BASE,
+            "chunk_count": N_CHUNKS,
+        },
+        "fetched_at": fetched_at or datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "correction_policy": SNAPSHOT_CORRECTION_POLICY,
+        "revision_status": "not compared to a newer snapshot",
+        "supported_date_range": {"start": PANEL_START, "end": PANEL_END},
+        "chunks": chunks,
+    }
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    _inventory_path().write_text(json.dumps(inventory, indent=2, sort_keys=True) + "\n")
+    return inventory
+
+
+def load_snapshot_inventory(*, required: bool = True) -> dict | None:
+    """Read a locally recorded snapshot inventory, never fetching data as a side effect."""
+    path = _inventory_path()
+    if not path.exists():
+        if required:
+            raise FileNotFoundError(
+                "PhilGEPS snapshot inventory is missing; inventory the cache first."
+            )
+        return None
+    inventory = json.loads(path.read_text())
+    required_keys = {
+        "upstream_identity",
+        "fetched_at",
+        "correction_policy",
+        "supported_date_range",
+        "chunks",
+    }
+    missing = required_keys - inventory.keys()
+    if missing:
+        raise ValueError(
+            f"PhilGEPS snapshot inventory missing required fields: {sorted(missing)!r}"
+        )
+    return inventory
+
+
+def acquire_snapshot(*, allow_network: bool = False) -> dict:
+    """Download and inventory chunks only when an operator explicitly authorizes it.
+
+    The build pipeline deliberately does not call this function.  A local cache is
+    a reviewed snapshot, not a hidden downloader, so ``--no-cache`` cannot claim
+    that it reacquired PhilGEPS data.
+    """
+    if not allow_network:
+        raise RuntimeError(
+            "PhilGEPS acquisition requires explicit network authority; "
+            "use a reviewed offline snapshot."
+        )
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="philgeps-acquire-", dir=CACHE_DIR.parent) as stage:
+        stage_dir = Path(stage)
+        with httpx.Client(timeout=180.0, follow_redirects=True) as client:
+            for i in range(1, N_CHUNKS + 1):
+                response = client.get(_chunk_url(i))
+                response.raise_for_status()
+                staged_chunk = stage_dir / _chunk_path(i).name
+                staged_chunk.write_bytes(response.content)
+                # Reject a malformed response before it can replace a reviewed chunk.
+                _ = pq.ParquetFile(staged_chunk).metadata.num_rows
+        for i in range(1, N_CHUNKS + 1):
+            os.replace(stage_dir / _chunk_path(i).name, _chunk_path(i))
+    return write_snapshot_inventory()
 
 
 def _read_chunk(i: int) -> pd.DataFrame:

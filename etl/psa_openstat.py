@@ -25,6 +25,8 @@ from tenacity import (
     wait_exponential_jitter,
 )
 
+from etl.source_catalog import PSA_TABLES, resolve_reviewed_table
+
 API_BASE = "https://openstat.psa.gov.ph/PXWeb/api/v1/en/DB"
 CACHE_DIR = Path(__file__).resolve().parent.parent / ".etl_cache" / "psa"
 
@@ -46,11 +48,13 @@ _RETRY = retry(
     reraise=True,
 )
 
-POVERTY_PATH = "1E/FY/0021E3DF01A.px"
-SUBSISTENCE_PATH = "1E/FY/0061E3DF03A.px"  # Table 3a: food threshold + subsistence incidence
-POPULATION_PATH = "1A/PO/0011A6DPHH0.px"
-GDP_PER_CAPITA_PATH = "2A/PPA/2025/0092A5GPPA8.px"
-CPI_PATH = "2M/PI/CPI/2018NEW/0012M4ACP22.px"
+# Compatibility aliases for etl.psa_inflation.  New callers must use
+# discover_table(), which validates metadata rather than trusting a leaf name.
+POVERTY_PATH = PSA_TABLES["poverty"].reviewed_fallbacks[0]
+SUBSISTENCE_PATH = PSA_TABLES["subsistence"].reviewed_fallbacks[0]
+POPULATION_PATH = PSA_TABLES["population"].reviewed_fallbacks[0]
+GDP_PER_CAPITA_PATH = PSA_TABLES["gdp_per_capita"].reviewed_fallbacks[0]
+CPI_PATH = PSA_TABLES["cpi"].reviewed_fallbacks[0]
 
 MISSING_SENTINELS = {"..", "...", "-", "", None}
 
@@ -132,6 +136,35 @@ def _fetch_or_cache(name: str, fetch: callable) -> dict:
     payload = fetch()
     cache.write_text(json.dumps(payload))
     return payload
+
+
+def _directory_paths(directory: str) -> list[str]:
+    """Return PXWeb leaf paths from one reviewed directory listing."""
+    listing = _get_json(f"{API_BASE}/{directory}")
+    entries = listing if isinstance(listing, list) else listing.get("data", [])
+    paths: list[str] = []
+    for entry in entries:
+        identifier = entry.get("id") if isinstance(entry, dict) else None
+        if isinstance(identifier, str) and identifier.endswith(".px"):
+            paths.append(identifier if "/" in identifier else f"{directory}/{identifier}")
+    return paths
+
+
+def discover_table(name: str) -> tuple[str, dict]:
+    """Discover a compatible PSA leaf and validate its reviewed metadata contract."""
+    contract = PSA_TABLES[name]
+    metadata_by_path: dict[str, dict] = {}
+
+    def fetch_metadata(path: str) -> dict:
+        if path not in metadata_by_path:
+            cache_name = f"source_catalog_{name}_{path.replace('/', '_')}.json"
+            metadata_by_path[path] = _fetch_or_cache(
+                cache_name, lambda: _get_json(f"{API_BASE}/{path}")
+            )
+        return metadata_by_path[path]
+
+    path = resolve_reviewed_table(contract, _directory_paths(contract.directory), fetch_metadata)
+    return path, fetch_metadata(path)
 
 
 # Roles we pull from the "Threshold/Incidence/Parameters" dimension of PSA
@@ -251,8 +284,9 @@ def fetch_poverty(provinces: dict, normalize_name) -> list[dict]:
     Returns rows: [{psgc, year, value, cv, se, ci_lo, ci_hi}] (precision on the
     published survey years only).
     """
+    path, _ = discover_table("poverty")
     return _fetch_incidence_with_precision(
-        f"{API_BASE}/{POVERTY_PATH}",
+        f"{API_BASE}/{path}",
         "poverty_full.json",  # meta is reused below; data cache is the precision pull
         "poverty_full_data.json",
         lambda t: "poverty incidence" in t and "famil" in t,
@@ -270,8 +304,9 @@ def fetch_subsistence(provinces: dict, normalize_name) -> list[dict]:
     lower than poverty incidence (food < full poverty threshold).
     Returns rows: [{psgc, year, value, cv, se, ci_lo, ci_hi}].
     """
+    path, _ = discover_table("subsistence")
     return _fetch_incidence_with_precision(
-        f"{API_BASE}/{SUBSISTENCE_PATH}",
+        f"{API_BASE}/{path}",
         "subsistence_full.json",
         "subsistence_full_data.json",
         lambda t: "subsistence incidence" in t and "famil" in t,
@@ -294,7 +329,8 @@ def fetch_population_2020(
 
     huc_parent: optional callable name -> parent_psgc. If None, no rollup.
     """
-    url = f"{API_BASE}/{POPULATION_PATH}"
+    path, _ = discover_table("population")
+    url = f"{API_BASE}/{path}"
     meta = _fetch_or_cache("population_meta.json", lambda: _get_json(url))
 
     geo_var = next(
@@ -363,7 +399,8 @@ def fetch_gdp_per_capita(provinces: dict, normalize_name) -> list[dict]:
     HUCs are dropped (not rolled into parent) because GDP per capita is a per-person
     measure already; summing wouldn't make sense without re-deriving from totals.
     """
-    url = f"{API_BASE}/{GDP_PER_CAPITA_PATH}"
+    path, _ = discover_table("gdp_per_capita")
+    url = f"{API_BASE}/{path}"
     meta = _fetch_or_cache("gdp_per_capita_meta.json", lambda: _get_json(url))
 
     geo_var = next(v for v in meta["variables"] if v.get("code") == "Geolocation")
@@ -428,7 +465,8 @@ def fetch_cpi_annual() -> dict[int, float]:
     Returns {year: cpi_index}. Used to compute real-PHP deflators:
     real_value = nominal_value * (100 / cpi_year).
     """
-    url = f"{API_BASE}/{CPI_PATH}"
+    path, _ = discover_table("cpi")
+    url = f"{API_BASE}/{path}"
     meta = _fetch_or_cache("cpi_meta.json", lambda: _get_json(url))
 
     geo_var = next(v for v in meta["variables"] if v.get("code") == "Geolocation")
