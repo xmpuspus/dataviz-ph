@@ -85,6 +85,20 @@ def test_partial_coverage_is_internally_consistent() -> None:
         assert len(counts) == 1, f"{name}: inconsistent unit count per year {per_year}"
 
 
+def test_refreshed_population_and_gdp_contracts_keep_reviewed_totals() -> None:
+    provinces = _load("provinces.json")
+    assert len(provinces) == N_PROVINCE_UNITS
+    assert provinces["072200000"]["population_2024"] == 5_228_149
+    assert provinces["126300000"]["population_2024"] == 1_732_068
+    assert provinces["150700000"]["population_2024"] == 693_244
+
+    gdp = _load("gdp_per_capita.json")
+    assert len(gdp) == 656
+    assert {(row["psgc"], row["year"]) for row in gdp} == {
+        (psgc, year) for psgc in provinces for year in range(2018, 2026)
+    }
+
+
 def test_rate_files_within_0_100() -> None:
     for name in ("poverty.json", "subsistence.json", "region_poverty.json"):
         for r in _load(name):

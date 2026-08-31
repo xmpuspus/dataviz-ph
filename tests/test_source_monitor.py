@@ -81,6 +81,19 @@ def test_shipped_years_use_source_anchors_and_population_vintage(tmp_path, monke
     )
     (tmp_path / "population.json").write_text(json.dumps([{"year": 2024}]))
     (tmp_path / "gdp_per_capita.json").write_text(json.dumps([{"year": 2024}]))
+    (tmp_path / "poverty_depth.json").write_text(
+        json.dumps(
+            [
+                {"measure": "poverty_poor_families", "year": 2023},
+                {"measure": "poverty_income_gap", "year": 2023},
+                {"measure": "poverty_poverty_gap", "year": 2023},
+                {"measure": "poverty_severity", "year": 2023},
+            ]
+        )
+    )
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"inputs": {"psa_openstat": {"ppa_industry_contract": {"years": [2018, 2025]}}}})
+    )
     (tmp_path / "cpi.json").write_text(json.dumps({"2018": 100.0, "2025": 128.2}))
 
     years = source_monitor._shipped_years()
@@ -89,6 +102,13 @@ def test_shipped_years_use_source_anchors_and_population_vintage(tmp_path, monke
         "poverty": 2023,
         "subsistence": 2023,
         "population": 2020,
+        "population_2024": 2024,
+        "gdp_total": 2024,
+        "gdp_industry": 2025,
         "gdp_per_capita": 2024,
+        "poverty_poor_families": 2023,
+        "poverty_income_gap": 2023,
+        "poverty_poverty_gap": 2023,
+        "poverty_severity": 2023,
         "cpi": 2025,
     }

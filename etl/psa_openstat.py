@@ -57,7 +57,7 @@ POPULATION_PATH = PSA_TABLES["population"].reviewed_fallbacks[0]
 GDP_PER_CAPITA_PATH = PSA_TABLES["gdp_per_capita"].reviewed_fallbacks[0]
 CPI_PATH = PSA_TABLES["cpi"].reviewed_fallbacks[0]
 
-MISSING_SENTINELS = {"..", "...", "-", "", None}
+MISSING_SENTINELS = {"..", "...", "-", "/s", "", None}
 
 POVERTY_DEPTH_MEASURES = {
     "poverty_poor_families": {"kind": "count", "unit": "thousand families"},
@@ -86,6 +86,14 @@ def require_source_years(rows: list[dict], years: range, label: str) -> None:
     missing = sorted(set(years) - {row["year"] for row in rows})
     if missing:
         raise ValueError(f"{label} source years missing: {missing}")
+
+
+def require_analysis_coverage(rows: list[dict], years: range, label: str) -> None:
+    """Fail when a stable analysis series lacks 82 unique units in any source year."""
+    for year in years:
+        units = [row["psgc"] for row in rows if row["year"] == year]
+        if len(units) != 82 or len(set(units)) != 82:
+            raise ValueError(f"{label} coverage for {year} needs 82 unique analysis units")
 
 
 def clear_cache() -> None:
@@ -527,11 +535,23 @@ def recompute_gdp_per_capita(gdp_rows: list[dict], published_rows: list[dict]) -
         if key in published:
             raise ValueError(f"duplicate published per-capita denominator: {key}")
         published[key] = row["value"]
+    gdp_keys: set[tuple[str, int]] = set()
+    for row in gdp_rows:
+        key = (row["source_id"], row["year"])
+        if key in gdp_keys:
+            raise ValueError(f"duplicate GDP source leaf: {key}")
+        gdp_keys.add(key)
+    if gdp_keys != set(published):
+        missing = sorted(gdp_keys - set(published))
+        extra = sorted(set(published) - gdp_keys)
+        raise ValueError(
+            f"GDP/per-capita source pairing mismatch: missing={missing}, extra={extra}"
+        )
     totals: dict[tuple[str, int], tuple[float, float]] = {}
     for row in gdp_rows:
-        published_value = published.get((row["source_id"], row["year"]))
-        if published_value is None or published_value <= 0:
-            continue
+        published_value = published[(row["source_id"], row["year"])]
+        if published_value <= 0:
+            raise ValueError(f"non-positive published per-capita denominator: {row['source_id']}")
         key = (row["psgc"], row["year"])
         gdp, population = totals.get(key, (0.0, 0.0))
         totals[key] = (
@@ -657,7 +677,15 @@ def validate_gdp_industry_contract() -> dict:
     require_source_years(
         [{"year": int(value)} for value in year["valueTexts"]], range(2018, 2026), "PPA industry"
     )
-    return {"path": path, "sectors": len(sector["values"]), "unit": "thousand Philippine pesos"}
+    return {
+        "path": path,
+        "sectors": len(sector["values"]),
+        "unit": "thousand Philippine pesos",
+        "decimals": 12,
+        "suppression_markers": sorted(MISSING_SENTINELS - {"", None}),
+        "years": list(range(2018, 2026)),
+        "valuations": ["At Current Prices", "At Constant 2018 Prices"],
+    }
 
 
 def fetch_poverty_depth(table: str, provinces: dict, normalize_name) -> list[dict]:
@@ -675,15 +703,28 @@ def fetch_poverty_depth(table: str, provinces: dict, normalize_name) -> list[dic
         if variable["code"] == "Estimates/Measures of Precision"
     )
     year_var = next(variable for variable in meta["variables"] if variable["code"] == "Year")
-    estimate = next(
-        value
-        for value, text in zip(measure_var["values"], measure_var["valueTexts"], strict=False)
-        if text.lower().startswith("estimate")
-    )
+    measure_codes = {}
+    for value, text in zip(measure_var["values"], measure_var["valueTexts"], strict=False):
+        normalized = text.lower()
+        if normalized.startswith("estimate"):
+            measure_codes["value"] = value
+        elif "coefficient of variation" in normalized:
+            measure_codes["cv"] = value
+        elif "standard error" in normalized:
+            measure_codes["se"] = value
+        elif "lower limit" in normalized:
+            measure_codes["ci_lo"] = value
+        elif "upper limit" in normalized:
+            measure_codes["ci_hi"] = value
+    if "value" not in measure_codes:
+        raise ValueError(f"{table} lacks an estimate measure")
     query = {
         "query": [
             {"code": "Geolocation", "selection": {"filter": "item", "values": geo_var["values"]}},
-            {"code": measure_var["code"], "selection": {"filter": "item", "values": [estimate]}},
+            {
+                "code": measure_var["code"],
+                "selection": {"filter": "item", "values": list(measure_codes.values())},
+            },
             {"code": "Year", "selection": {"filter": "item", "values": year_var["values"]}},
         ],
         "response": {"format": "json"},
@@ -691,13 +732,15 @@ def fetch_poverty_depth(table: str, provinces: dict, normalize_name) -> list[dic
     payload = _query_payload(url, "poverty_depth_data", path, query)
     labels = dict(zip(geo_var["values"], geo_var["valueTexts"], strict=False))
     years = dict(zip(year_var["values"], year_var["valueTexts"], strict=False))
-    rows = []
+    rows_by_key: dict[tuple[str, int], dict] = {}
+    measure_by_code = {value: key for key, value in measure_codes.items()}
     for entry in payload.get("data", []):
         key = entry.get("key", [])
         if len(key) < 3:
             continue
+        role = measure_by_code.get(key[1])
         value = _to_float(entry.get("values", [None])[0])
-        if value is None:
+        if role is None or value is None:
             continue
         psgc = normalize_name(
             _clean_geo_text(labels.get(key[0], "")), provinces, series="poverty_fies"
@@ -708,7 +751,13 @@ def fetch_poverty_depth(table: str, provinces: dict, normalize_name) -> list[dic
             year = int(years.get(key[2], key[2]))
         except ValueError:
             continue
-        rows.append({"psgc": psgc, "year": year, "value": value, "measure": table, **contract})
+        rows_by_key.setdefault(
+            (psgc, year), {"psgc": psgc, "year": year, "measure": table, **contract}
+        )[role] = value
+    rows = [row for row in rows_by_key.values() if "value" in row]
+    for row in rows:
+        if "ci_lo" in row and "ci_hi" in row and row["ci_lo"] > row["ci_hi"]:
+            raise ValueError(f"{table} has reversed confidence interval for {row['psgc']}")
     return rows
 
 

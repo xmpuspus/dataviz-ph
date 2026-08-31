@@ -11,6 +11,7 @@ from pathlib import Path
 
 from etl import build_share_pages, interpolate, philgeps, psa_inflation, psa_openstat, validate
 from etl.psgc import huc_parent, load_provinces, normalize_name
+from etl.source_catalog import PSA_TABLES
 
 PUBLIC_DATA = Path(__file__).resolve().parent.parent / "public" / "data"
 
@@ -70,6 +71,9 @@ def poverty_depth_coverage(rows: list[dict], expected_units: int, units: set[str
                     "missing_status": "none"
                     if observed == expected_units
                     else "source_unavailable",
+                    "missing_reasons": {
+                        psgc: "source_unavailable" for psgc in sorted(units - present)
+                    },
                     "warning": (
                         "PSA publishes this measure at its natural grain. The build does not "
                         "average rates or custom-roll up HUC estimates."
@@ -435,6 +439,7 @@ def main(no_cache: bool = False) -> None:
     psa_openstat.require_source_years(gdp_published, range(2018, 2026), "PPA per-capita GDP")
     gdp = psa_openstat.recompute_gdp_per_capita(gdp_total, gdp_published)
     validate.validate_all(gdp, schema="peso_per_capita_gdp")
+    psa_openstat.require_analysis_coverage(gdp, range(2018, 2026), "PPA per-capita GDP")
 
     print(">> fetch poverty-depth measures at the published area grain")
     poverty_depth = []
@@ -1246,12 +1251,12 @@ def build_manifest(
     return {
         "built_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "source_vintages": {
-            "poverty": "PSA OpenStat 1E/FY Table 1a, anchors 2018/2021/2023",
+            "poverty": "PSA OpenStat 1F/FY official poverty tables, anchors 2018/2021/2023",
             "cpi": "PSA OpenStat 2M/PI/CPI/2018NEW, annual averages 2018-2025",
             "philgeps": "csiiiv/philgeps-awards-dashboard mirror, 2014-2024",
             "gdp_per_capita": "PSA OpenStat PPA Tables 1 and 9, constant 2018 prices, 2018-2025",
             "population": "PSA 2020 Census and 2024 POPCEN",
-            "psgc": "psgc.gitlab.io community mirror",
+            "psgc": "PSA PSGC 2Q 2026 as of 2026-06-30",
         },
         "inputs": inputs or {},
         "row_counts": row_counts,
@@ -1291,6 +1296,7 @@ def refresh_automated_psa_public_data() -> None:
     validate.validate_uniqueness(population, "population")
     validate.validate_uniqueness(gdp, "gdp_per_capita")
     validate.validate_all(gdp, schema="peso_per_capita_gdp")
+    psa_openstat.require_analysis_coverage(gdp, range(2018, 2026), "PPA per-capita GDP")
 
     provinces_out = json.loads((PUBLIC_DATA / "provinces.json").read_text())
     pop_2020 = {row["psgc"]: row["value"] for row in population_2020}
@@ -1355,10 +1361,7 @@ def refresh_automated_psa_public_data() -> None:
             "2A/PPA/0092A5FPPA8.px",
         ],
         "poverty_depth_paths": [
-            "1F/FY/0101F3DF05A.px",
-            "1F/FY/0191F3DF10A.px",
-            "1F/FY/0211F3DF11A.px",
-            "1F/FY/0231F3DF12A.px",
+            PSA_TABLES[table].reviewed_fallbacks[0] for table in psa_openstat.POVERTY_DEPTH_MEASURES
         ],
         "row_counts": {
             "population_2020": len(population_2020),
@@ -1413,7 +1416,31 @@ def refresh_manifest() -> None:
             "Rounds to ~5 trillion PHP nominal; cited by the DPWH story headline."
         )
 
-    manifest = build_manifest(row_counts=row_counts, derived=derived)
+    existing = json.loads((PUBLIC_DATA / "manifest.json").read_text())
+    inputs = existing.get("inputs", {})
+    inputs.setdefault(
+        "psgc",
+        {
+            "source": "https://psa.gov.ph/classification/psgc/provinces",
+            "release": "Second Quarter 2026 PSGC",
+            "as_of": "2026-06-30",
+            "note": (
+                "Official identity source; historical analysis IDs remain in "
+                "geography-crosswalk.json."
+            ),
+        },
+    )
+    psa_inputs = inputs.get("psa_openstat")
+    if isinstance(psa_inputs, dict):
+        industry = psa_inputs.get("ppa_industry_contract", {})
+        psa_inputs["ppa_industry_contract"] = {
+            **industry,
+            "years": list(range(2018, 2026)),
+            "decimals": 12,
+            "suppression_markers": ["-", "..", "...", "/s"],
+            "valuations": ["At Current Prices", "At Constant 2018 Prices"],
+        }
+    manifest = build_manifest(row_counts=row_counts, derived=derived, inputs=inputs)
     write_json("manifest.json", manifest)
     print(f"refreshed manifest over {len(files)} files; built_at {manifest['built_at']}")
     if derived:

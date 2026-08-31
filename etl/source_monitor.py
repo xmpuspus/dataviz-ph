@@ -93,10 +93,25 @@ def _shipped_years() -> dict[str, int]:
         "poverty": "poverty.json",
         "subsistence": "subsistence.json",
         "population": "population.json",
+        "population_2024": "population.json",
+        "gdp_total": "gdp_per_capita.json",
         "gdp_per_capita": "gdp_per_capita.json",
+        "poverty_poor_families": "poverty_depth.json",
+        "poverty_income_gap": "poverty_depth.json",
+        "poverty_poverty_gap": "poverty_depth.json",
+        "poverty_severity": "poverty_depth.json",
         "cpi": "cpi.json",
     }
     years: dict[str, int] = {}
+    manifest_path = PUBLIC_DATA / "manifest.json"
+    if manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text())
+        industry = (
+            manifest.get("inputs", {}).get("psa_openstat", {}).get("ppa_industry_contract", {})
+        )
+        industry_years = industry.get("years", [])
+        if industry_years:
+            years["gdp_industry"] = max(industry_years)
     for source, filename in files.items():
         fixed_source_year = PSA_TABLES[source].fixed_source_year
         if fixed_source_year is not None:
@@ -116,6 +131,12 @@ def _shipped_years() -> dict[str, int]:
                     for row in rows
                     if not row.get("interp", False) and not row.get("extrap", False)
                 ]
+            if source == "population_2024":
+                source_rows = [
+                    row for row in rows if row.get("official") and row.get("year") == 2024
+                ]
+            if source.startswith("poverty_"):
+                source_rows = [row for row in rows if row.get("measure") == source]
             values = [row.get("year") for row in source_rows if isinstance(row.get("year"), int)]
         if values:
             years[source] = max(values)
