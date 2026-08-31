@@ -167,21 +167,26 @@ def test_optional_indicator_failure_disables_native_choices(page, base_url, path
 
 
 @pytest.mark.parametrize(
-    ("path", "indicator", "story"),
+    ("path", "indicator", "story", "axis_visible"),
     [
-        ("subsistence.json", "subsistence_incidence", None),
-        ("population.json", "population", None),
-        ("cpi_yoy_pct.json", "cpi_yoy_pct", None),
-        ("region_poverty.json", "region_poverty", "inflation-vs-poverty"),
-        ("regions.json", "region_poverty", "inflation-vs-poverty"),
+        ("subsistence.json", "subsistence_incidence", None, True),
+        ("population.json", "population", None, True),
+        ("cpi_yoy_pct.json", "cpi_yoy_pct", None, False),
+        ("region_poverty.json", "region_poverty", "inflation-vs-poverty", True),
+        ("regions.json", "region_poverty", "inflation-vs-poverty", True),
     ],
 )
 def test_optional_dependencies_mark_controls_and_curated_views_unavailable(
-    page, base_url, path, indicator, story
+    page, base_url, path, indicator, story, axis_visible
 ):
     page.route(f"**/data/{path}", lambda route: route.fulfill(status=500))
     _goto(page, base_url, "#story=inflation-vs-poverty&year=2023" if story else "")
-    assert page.locator(f'#x-select option[value="{indicator}"]').is_disabled()
+    option = page.locator(f'#x-select option[value="{indicator}"]')
+    if axis_visible:
+        assert option.is_disabled()
+    else:
+        assert option.count() == 0
+        assert "unavailable" in page.locator("#optional-load-notice").inner_text().lower()
     if story:
         assert (
             page.locator(f'#curated-view-links [data-story-id="{story}"]').get_attribute(
