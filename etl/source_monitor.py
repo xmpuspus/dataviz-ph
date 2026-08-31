@@ -54,15 +54,23 @@ def assess_source_state(
         age_days = None
         if fetched_at:
             age_days = (_parse_datetime(now) - _parse_datetime(fetched_at)).days
+        candidate_year = max(philgeps.REVIEWED_CANDIDATE_YEARS)
+        attestation = snapshot_inventory.get("correction_attestation")
+        try:
+            attestation_status = philgeps.validate_correction_attestation(
+                attestation, snapshot_inventory.get("snapshot_id")
+            )
+        except ValueError:
+            attestation_status = "invalid"
         snapshot = {
             "status": "present",
             "age_days": age_days,
-            "revision_status": snapshot_inventory.get("revision_status", "unknown"),
             "supported_date_range": snapshot_inventory.get("supported_date_range"),
             "latest_complete_philgeps_year": philgeps.PANEL_END,
-            "candidate_year_status": philgeps.assess_year_gate(
-                snapshot_inventory, philgeps.PANEL_END + 1
-            ),
+            "candidate_year": candidate_year,
+            "correction_attestation": attestation,
+            "correction_attestation_status": attestation_status,
+            "candidate_year_status": philgeps.assess_year_gate(snapshot_inventory, candidate_year),
         }
     geography = {"status": "unknown"}
     if geography_version:

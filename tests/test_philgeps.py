@@ -140,12 +140,41 @@ def test_correction_attestation_requires_bound_review_evidence():
         philgeps.validate_correction_attestation(attestation, "current")
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "snapshot_id", "message"),
+    [
+        ("prior_snapshot_id", "", "current", "prior snapshot"),
+        ("prior_snapshot_id", "   ", "current", "prior snapshot"),
+        ("current_snapshot_id", "", "current", "current snapshot"),
+        ("current_snapshot_id", "   ", "current", "current snapshot"),
+        ("prior_snapshot_id", " current ", "current", "prior snapshot"),
+        ("current_snapshot_id", "current", "", "observed snapshot"),
+        ("reviewed_at", pd.NaT, "current", "reviewed_at"),
+        ("reviewed_at", "not-a-timestamp", "current", "reviewed_at"),
+    ],
+)
+def test_correction_attestation_rejects_invalid_identity_or_timestamp(
+    field, value, snapshot_id, message
+):
+    attestation = {
+        "prior_snapshot_id": "prior",
+        "current_snapshot_id": "current",
+        "reviewed_at": "2026-08-31T00:00:00Z",
+        "status": "reviewed",
+        "result": "no_material_corrections",
+    }
+    attestation[field] = value
+
+    with pytest.raises(ValueError, match=message):
+        philgeps.validate_correction_attestation(attestation, snapshot_id)
+
+
 def test_year_gate_labels_snapshot_wide_anomalies_separately_from_candidate_rows():
     inventory = {
         "snapshot_id": "current",
         "anomalies": {"invalid_award_date_count": 1, "future_award_date_count": 11},
         "correction_attestation": {
-            "prior_snapshot_id": None,
+            "prior_snapshot_id": philgeps.PENDING_PRIOR_SNAPSHOT_ID,
             "current_snapshot_id": "current",
             "reviewed_at": None,
             "status": "pending",
@@ -178,7 +207,7 @@ def test_year_gate_fails_closed_when_reviewed_snapshot_is_incomplete_or_unreview
         "revision_status": "compared with a newer snapshot and reviewed",
         "anomalies": {"invalid_award_date_count": 1, "future_award_date_count": 11},
         "correction_attestation": {
-            "prior_snapshot_id": None,
+            "prior_snapshot_id": philgeps.PENDING_PRIOR_SNAPSHOT_ID,
             "current_snapshot_id": "current",
             "reviewed_at": None,
             "status": "pending",
@@ -348,7 +377,7 @@ def test_snapshot_identity_changes_when_candidate_or_attestation_changes():
         "anomalies": {"invalid_award_date_count": 1, "future_award_date_count": 11},
         "year_candidates": {"2025": {"unique_award_id_count": 1}},
         "correction_attestation": {
-            "prior_snapshot_id": None,
+            "prior_snapshot_id": philgeps.PENDING_PRIOR_SNAPSHOT_ID,
             "current_snapshot_id": "reviewed",
             "reviewed_at": None,
             "status": "pending",

@@ -15,7 +15,6 @@ def test_monitor_reports_source_and_shipped_freshness_without_network():
         expected_unit_count=82,
         snapshot_inventory={
             "fetched_at": "2026-08-01T00:00:00Z",
-            "revision_status": "review required",
             "supported_date_range": {"start": 2014, "end": 2024},
         },
         geography_version={"shipped": "2024-01", "official": "2025-01"},
@@ -25,7 +24,7 @@ def test_monitor_reports_source_and_shipped_freshness_without_network():
     assert report["sources"]["poverty"]["status"] == "reachable"
     assert report["sources"]["poverty"]["shipped_lag_years"] == 2
     assert report["snapshot"]["age_days"] == 30
-    assert report["snapshot"]["revision_status"] == "review required"
+    assert report["snapshot"]["correction_attestation_status"] == "invalid"
     assert report["geography"]["status"] == "drift"
 
 
@@ -53,7 +52,7 @@ def test_monitor_reports_philgeps_gate_and_snapshot_age():
             "supported_date_range": {"start": "1920-01-08", "end": "2034-10-04"},
             "anomalies": {"invalid_award_date_count": 1, "future_award_date_count": 11},
             "correction_attestation": {
-                "prior_snapshot_id": None,
+                "prior_snapshot_id": philgeps.PENDING_PRIOR_SNAPSHOT_ID,
                 "current_snapshot_id": "current",
                 "reviewed_at": None,
                 "status": "pending",
@@ -75,6 +74,8 @@ def test_monitor_reports_philgeps_gate_and_snapshot_age():
     snapshot = report["snapshot"]
     assert snapshot["age_days"] == 96
     assert snapshot["latest_complete_philgeps_year"] == 2024
+    assert snapshot["candidate_year"] == 2025
+    assert snapshot["correction_attestation_status"] == "pending"
     assert snapshot["candidate_year_status"]["status"] == "unavailable"
     assert snapshot["candidate_year_status"]["failed_gates"] == [
         "date_range_incomplete",
@@ -82,6 +83,41 @@ def test_monitor_reports_philgeps_gate_and_snapshot_age():
         "future_award_dates",
         "correction_comparison_pending",
     ]
+
+
+def test_monitor_uses_reviewed_candidate_year_and_attestation(monkeypatch):
+    monkeypatch.setattr(philgeps, "PANEL_END", 2030)
+    report = assess_source_state(
+        contracts={},
+        shipped_years={},
+        expected_unit_count=82,
+        snapshot_inventory={
+            "fetched_at": "2026-08-01T00:00:00Z",
+            "snapshot_id": "current",
+            "anomalies": {"invalid_award_date_count": 0, "future_award_date_count": 0},
+            "correction_attestation": {
+                "prior_snapshot_id": "prior",
+                "current_snapshot_id": "current",
+                "reviewed_at": "2026-08-01T00:00:00Z",
+                "status": "reviewed",
+                "result": "no_material_corrections",
+            },
+            "year_candidates": {
+                "2025": {
+                    "unique_award_id_count": 1,
+                    "date_range": {"start": "2025-01-01", "end": "2025-12-31"},
+                    "month_counts": {str(month): 1 for month in range(1, 13)},
+                }
+            },
+        },
+        geography_version=None,
+        now="2026-08-31T00:00:00Z",
+    )
+
+    snapshot = report["snapshot"]
+    assert snapshot["candidate_year"] == 2025
+    assert snapshot["candidate_year_status"]["status"] == "available"
+    assert snapshot["correction_attestation_status"] == "reviewed"
 
 
 def test_live_monitor_normalizes_shipped_cpi_object_shape(monkeypatch):

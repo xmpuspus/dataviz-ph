@@ -170,7 +170,7 @@
   "snapshot_id": "3ce90c99bc640cccc4ad73175aaf372201fd8ecc3f5081d0e207fee908830793",
   "correction_attestation": {
     "current_snapshot_id": "3ce90c99bc640cccc4ad73175aaf372201fd8ecc3f5081d0e207fee908830793",
-    "prior_snapshot_id": null,
+    "prior_snapshot_id": "not-yet-compared",
     "result": "not_compared",
     "reviewed_at": null,
     "status": "pending"

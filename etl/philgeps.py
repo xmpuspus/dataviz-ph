@@ -75,6 +75,7 @@ PANEL_END = 2024
 # Treat it as missing data rather than publishing PHP 0.08 / cap.
 MIN_PESO_PER_CAPITA = 100.0
 REVIEWED_CANDIDATE_YEARS = (2025,)
+PENDING_PRIOR_SNAPSHOT_ID = "not-yet-compared"
 
 
 def _parse_utc_timestamp(value: str | None) -> tuple[pd.Timestamp, str]:
@@ -216,32 +217,38 @@ def validate_correction_attestation(attestation: object, snapshot_id: object) ->
     missing = required - attestation.keys()
     if missing:
         raise ValueError(f"PhilGEPS correction attestation missing fields: {sorted(missing)!r}")
-    if attestation["current_snapshot_id"] != snapshot_id:
+    observed_snapshot_id = _normalized_snapshot_id(snapshot_id, "observed snapshot")
+    prior_snapshot_id = _normalized_snapshot_id(attestation["prior_snapshot_id"], "prior snapshot")
+    current_snapshot_id = _normalized_snapshot_id(
+        attestation["current_snapshot_id"], "current snapshot"
+    )
+    if current_snapshot_id != observed_snapshot_id:
         raise ValueError("PhilGEPS correction attestation current snapshot does not match")
+    if prior_snapshot_id == current_snapshot_id:
+        raise ValueError("PhilGEPS correction attestation prior snapshot is invalid")
     if attestation["status"] == "pending":
-        if (
-            attestation["prior_snapshot_id"] is not None
-            or attestation["reviewed_at"] is not None
-            or attestation["result"] != "not_compared"
-        ):
+        if attestation["reviewed_at"] is not None or attestation["result"] != "not_compared":
             raise ValueError("PhilGEPS pending correction attestation is malformed")
         return "pending"
     if attestation["status"] != "reviewed":
         raise ValueError("PhilGEPS correction attestation status is invalid")
-    if (
-        not isinstance(attestation["prior_snapshot_id"], str)
-        or not attestation["prior_snapshot_id"]
-        or attestation["prior_snapshot_id"] == snapshot_id
-    ):
-        raise ValueError("PhilGEPS correction attestation prior snapshot is invalid")
     if attestation["result"] not in {"no_material_corrections", "corrections_applied"}:
         raise ValueError("PhilGEPS correction attestation result is invalid")
     if not isinstance(attestation["reviewed_at"], str):
         raise ValueError("PhilGEPS correction attestation reviewed_at is missing")
-    _, reviewed_at = _parse_utc_timestamp(attestation["reviewed_at"])
+    try:
+        _, reviewed_at = _parse_utc_timestamp(attestation["reviewed_at"])
+    except (TypeError, ValueError):
+        raise ValueError("PhilGEPS correction attestation reviewed_at is invalid") from None
     if reviewed_at != attestation["reviewed_at"]:
         raise ValueError("PhilGEPS correction attestation reviewed_at must be UTC")
     return "reviewed"
+
+
+def _normalized_snapshot_id(value: object, label: str) -> str:
+    if not isinstance(value, str) or not (normalized := value.strip()):
+        raise ValueError(f"PhilGEPS correction attestation {label} is invalid")
+    return normalized
 
 
 def _candidate_series_coverage(rows: pd.DataFrame) -> dict[str, int]:
@@ -371,7 +378,7 @@ def build_snapshot_inventory(
         "chunks": chunks,
         "year_candidates": year_candidates,
         "correction_attestation": {
-            "prior_snapshot_id": None,
+            "prior_snapshot_id": PENDING_PRIOR_SNAPSHOT_ID,
             "current_snapshot_id": snapshot_id,
             "reviewed_at": None,
             "status": "pending",
