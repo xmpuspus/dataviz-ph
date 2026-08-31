@@ -59,6 +59,7 @@ def test_monitor_reports_philgeps_gate_and_snapshot_age():
                     "invalid_award_date_count": 1,
                     "future_award_date_count": 11,
                     "candidate_series_coverage": {"all_spend": 82},
+                    "correction_comparison": {"status": "not_compared"},
                 }
             },
         },

@@ -22,7 +22,6 @@ import json
 import os
 import tempfile
 from collections.abc import Callable
-from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -64,6 +63,17 @@ PANEL_END = 2024
 # area_of_delivery, contract tagged with a city that we can't map, etc.).
 # Treat it as missing data rather than publishing PHP 0.08 / cap.
 MIN_PESO_PER_CAPITA = 100.0
+REVIEWED_CORRECTION_STATUS = "compared with a newer snapshot and reviewed"
+_CANDIDATE_YEAR = PANEL_END + 1
+
+
+def _parse_utc_timestamp(value: str | None) -> tuple[pd.Timestamp, str]:
+    timestamp = pd.Timestamp(value) if value else pd.Timestamp.now(tz="UTC")
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.tz_localize("UTC")
+    else:
+        timestamp = timestamp.tz_convert("UTC")
+    return timestamp, timestamp.isoformat().replace("+00:00", "Z")
 
 
 def snapshot_identity(inventory: dict) -> str:
@@ -73,6 +83,8 @@ def snapshot_identity(inventory: dict) -> str:
         "supported_date_range": inventory.get("supported_date_range"),
         "anomalies": inventory.get("anomalies"),
         "chunks": inventory.get("chunks"),
+        "year_candidates": inventory.get("year_candidates"),
+        "revision_status": inventory.get("revision_status"),
     }
     return hashlib.sha256(
         json.dumps(fields, sort_keys=True, separators=(",", ":")).encode()
@@ -86,26 +98,43 @@ def assess_year_gate(inventory: dict, year: int) -> dict:
     failed_gates = []
     if date_range.get("start") != f"{year}-01-01" or date_range.get("end") != f"{year}-12-31":
         failed_gates.append("date_range_incomplete")
-    invalid_dates = candidate.get(
-        "invalid_award_date_count",
-        inventory.get("anomalies", {}).get("invalid_award_date_count", 0),
-    )
-    if invalid_dates:
+    month_counts = candidate.get("month_counts")
+    if (
+        not isinstance(month_counts, dict)
+        or set(month_counts) != {str(month) for month in range(1, 13)}
+        or any(not isinstance(count, int) or count <= 0 for count in month_counts.values())
+    ):
+        failed_gates.append("month_counts_incomplete")
+    invalid_dates = candidate.get("invalid_award_date_count")
+    if not isinstance(invalid_dates, int) or invalid_dates < 0:
+        failed_gates.append("invalid_award_date_count_missing")
+        invalid_dates = None
+    elif invalid_dates:
         failed_gates.append("invalid_award_dates")
-    future_dates = candidate.get(
-        "future_award_date_count", inventory.get("anomalies", {}).get("future_award_date_count", 0)
-    )
-    if future_dates:
+    future_dates = candidate.get("future_award_date_count")
+    if not isinstance(future_dates, int) or future_dates < 0:
+        failed_gates.append("future_award_date_count_missing")
+        future_dates = None
+    elif future_dates:
         failed_gates.append("future_award_dates")
-    if not candidate.get("unique_award_id_count"):
+    if (
+        not isinstance(candidate.get("unique_award_id_count"), int)
+        or candidate.get("unique_award_id_count", 0) <= 0
+    ):
         failed_gates.append("usable_unique_award_ids_missing")
-    if inventory.get("revision_status") != "compared with a newer snapshot and reviewed":
+    correction = candidate.get("correction_comparison")
+    if not isinstance(correction, dict) or "status" not in correction:
+        failed_gates.append("correction_evidence_missing")
+    elif (
+        correction["status"] != "reviewed"
+        or inventory.get("revision_status") != REVIEWED_CORRECTION_STATUS
+    ):
         failed_gates.append("correction_comparison_pending")
     return {
         "year": year,
         "status": "available" if not failed_gates else "unavailable",
         "failed_gates": failed_gates,
-        "month_counts": candidate.get("month_counts", {}),
+        "month_counts": month_counts or {},
         "date_range": date_range,
         "unique_award_id_count": candidate.get("unique_award_id_count", 0),
         "invalid_award_date_count": invalid_dates,
@@ -163,6 +192,28 @@ def _snapshot_inventory_path(cache_dir: Path) -> Path:
     return cache_dir / INVENTORY_FILENAME
 
 
+def _candidate_series_coverage(rows: pd.DataFrame) -> dict[str, int]:
+    if rows.empty:
+        return {"all_spend": 0, "doh": 0, "dpwh": 0, "infrastructure": 0}
+    from etl.psgc import load_provinces, normalize_name
+
+    provinces = load_provinces()
+
+    def coverage(frame: pd.DataFrame) -> int:
+        codes = {
+            normalize_name(raw, provinces, series="procurement")
+            for raw in frame["area_of_delivery"]
+        }
+        return len(codes - {None})
+
+    return {
+        "all_spend": coverage(rows),
+        "doh": coverage(_doh_filter(rows)),
+        "dpwh": coverage(_dpwh_filter(rows)),
+        "infrastructure": coverage(_infra_filter(rows)),
+    }
+
+
 def build_snapshot_inventory(
     cache_dir: Path | None = None, *, fetched_at: str | None = None
 ) -> dict:
@@ -176,6 +227,8 @@ def build_snapshot_inventory(
     max_date = None
     invalid_date_count = 0
     future_award_date_count = 0
+    candidate_rows: list[pd.DataFrame] = []
+    fetched_timestamp, recorded_fetched_at = _parse_utc_timestamp(fetched_at)
     for i in range(1, N_CHUNKS + 1):
         chunk = root / f"facts_awards_chunk_{i:02d}.parquet"
         if not chunk.exists():
@@ -193,7 +246,7 @@ def build_snapshot_inventory(
             raise ValueError(f"PhilGEPS chunk {i} schema differs from the complete snapshot")
         if parquet.metadata.num_rows <= 0:
             raise ValueError(f"PhilGEPS chunk {i} is empty")
-        values = parquet.read(columns=["id", "award_date"]).to_pandas()
+        values = parquet.read().to_pandas()
         usable_ids = values["id"].notna() & values["id"].astype(str).str.strip().ne("")
         if not bool(usable_ids.all()):
             raise ValueError(f"PhilGEPS chunk {i} has unusable award ids")
@@ -209,8 +262,8 @@ def build_snapshot_inventory(
         chunk_max = observed_dates.max().date()
         min_date = chunk_min if min_date is None else min(min_date, chunk_min)
         max_date = chunk_max if max_date is None else max(max_date, chunk_max)
-        fetched_date = pd.Timestamp(fetched_at or datetime.now(UTC).isoformat(), tz="UTC")
-        future_award_date_count += int((observed_dates > fetched_date).sum())
+        future_award_date_count += int((observed_dates > fetched_timestamp).sum())
+        candidate_rows.append(values.loc[dates.dt.year.eq(_CANDIDATE_YEAR)].copy())
         chunks[f"chunk_{i:02d}"] = {
             "sha256": hashlib.sha256(chunk.read_bytes()).hexdigest(),
             "row_count": parquet.metadata.num_rows,
@@ -218,6 +271,36 @@ def build_snapshot_inventory(
             "observed_date_range": {"start": chunk_min.isoformat(), "end": chunk_max.isoformat()},
         }
     chunk_digests = {name: item["sha256"] for name, item in chunks.items()}
+    candidate_data = pd.concat(candidate_rows, ignore_index=True)
+    candidate_dates = pd.to_datetime(
+        candidate_data["award_date"], errors="coerce", format="mixed", utc=True
+    )
+    candidate_ids = candidate_data["id"].dropna().astype(str).str.strip()
+    candidate_ids = candidate_ids[candidate_ids.ne("")]
+    candidate = {
+        "date_range": (
+            {
+                "start": candidate_dates.min().date().isoformat(),
+                "end": candidate_dates.max().date().isoformat(),
+            }
+            if not candidate_dates.dropna().empty
+            else {}
+        ),
+        "month_counts": {
+            str(month): int((candidate_dates.dt.month == month).sum()) for month in range(1, 13)
+        },
+        "unique_award_id_count": len(set(candidate_ids)),
+        "invalid_award_date_count": invalid_date_count,
+        "future_award_date_count": future_award_date_count,
+        "award_status_null_count": int(
+            candidate_data.get("award_status", pd.Series(dtype="object")).isna().sum()
+        ),
+        "source_system_null_count": int(
+            candidate_data.get("source_system", pd.Series(dtype="object")).isna().sum()
+        ),
+        "candidate_series_coverage": _candidate_series_coverage(candidate_data),
+        "correction_comparison": {"status": "not_compared"},
+    }
     return {
         "schema_version": 2,
         "upstream_identity": {
@@ -225,7 +308,7 @@ def build_snapshot_inventory(
             "url": CHUNK_BASE,
             "chunk_count": N_CHUNKS,
         },
-        "fetched_at": fetched_at or datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "fetched_at": recorded_fetched_at,
         "correction_policy": SNAPSHOT_CORRECTION_POLICY,
         "revision_status": "not compared to a newer snapshot",
         "supported_date_range": {"start": min_date.isoformat(), "end": max_date.isoformat()},
@@ -240,6 +323,7 @@ def build_snapshot_inventory(
         ).hexdigest(),
         "usable_unique_award_id_count": len(snapshot_ids),
         "chunks": chunks,
+        "year_candidates": {str(_CANDIDATE_YEAR): candidate},
     }
 
 
@@ -276,6 +360,8 @@ def load_snapshot_inventory(*, required: bool = True) -> dict | None:
         "schema_columns",
         "snapshot_id",
         "chunks",
+        "year_candidates",
+        "revision_status",
     }
     missing = required_keys - inventory.keys()
     if missing:
@@ -291,14 +377,29 @@ def load_reviewed_snapshot_inventory(*, required: bool = True) -> dict | None:
         if required:
             raise FileNotFoundError("Reviewed PhilGEPS inventory is missing from the repository.")
         return None
-    return json.loads(REVIEWED_INVENTORY_PATH.read_text())
+    inventory = json.loads(REVIEWED_INVENTORY_PATH.read_text())
+    required_keys = {"year_candidates", "revision_status", "usable_unique_award_id_count"}
+    missing = required_keys - inventory.keys()
+    if missing:
+        raise ValueError(
+            f"Reviewed PhilGEPS inventory missing required fields: {sorted(missing)!r}"
+        )
+    return inventory
 
 
 def verify_reviewed_snapshot() -> dict:
     """Reject cache drift before processing can publish a mixed or changed snapshot."""
     reviewed = load_reviewed_snapshot_inventory()
     observed = build_snapshot_inventory(fetched_at=reviewed["fetched_at"])
-    for key in ("snapshot_id", "schema_columns", "supported_date_range", "anomalies", "chunks"):
+    for key in (
+        "snapshot_id",
+        "schema_columns",
+        "supported_date_range",
+        "anomalies",
+        "chunks",
+        "year_candidates",
+        "revision_status",
+    ):
         if observed.get(key) != reviewed.get(key):
             raise ValueError(f"PhilGEPS cache does not match reviewed inventory: {key} differs")
     return reviewed

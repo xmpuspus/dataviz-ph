@@ -188,6 +188,9 @@
         "dpwh": 78,
         "infrastructure": 81
       },
+      "correction_comparison": {
+        "status": "not_compared"
+      },
       "date_range": {
         "end": "2025-12-27",
         "start": "2025-01-01"
