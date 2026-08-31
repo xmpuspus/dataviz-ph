@@ -121,6 +121,17 @@ def test_axis_picker_chooses_with_keyboard_and_skips_incompatible_options(page, 
     assert trigger.get_attribute("aria-expanded") == "false"
 
 
+def test_axis_picker_marks_incompatible_and_failed_options_disabled(page, base_url):
+    page.route("**/data/population.json", lambda route: route.fulfill(status=404, body=""))
+    _load(page, base_url)
+    _, panel = _open_picker(page, "y")
+    assert (
+        page.locator("#axis-option-y-dpwh_spend_per_capita").get_attribute("aria-disabled")
+        == "true"
+    )
+    assert page.locator("#axis-option-y-population").get_attribute("aria-disabled") == "true"
+
+
 def _axe_violations(page, base_url):
     page.add_script_tag(url=f"{base_url}__test__/axe-core-4.12.1.min.js")
     return page.evaluate(

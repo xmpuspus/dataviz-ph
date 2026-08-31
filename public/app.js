@@ -2919,32 +2919,53 @@ function renderSrTable(story, data, state, render) {
   // when the loop stops (stopPlay calls render with the flag cleared).
   const summary = document.getElementById("sr-summary");
   if (summary && !IS_AUTOPLAYING) {
-    const yName = data.indicators[story.y] ? data.indicators[story.y].name : story.y;
+    const yName = indicatorName(story.y, data);
     if (rows.length) {
       const byY = [...rows].sort((a, b) => b.y - a.y);
       const hi = byY[0];
       const lo = byY[byY.length - 1];
-      summary.textContent =
-        `${state.year}: ${yName}, ${rows.length} areas. ` +
-        `Highest ${hi.name} ${formatValue(hi.y, story.y)}, ` +
-        `lowest ${lo.name} ${formatValue(lo.y, story.y)}.`;
+      summary.textContent = tFill(
+        t(
+          "controls.chart_summary",
+          "{year}: {indicator}, {count} areas. Highest {highest} {highest_value}, lowest {lowest} {lowest_value}.",
+        ),
+        {
+          year: state.year,
+          indicator: yName,
+          count: rows.length,
+          highest: hi.name,
+          highest_value: formatValue(hi.y, story.y),
+          lowest: lo.name,
+          lowest_value: formatValue(lo.y, story.y),
+        },
+      );
     } else {
-      summary.textContent = `${state.year}: no data for this combination.`;
+      summary.textContent = tFill(
+        t("controls.chart_no_data", "{year}: no data for this combination."),
+        { year: state.year },
+      );
     }
   }
 
   const tbl = document.createElement("table");
   const cap = document.createElement("caption");
-  cap.textContent = `${story.headline} Year ${state.year}, ${rows.length} areas.`;
+  cap.textContent = tFill(
+    t("controls.table_caption", "{headline} Year {year}, {count} areas."),
+    {
+      headline: t(`stories.${story.id}.headline`, story.headline),
+      year: state.year,
+      count: rows.length,
+    },
+  );
   tbl.appendChild(cap);
   const thead = document.createElement("thead");
   const trh = document.createElement("tr");
   for (const h of [
-    regionMode ? "Region" : "Province",
-    "Island group",
-    shortAxisName(story.x, state),
-    shortAxisName(story.y, state),
-    "Population (2020)",
+    regionMode ? t("controls.table_region", "Region") : t("controls.table_province", "Province"),
+    t("controls.table_island", "Island group"),
+    indicatorName(story.x, data),
+    indicatorName(story.y, data),
+    t("controls.table_population", "Population (2020)"),
     t("controls.select_area", "Select area"),
   ]) {
     const th = document.createElement("th");
@@ -2966,7 +2987,7 @@ function renderSrTable(story, data, state, render) {
       ISLAND_LABEL[r.island] || r.island,
       formatValue(r.x, story.x),
       formatValue(r.y, story.y),
-      r.pop ? COUNT.format(r.pop) : "not shown at this grain",
+      r.pop ? COUNT.format(r.pop) : t("controls.population_unavailable", "not shown at this grain"),
     ]) {
       const td = document.createElement("td");
       td.textContent = cell;
@@ -3223,6 +3244,7 @@ function showIndicatorPanel(anchorBtn, kind, currentId, otherId, data) {
       name.textContent = indicatorName(ind.id, data);
       if (isCurrent) li.classList.add("active");
       if (sameAsOther) li.classList.add("disabled");
+      if (sameAsOther) li.setAttribute("aria-disabled", "true");
       if (failedIndicator(data, ind.id)) {
         li.setAttribute("aria-disabled", "true");
         name.textContent = `${indicatorName(ind.id, data)} (${t("trust.unavailable", "unavailable")})`;
@@ -4398,6 +4420,14 @@ async function main() {
     // Never narrate inside an iframe: an embed is someone else's page, and the
     // chrome the arc relies on (skip/replay, finding box) is hidden there.
     if (state.embed) return;
+    if (REDUCE_MOTION) {
+      stopPlay();
+      writeArcSeen();
+      showStartChoice(false);
+      showReplay(true);
+      showSkip(false);
+      return;
+    }
     // Stop any live autoplay loop so startPlay() in beat REVEAL doesn't early-return.
     stopPlay();
     arcRunning = true;

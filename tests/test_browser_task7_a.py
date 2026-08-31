@@ -48,8 +48,8 @@ def browser():
             instance.close()
 
 
-def _page(browser, *, returning=False):
-    context = browser.new_context()
+def _page(browser, *, returning=False, reduced_motion=None):
+    context = browser.new_context(reduced_motion=reduced_motion)
     if returning:
         context.add_init_script(
             "localStorage.setItem('datavizph_arc_seen_v1', '1');",
@@ -139,5 +139,23 @@ def test_returning_visit_stays_static_and_offers_replay(browser, base_url):
         assert page.locator("#year-display").inner_text() == year
         assert page.evaluate("() => window.__datavizph_playing()") is False
         assert page.locator("#replay-arc").is_visible()
+    finally:
+        context.close()
+
+
+def test_reduced_motion_play_and_replay_stay_static(browser, base_url):
+    context, page = _page(browser, reduced_motion="reduce")
+    try:
+        _load(page, base_url)
+        year = page.locator("#year-display").inner_text()
+        page.get_by_role("button", name="Play the guided story").click()
+        page.wait_for_timeout(5000)
+        assert page.locator("#year-display").inner_text() == year
+        assert page.evaluate("() => window.__datavizph_playing()") is False
+
+        page.locator("#replay-arc").click()
+        page.wait_for_timeout(200)
+        assert page.locator("#year-display").inner_text() == year
+        assert page.evaluate("() => window.__datavizph_playing()") is False
     finally:
         context.close()

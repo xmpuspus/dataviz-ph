@@ -173,3 +173,33 @@ def test_tagalog_area_actions_use_localized_labels(page, base_url):
     assert (
         page.locator("#chip-remove-141100000").get_attribute("aria-label") == "Alisin ang Benguet"
     )
+    assert page.locator("#chart-instructions").inner_text().startswith("Tsart ng mga bula")
+    assert (
+        page.locator("#chart-data-table caption")
+        .inner_text()
+        .startswith("Labing-isang taon, limang trilyon sa kalsada.")
+    )
+    assert page.locator("#chart-data-table thead th").all_inner_texts() == [
+        "Lalawigan",
+        "Pangkat ng isla",
+        "Gastos ng DPWH kada tao",
+        "Antas ng kahirapan ng mga pamilya",
+        "Populasyon (2020)",
+        "Piliin ang lugar",
+    ]
+
+
+def test_tagalog_region_table_localizes_unavailable_population_text(page, base_url):
+    _load(page, base_url, "#story=inflation-vs-poverty&year=2023")
+    page.locator("#lang-toggle").click()
+    page.wait_for_function("() => document.documentElement.lang === 'tl'")
+    page.locator("#chart-data-table > summary").click()
+    assert (
+        page.locator("#chart-data-table caption")
+        .inner_text()
+        .startswith("Kung saan pinakamabilis tumaas ang presyo")
+    )
+    assert page.locator("#chart-data-table thead th").nth(0).inner_text() == "Rehiyon"
+    assert page.locator("#chart-data-table tbody td").nth(3).inner_text() == (
+        "hindi ipinapakita sa antas na ito"
+    )
