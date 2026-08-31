@@ -1340,6 +1340,7 @@ def refresh_automated_psa_public_data() -> None:
         validate.validate_uniqueness(
             [row for row in poverty_depth if row["measure"] == measure], measure
         )
+    validate.validate_precision(poverty_depth)
     poverty_depth_status = poverty_depth_coverage(
         poverty_depth,
         len(provinces),
