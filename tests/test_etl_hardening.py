@@ -127,7 +127,8 @@ def test_dedup_drops_duplicate_ids(tmp_path, monkeypatch):
         "072200000": {"name": "Cebu", "island_group": "visayas", "region_code": "070000000"}
     }
 
-    def _fake_normalize(raw, provs):
+    def _fake_normalize(raw, provs, *, series=None):
+        assert series == "procurement"
         if isinstance(raw, str) and raw.strip().lower() == "cebu":
             return "072200000"
         return None

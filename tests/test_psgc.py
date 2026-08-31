@@ -135,8 +135,9 @@ def test_current_split_maguindanao_names_map_to_declared_historical_analysis_uni
         "region_code": "1900000000",
     }
 
-    assert normalize_name("Maguindanao del Norte", provs) == "153800000"
-    assert normalize_name("Maguindanao del Sur", provs) == "153800000"
+    assert normalize_name("Maguindanao del Norte", provs, series="population") == "153800000"
+    assert normalize_name("Maguindanao del Sur", provs, series="procurement") == "153800000"
+    assert normalize_name("Maguindanao del Norte", provs) is None
     maguindanao = [
         item
         for item in build_geography_crosswalk()["mappings"]

@@ -17,6 +17,7 @@ from etl.geography import (
     OFFICIAL_PSGC_2Q_2026_FIXTURE,
     build_geography_crosswalk,
     current_province_records,
+    series_allows_split_mapping,
     validate_crosswalk,
 )
 
@@ -191,3 +192,23 @@ def test_gdp_loader_omits_split_maguindanao_nonadditive_rows(monkeypatch) -> Non
     rows = psa_openstat.fetch_gdp_per_capita(provinces, normalize_name)
 
     assert rows == []
+
+
+@pytest.mark.parametrize("series", [None, "unknown", "procuremnt"])
+def test_split_maguindanao_rejects_missing_unknown_or_misspelled_series(series: str | None) -> None:
+    from etl.psgc import normalize_name
+
+    provinces = {"153800000": {"name": "Maguindanao"}}
+
+    assert series_allows_split_mapping(series) is False
+    assert normalize_name("Maguindanao del Norte", provinces, series=series) is None
+
+
+@pytest.mark.parametrize("series", ["population", "procurement"])
+def test_split_maguindanao_allows_only_declared_additive_series(series: str) -> None:
+    from etl.psgc import normalize_name
+
+    provinces = {"153800000": {"name": "Maguindanao"}}
+
+    assert series_allows_split_mapping(series) is True
+    assert normalize_name("Maguindanao del Norte", provinces, series=series) == "153800000"

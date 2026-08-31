@@ -47,7 +47,7 @@ HUC_TO_PARENT: dict[str, str] = {
     "city of butuan": "160200000",
     "city of isabela": "150700000",
 }
-NONADDITIVE_SPLIT_SERIES = {"poverty_fies", "gdp_per_capita"}
+ADDITIVE_SPLIT_SERIES = {"population", "procurement"}
 
 
 def _analysis_provinces() -> dict[str, dict]:
@@ -257,7 +257,7 @@ def validate_crosswalk(crosswalk: dict) -> None:
 
 def series_allows_split_mapping(series: str | None) -> bool:
     """Return whether the series can sum current Maguindanao source rows."""
-    return series not in NONADDITIVE_SPLIT_SERIES
+    return series in ADDITIVE_SPLIT_SERIES
 
 
 def enrich_analysis_provinces(provinces: dict | None = None) -> dict:

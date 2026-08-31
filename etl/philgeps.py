@@ -336,7 +336,9 @@ def _aggregate(
     # Total peso value before province attribution (denominator for coverage share).
     total_peso = big["contract_amount"].sum()
 
-    big["psgc"] = big["area_of_delivery"].apply(lambda s: normalize_name(s, provinces))
+    big["psgc"] = big["area_of_delivery"].apply(
+        lambda s: normalize_name(s, provinces, series="procurement")
+    )
     big = big.dropna(subset=["psgc", "contract_amount"])
 
     # Per-province attributed total (numerator for coverage share).
