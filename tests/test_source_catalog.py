@@ -121,3 +121,11 @@ def test_catalog_skips_a_stale_discovered_leaf_before_validated_fallback():
     assert (
         resolve_reviewed_table(contract, ["stale.px"], metadata) == contract.reviewed_fallbacks[0]
     )
+
+
+def test_gdp_contract_discovers_from_published_root_and_requires_2025():
+    contract = PSA_TABLES["gdp_per_capita"]
+
+    assert contract.directory == "2A/PPA"
+    assert contract.expected_years[-1] == 2025
+    assert contract.reviewed_fallbacks == ("2A/PPA/2025/0092A5FPPA8.px",)

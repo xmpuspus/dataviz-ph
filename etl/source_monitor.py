@@ -98,6 +98,10 @@ def _shipped_years() -> dict[str, int]:
     }
     years: dict[str, int] = {}
     for source, filename in files.items():
+        fixed_source_year = PSA_TABLES[source].fixed_source_year
+        if fixed_source_year is not None:
+            years[source] = fixed_source_year
+            continue
         path = PUBLIC_DATA / filename
         if not path.exists():
             continue
@@ -105,7 +109,14 @@ def _shipped_years() -> dict[str, int]:
         if isinstance(rows, dict):
             values = [int(year) for year in rows if str(year).isdigit()]
         else:
-            values = [row.get("year") for row in rows if isinstance(row.get("year"), int)]
+            source_rows = rows
+            if source in {"poverty", "subsistence"}:
+                source_rows = [
+                    row
+                    for row in rows
+                    if not row.get("interp", False) and not row.get("extrap", False)
+                ]
+            values = [row.get("year") for row in source_rows if isinstance(row.get("year"), int)]
         if values:
             years[source] = max(values)
     return years
@@ -137,7 +148,7 @@ def run_live_checks() -> dict:
         evidence[name] = {
             "reachable": True,
             "path": path,
-            "latest_official_year": _latest_year(metadata),
+            "latest_official_year": PSA_TABLES[name].fixed_source_year or _latest_year(metadata),
             "unit_coverage": len(
                 next(
                     (

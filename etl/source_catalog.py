@@ -27,6 +27,7 @@ class TableContract:
     measure_terms: tuple[str, ...]
     expected_years: tuple[int, ...]
     vintage_terms: tuple[str, ...]
+    fixed_source_year: int | None
     reviewed_fallbacks: tuple[str, ...]
 
 
@@ -39,6 +40,7 @@ PSA_TABLES: dict[str, TableContract] = {
         measure_terms=("poverty incidence",),
         expected_years=(2018, 2021, 2023),
         vintage_terms=(),
+        fixed_source_year=None,
         reviewed_fallbacks=("1F/FY/0021F3DF01A.px",),
     ),
     "subsistence": TableContract(
@@ -49,6 +51,7 @@ PSA_TABLES: dict[str, TableContract] = {
         measure_terms=("subsistence incidence",),
         expected_years=(2018, 2021, 2023),
         vintage_terms=(),
+        fixed_source_year=None,
         reviewed_fallbacks=("1F/FY/0061F3DF03A.px",),
     ),
     "population": TableContract(
@@ -59,16 +62,18 @@ PSA_TABLES: dict[str, TableContract] = {
         measure_terms=("total population",),
         expected_years=(),
         vintage_terms=("2020",),
+        fixed_source_year=2020,
         reviewed_fallbacks=("1A/PO_2020/0011A6DPHH0.px",),
     ),
     "gdp_per_capita": TableContract(
         name="gdp_per_capita",
-        directory="2A/PPA/2025",
+        directory="2A/PPA",
         title_terms=("per capita", "gross domestic product"),
         dimensions=("Geolocation", "Type of Valuation", "Year"),
         measure_terms=("constant", "2018"),
-        expected_years=(2022, 2023, 2024),
+        expected_years=(2022, 2023, 2024, 2025),
         vintage_terms=(),
+        fixed_source_year=None,
         reviewed_fallbacks=("2A/PPA/2025/0092A5FPPA8.px",),
     ),
     "cpi": TableContract(
@@ -79,6 +84,7 @@ PSA_TABLES: dict[str, TableContract] = {
         measure_terms=("all items",),
         expected_years=(2018,),
         vintage_terms=(),
+        fixed_source_year=None,
         reviewed_fallbacks=("2M/PI/CPI/2018NEW/0012M4ACP22.px",),
     ),
 }

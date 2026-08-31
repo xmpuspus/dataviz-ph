@@ -98,3 +98,37 @@ The first live monitor also failed on the retired 1E/FY path. A live metadata pr
 ### Round 1 commit
 
 760bbd3 Harden source contract monitoring
+
+## Round 2 review repairs
+
+### RED evidence
+
+    tests/test_source_catalog.py
+    AssertionError: '2A/PPA/2025' != '2A/PPA'
+
+    tests/test_source_monitor.py
+    Poverty and subsistence returned 2024 instead of their 2023 source anchors.
+    Population returned 2024 instead of its 2020 census vintage.
+    Population official year returned 2025 instead of 2020.
+
+### GREEN evidence
+
+    .venv/bin/python -m pytest -q tests/test_source_catalog.py tests/test_source_monitor.py tests/test_philgeps.py tests/test_etl_hardening.py tests/test_psa_inflation.py tests/test_cache.py tests/test_imports.py
+    65 passed in 0.69s
+
+    .venv/bin/ruff check .
+    All checks passed!
+
+    .venv/bin/ruff format --check .
+    36 files already formatted
+
+    python -m etl.source_monitor --live
+    GDP official 2025, shipped 2024, lag 1.
+    Poverty and subsistence official and shipped 2023, lag 0.
+    Population official and shipped 2020, lag 0.
+    CPI official 2026, shipped 2025, lag 1.
+    The monitor still reports a 96-day snapshot and PSGC hash drift.
+
+### Round 2 commit
+
+Pending commit.

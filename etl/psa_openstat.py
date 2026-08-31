@@ -139,24 +139,28 @@ def _fetch_or_cache(name: str, fetch: callable) -> dict:
 
 
 def _directory_paths(directory: str, title_terms: tuple[str, ...]) -> list[str]:
-    """Return PXWeb leaf paths from one reviewed directory listing."""
-    try:
-        listing = _get_json(f"{API_BASE}/{directory}")
-    except httpx.HTTPError:
-        # PSA has retired subject directories without retiring their leaf tables.
-        # The reviewed fallback still undergoes full metadata contract validation.
-        return []
-    entries = listing if isinstance(listing, list) else listing.get("data", [])
+    """Return matching PXWeb leaves below a reviewed root."""
+    pending = [(directory, 0)]
     paths: list[str] = []
-    for entry in entries:
-        identifier = entry.get("id") if isinstance(entry, dict) else None
-        title = str(entry.get("text", "")).lower() if isinstance(entry, dict) else ""
-        if (
-            isinstance(identifier, str)
-            and identifier.endswith(".px")
-            and all(term in title for term in title_terms)
-        ):
-            paths.append(identifier if "/" in identifier else f"{directory}/{identifier}")
+    while pending:
+        current, depth = pending.pop()
+        try:
+            listing = _get_json(f"{API_BASE}/{current}")
+        except httpx.HTTPError:
+            # PSA has retired subject directories without retiring their leaf tables.
+            # The reviewed fallback still undergoes full metadata contract validation.
+            continue
+        entries = listing if isinstance(listing, list) else listing.get("data", [])
+        for entry in entries:
+            identifier = entry.get("id") if isinstance(entry, dict) else None
+            title = str(entry.get("text", "")).lower() if isinstance(entry, dict) else ""
+            if not isinstance(identifier, str):
+                continue
+            path = identifier if "/" in identifier else f"{current}/{identifier}"
+            if identifier.endswith(".px") and all(term in title for term in title_terms):
+                paths.append(path)
+            elif entry.get("type") == "l" and depth < 2:
+                pending.append((path, depth + 1))
     return paths
 
 

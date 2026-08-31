@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from etl import philgeps, psa_openstat, source_monitor
 from etl.source_monitor import assess_source_state
 
@@ -56,3 +58,37 @@ def test_live_monitor_normalizes_shipped_cpi_object_shape(monkeypatch):
     report = source_monitor.run_live_checks()
 
     assert report["sources"]["cpi"]["shipped_year"] == 2025
+    assert report["sources"]["population"]["latest_official_year"] == 2020
+
+
+def test_shipped_years_use_source_anchors_and_population_vintage(tmp_path, monkeypatch):
+    monkeypatch.setattr(source_monitor, "PUBLIC_DATA", tmp_path)
+    (tmp_path / "poverty.json").write_text(
+        json.dumps(
+            [
+                {"year": 2023, "interp": False, "extrap": False},
+                {"year": 2024, "interp": False, "extrap": True},
+            ]
+        )
+    )
+    (tmp_path / "subsistence.json").write_text(
+        json.dumps(
+            [
+                {"year": 2023, "interp": False, "extrap": False},
+                {"year": 2024, "interp": True, "extrap": False},
+            ]
+        )
+    )
+    (tmp_path / "population.json").write_text(json.dumps([{"year": 2024}]))
+    (tmp_path / "gdp_per_capita.json").write_text(json.dumps([{"year": 2024}]))
+    (tmp_path / "cpi.json").write_text(json.dumps({"2018": 100.0, "2025": 128.2}))
+
+    years = source_monitor._shipped_years()
+
+    assert years == {
+        "poverty": 2023,
+        "subsistence": 2023,
+        "population": 2020,
+        "gdp_per_capita": 2024,
+        "cpi": 2025,
+    }
