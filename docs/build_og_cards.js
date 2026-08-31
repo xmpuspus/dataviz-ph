@@ -23,7 +23,6 @@ function loadPlaywright() {
   }
   throw new Error('playwright not found; run `npx playwright` once or `npm i -g playwright`');
 }
-const PW = loadPlaywright();
 const fs = require('fs');
 const path = require('path');
 
@@ -124,7 +123,9 @@ function drawScatter() {
 }
 
 async function main() {
-  const browser = await PW.chromium.launch();
+  // Loaded here, not at module scope: axisLabel and cardHtml are pure, and a
+  // caller that only wants a label must not need a browser automation package.
+  const browser = await loadPlaywright().chromium.launch();
   for (const story of STORIES) {
     // Fresh page per card so layout is clean before the scatter is drawn.
     const page = await browser.newPage({ viewport: { width: 1200, height: 630 }, deviceScaleFactor: 1 });

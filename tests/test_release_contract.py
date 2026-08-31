@@ -66,7 +66,11 @@ def test_security_workflow_scans_secrets_and_dependencies() -> None:
     assert "gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e" in security
     assert "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}" in security
     assert re.search(r"astral-sh/setup-uv@[0-9a-f]{40}", security)
-    assert "uvx --python 3.12.4 pip-audit==2.10.1 --requirement requirements.lock" in security
+    assert (
+        "uvx --python 3.12.4 pip-audit==2.10.1 --requirement requirements.lock --no-deps"
+        in security
+    )
+    assert "GITLEAKS_CONFIG: .gitleaks.toml" in security
     assert re.search(r"actions/setup-node@[0-9a-f]{40}", security)
     assert 'node-version: "24.20.0"' in security
     assert "npm ci" in security

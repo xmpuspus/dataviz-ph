@@ -24,6 +24,12 @@ jobs:
         uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Without this the action runs its own default rules and flags the
+          # SHA-256 digest that every generated provenance file records.
+          GITLEAKS_CONFIG: .gitleaks.toml
+          # The job holds read-only permissions, so it cannot write a PR comment.
+          # Findings go to the job summary and the artifact.
+          GITLEAKS_ENABLE_COMMENTS: "false"
 
   dependencies:
     runs-on: ubuntu-latest
@@ -35,7 +41,10 @@ jobs:
           version: "0.9.8"
 
       - name: Audit the locked Python environment
-        run: uvx --python 3.12.4 pip-audit==2.10.1 --requirement requirements.lock
+        # requirements.lock is already the complete closure, so no resolution is
+        # needed. Resolving builds a throwaway venv, and ensurepip is missing from
+        # the uv-managed interpreter on the runner.
+        run: uvx --python 3.12.4 pip-audit==2.10.1 --requirement requirements.lock --no-deps
 
   browser-assets:
     runs-on: ubuntu-latest
