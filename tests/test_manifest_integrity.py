@@ -108,3 +108,19 @@ def test_manifest_only_refresh_keeps_the_attribution_shares(tmp_path) -> None:
         == before["derived"]["dpwh_attribution_share_by_psgc"]
     )
     assert kept["dpwh_attributed_php_total"] == 1
+
+
+def test_the_about_twenty_percent_unattributed_claim_matches_the_shipped_shares() -> None:
+    """Six places in the prose say about 20 percent of award value is unattributed.
+
+    The per-area shares are the evidence for that sentence. They sum to the
+    attributed fraction, so the unattributed remainder must round to 20 percent.
+    A future snapshot that shifts attribution has to move the prose with it.
+    """
+    shares = _manifest()["derived"]["dpwh_attribution_share_by_psgc"]
+    attributed = sum(shares.values())
+    unattributed_pct = (1 - attributed) * 100
+    assert 15 <= unattributed_pct <= 25, (
+        f"the prose says about 20 percent unattributed, the shares say "
+        f"{unattributed_pct:.1f} percent. Update both together."
+    )
