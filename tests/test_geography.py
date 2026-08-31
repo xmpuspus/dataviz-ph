@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+from copy import deepcopy
 from pathlib import Path
+
+import pytest
 
 from etl.geography import (
     ANALYSIS_AREA_COUNT,
     ANALYSIS_GEOGRAPHY_VERSION,
     CURRENT_PSGC_VINTAGE,
     HISTORICAL_GEOMETRY_VERSION,
+    OFFICIAL_PSGC_2Q_2026_FIXTURE,
     build_geography_crosswalk,
     current_province_records,
     validate_crosswalk,
@@ -28,6 +32,20 @@ def test_current_official_psgc_fixture_covers_all_82_current_provinces() -> None
     }
     assert all(len(record["source_psgc"]) == 10 for record in records)
     assert all("correspondence_code" in record for record in records)
+
+
+def test_current_records_are_exactly_the_independent_reviewed_psa_fixture() -> None:
+    fixture = json.loads(OFFICIAL_PSGC_2Q_2026_FIXTURE.read_text())
+
+    assert len(fixture) == 82
+    assert current_province_records() == fixture
+    assert fixture[0] == {
+        "source_psgc": "0102800000",
+        "correspondence_code": "012800000",
+        "name": "Ilocos Norte",
+        "current_region_code": "0100000000",
+        "analysis_psgc": "012800000",
+    }
 
 
 def test_crosswalk_maps_current_psgc_to_the_stable_82_area_universe() -> None:
@@ -85,3 +103,91 @@ def test_denominator_transforms_are_declared_for_hucs_and_virtual_ncr() -> None:
     assert transforms["whole_province_population_huc_rollup"]["source_level"] == "province_and_huc"
     assert transforms["virtual_ncr_population"]["operation"] == "published_regional_total"
     assert "Cotabato City" in transforms["whole_province_population_huc_rollup"]["excluded_hucs"]
+
+
+def test_crosswalk_rejects_an_invented_official_identity() -> None:
+    crosswalk = build_geography_crosswalk()
+    crosswalk["mappings"][0]["name"] = "Invented Province"
+
+    with pytest.raises(ValueError, match="official PSGC fixture"):
+        validate_crosswalk(crosswalk)
+
+
+@pytest.mark.parametrize(
+    "section", ["boundary_events", "denominator_transforms", "series_policies"]
+)
+def test_crosswalk_rejects_missing_required_contract_sections(section: str) -> None:
+    crosswalk = deepcopy(build_geography_crosswalk())
+    crosswalk[section] = []
+
+    with pytest.raises(ValueError, match=section):
+        validate_crosswalk(crosswalk)
+
+
+def test_crosswalk_rejects_the_wrong_virtual_unit() -> None:
+    crosswalk = deepcopy(build_geography_crosswalk())
+    virtual = next(item for item in crosswalk["mappings"] if item["is_virtual"])
+    virtual["analysis_psgc"] = "012800000"
+
+    with pytest.raises(ValueError, match="virtual NCR"):
+        validate_crosswalk(crosswalk)
+
+
+def test_crosswalk_rejects_a_series_policy_without_cotabato_city_handling() -> None:
+    crosswalk = deepcopy(build_geography_crosswalk())
+    population = next(item for item in crosswalk["series_policies"] if item["id"] == "population")
+    del population["cotabato_city"]
+
+    with pytest.raises(ValueError, match="series_policies"):
+        validate_crosswalk(crosswalk)
+
+
+def test_series_policies_declare_supported_operations_and_prohibited_averages() -> None:
+    policies = {item["id"]: item for item in build_geography_crosswalk()["series_policies"]}
+
+    assert set(policies) == {"population", "poverty_fies", "procurement", "gdp_per_capita"}
+    assert len(policies["population"]["huc_to_parent"]) == 18
+    assert policies["population"]["cotabato_city"] == "exclude"
+    assert policies["population"]["ncr"] == "published_regional_total"
+    assert policies["procurement"]["split_maguindanao"] == "sum_additive_values"
+    assert policies["poverty_fies"]["split_maguindanao"] == "omit_without_recomputation"
+    assert policies["gdp_per_capita"]["split_maguindanao"] == "omit_without_recomputation"
+    assert all(policy["prohibited_operation"] == "average" for policy in policies.values())
+
+
+def test_gdp_loader_omits_split_maguindanao_nonadditive_rows(monkeypatch) -> None:
+    from etl import psa_openstat
+    from etl.psgc import normalize_name
+
+    meta = {
+        "variables": [
+            {
+                "code": "Geolocation",
+                "values": ["north", "south"],
+                "valueTexts": ["Maguindanao del Norte", "Maguindanao del Sur"],
+            },
+            {
+                "code": "Type of Valuation",
+                "values": ["constant"],
+                "valueTexts": ["At Constant 2018 Prices"],
+            },
+            {"code": "Year", "values": ["2024"], "valueTexts": ["2024"]},
+        ]
+    }
+    payload = {
+        "data": [
+            {"key": ["north", "constant", "2024"], "values": [100.0]},
+            {"key": ["south", "constant", "2024"], "values": [200.0]},
+        ]
+    }
+    monkeypatch.setattr(psa_openstat, "discover_table", lambda _name: ("gdp.px", {}))
+    monkeypatch.setattr(
+        psa_openstat,
+        "_fetch_or_cache",
+        lambda name, _fetch: meta if name.endswith("meta.json") else payload,
+    )
+    provinces = {"153800000": {"name": "Maguindanao"}}
+
+    rows = psa_openstat.fetch_gdp_per_capita(provinces, normalize_name)
+
+    assert rows == []

@@ -17,7 +17,12 @@ from pathlib import Path
 
 import httpx
 
-from etl.geography import MAGUINDANAO_CODE, enrich_analysis_provinces
+from etl.geography import (
+    HUC_TO_PARENT,
+    MAGUINDANAO_CODE,
+    enrich_analysis_provinces,
+    series_allows_split_mapping,
+)
 from etl.psa_openstat import _RETRY  # reuse the same retry policy
 
 PSGC_BASE = "https://psgc.gitlab.io/api"
@@ -52,40 +57,6 @@ ALIASES: dict[str, str] = {
 SKIPPED_NAMES = {
     "maguindanao del norte",
     "maguindanao del sur",
-}
-
-# Highly Urbanized Cities outside NCR. PSA publishes province poverty rates and
-# populations "without" these HUCs (e.g. "Cebu (w/o the City of Cebu, ...)").
-# For per-capita spend to reflect the whole geographic province (which is what
-# PhilGEPS area_of_delivery covers), we sum HUC populations back into the parent.
-# NCR HUCs are intentionally absent here: NCR is already aggregated as one bubble
-# via the regional row, so its 16 cities must not be double-counted.
-HUC_TO_PARENT: dict[str, str] = {
-    # Visayas
-    "city of cebu": "072200000",  # Cebu
-    "city of lapu-lapu (opon)": "072200000",
-    "city of mandaue": "072200000",
-    "city of iloilo": "063000000",  # Iloilo
-    "city of bacolod": "064500000",  # Negros Occidental
-    "city of tacloban": "083700000",  # Leyte
-    # Luzon
-    "city of angeles": "035400000",  # Pampanga
-    "city of olongapo": "037100000",  # Zambales
-    "city of lucena": "045600000",  # Quezon
-    "city of puerto princesa": "175300000",  # Palawan
-    "city of baguio": "141100000",  # Benguet
-    # Mindanao
-    "city of davao": "112400000",  # Davao Del Sur
-    "city of general santos (dadiangas)": "126300000",  # South Cotabato
-    "city of zamboanga": "097300000",  # Zamboanga del Sur
-    "city of cagayan de oro": "104300000",  # Misamis Oriental
-    "city of iligan": "103500000",  # Lanao Del Norte
-    "city of butuan": "160200000",  # Agusan Del Norte
-    # BARMM / special
-    "city of isabela": "150700000",  # Basilan
-    # Note: Cotabato City sits inside Maguindanao geographically but is an
-    # independent component city assigned to BARMM. Excluded here to avoid
-    # mis-attributing its contracts; documented as one of the unattributable HUCs.
 }
 
 
@@ -178,6 +149,7 @@ def normalize_name(
     raw: str,
     provinces: dict[str, dict] | None = None,
     year: int | None = None,
+    series: str | None = None,
 ) -> str | None:
     """Map a raw area string to a PSGC code, or None if unmappable.
 
@@ -198,7 +170,10 @@ def normalize_name(
         return None
     if s in {"maguindanao del norte", "maguindanao del sur"}:
         # Current PSA PSGC has two source provinces, but the historical chart
-        # retains a single pre-2022 analytical Maguindanao unit.
+        # retains a single pre-2022 analytical Maguindanao unit. Nonadditive
+        # series must recompute from additive inputs or omit these rows.
+        if not series_allows_split_mapping(series):
+            return None
         return MAGUINDANAO_CODE if MAGUINDANAO_CODE in provinces else None
     if s in SKIPPED_NAMES:
         return None

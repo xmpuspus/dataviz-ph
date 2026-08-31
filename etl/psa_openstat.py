@@ -272,7 +272,7 @@ def _fetch_incidence_with_precision(
         if role is None:
             continue
         clean = _clean_geo_text(geo_label.get(geo_code, ""))
-        psgc = normalize_name(clean, provinces)
+        psgc = normalize_name(clean, provinces, series="poverty_fies")
         if psgc is None or psgc not in provinces:
             continue
         try:
@@ -394,7 +394,7 @@ def fetch_population_2020(
         if value is None:
             continue
         # Try direct province / NCR aggregate match first.
-        psgc = normalize_name(clean, provinces)
+        psgc = normalize_name(clean, provinces, series="population")
         if psgc is not None and psgc in provinces:
             agg[psgc] = agg.get(psgc, 0) + int(value)
             continue
@@ -461,7 +461,7 @@ def fetch_gdp_per_capita(provinces: dict, normalize_name) -> list[dict]:
         geo_code, _val_code, year_code = key[0], key[1], key[2]
         raw_label = geo_label.get(geo_code, "")
         clean = _clean_geo_text(raw_label)
-        psgc = normalize_name(clean, provinces)
+        psgc = normalize_name(clean, provinces, series="gdp_per_capita")
         if psgc is None or psgc not in provinces:
             continue
         try:

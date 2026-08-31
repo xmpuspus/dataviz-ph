@@ -1,0 +1,576 @@
+[
+  {
+    "source_psgc": "0102800000",
+    "correspondence_code": "012800000",
+    "name": "Ilocos Norte",
+    "current_region_code": "0100000000",
+    "analysis_psgc": "012800000"
+  },
+  {
+    "source_psgc": "0102900000",
+    "correspondence_code": "012900000",
+    "name": "Ilocos Sur",
+    "current_region_code": "0100000000",
+    "analysis_psgc": "012900000"
+  },
+  {
+    "source_psgc": "0103300000",
+    "correspondence_code": "013300000",
+    "name": "La Union",
+    "current_region_code": "0100000000",
+    "analysis_psgc": "013300000"
+  },
+  {
+    "source_psgc": "0105500000",
+    "correspondence_code": "015500000",
+    "name": "Pangasinan",
+    "current_region_code": "0100000000",
+    "analysis_psgc": "015500000"
+  },
+  {
+    "source_psgc": "0200900000",
+    "correspondence_code": "020900000",
+    "name": "Batanes",
+    "current_region_code": "0200000000",
+    "analysis_psgc": "020900000"
+  },
+  {
+    "source_psgc": "0201500000",
+    "correspondence_code": "021500000",
+    "name": "Cagayan",
+    "current_region_code": "0200000000",
+    "analysis_psgc": "021500000"
+  },
+  {
+    "source_psgc": "0203100000",
+    "correspondence_code": "023100000",
+    "name": "Isabela",
+    "current_region_code": "0200000000",
+    "analysis_psgc": "023100000"
+  },
+  {
+    "source_psgc": "0205000000",
+    "correspondence_code": "025000000",
+    "name": "Nueva Vizcaya",
+    "current_region_code": "0200000000",
+    "analysis_psgc": "025000000"
+  },
+  {
+    "source_psgc": "0205700000",
+    "correspondence_code": "025700000",
+    "name": "Quirino",
+    "current_region_code": "0200000000",
+    "analysis_psgc": "025700000"
+  },
+  {
+    "source_psgc": "0300800000",
+    "correspondence_code": "030800000",
+    "name": "Bataan",
+    "current_region_code": "0300000000",
+    "analysis_psgc": "030800000"
+  },
+  {
+    "source_psgc": "0301400000",
+    "correspondence_code": "031400000",
+    "name": "Bulacan",
+    "current_region_code": "0300000000",
+    "analysis_psgc": "031400000"
+  },
+  {
+    "source_psgc": "0304900000",
+    "correspondence_code": "034900000",
+    "name": "Nueva Ecija",
+    "current_region_code": "0300000000",
+    "analysis_psgc": "034900000"
+  },
+  {
+    "source_psgc": "0305400000",
+    "correspondence_code": "035400000",
+    "name": "Pampanga",
+    "current_region_code": "0300000000",
+    "analysis_psgc": "035400000"
+  },
+  {
+    "source_psgc": "0306900000",
+    "correspondence_code": "036900000",
+    "name": "Tarlac",
+    "current_region_code": "0300000000",
+    "analysis_psgc": "036900000"
+  },
+  {
+    "source_psgc": "0307100000",
+    "correspondence_code": "037100000",
+    "name": "Zambales",
+    "current_region_code": "0300000000",
+    "analysis_psgc": "037100000"
+  },
+  {
+    "source_psgc": "0307700000",
+    "correspondence_code": "037700000",
+    "name": "Aurora",
+    "current_region_code": "0300000000",
+    "analysis_psgc": "037700000"
+  },
+  {
+    "source_psgc": "0401000000",
+    "correspondence_code": "041000000",
+    "name": "Batangas",
+    "current_region_code": "0400000000",
+    "analysis_psgc": "041000000"
+  },
+  {
+    "source_psgc": "0402100000",
+    "correspondence_code": "042100000",
+    "name": "Cavite",
+    "current_region_code": "0400000000",
+    "analysis_psgc": "042100000"
+  },
+  {
+    "source_psgc": "0403400000",
+    "correspondence_code": "043400000",
+    "name": "Laguna",
+    "current_region_code": "0400000000",
+    "analysis_psgc": "043400000"
+  },
+  {
+    "source_psgc": "0405600000",
+    "correspondence_code": "045600000",
+    "name": "Quezon",
+    "current_region_code": "0400000000",
+    "analysis_psgc": "045600000"
+  },
+  {
+    "source_psgc": "0405800000",
+    "correspondence_code": "045800000",
+    "name": "Rizal",
+    "current_region_code": "0400000000",
+    "analysis_psgc": "045800000"
+  },
+  {
+    "source_psgc": "0500500000",
+    "correspondence_code": "050500000",
+    "name": "Albay",
+    "current_region_code": "0500000000",
+    "analysis_psgc": "050500000"
+  },
+  {
+    "source_psgc": "0501600000",
+    "correspondence_code": "051600000",
+    "name": "Camarines Norte",
+    "current_region_code": "0500000000",
+    "analysis_psgc": "051600000"
+  },
+  {
+    "source_psgc": "0501700000",
+    "correspondence_code": "051700000",
+    "name": "Camarines Sur",
+    "current_region_code": "0500000000",
+    "analysis_psgc": "051700000"
+  },
+  {
+    "source_psgc": "0502000000",
+    "correspondence_code": "052000000",
+    "name": "Catanduanes",
+    "current_region_code": "0500000000",
+    "analysis_psgc": "052000000"
+  },
+  {
+    "source_psgc": "0504100000",
+    "correspondence_code": "054100000",
+    "name": "Masbate",
+    "current_region_code": "0500000000",
+    "analysis_psgc": "054100000"
+  },
+  {
+    "source_psgc": "0506200000",
+    "correspondence_code": "056200000",
+    "name": "Sorsogon",
+    "current_region_code": "0500000000",
+    "analysis_psgc": "056200000"
+  },
+  {
+    "source_psgc": "0600400000",
+    "correspondence_code": "060400000",
+    "name": "Aklan",
+    "current_region_code": "0600000000",
+    "analysis_psgc": "060400000"
+  },
+  {
+    "source_psgc": "0600600000",
+    "correspondence_code": "060600000",
+    "name": "Antique",
+    "current_region_code": "0600000000",
+    "analysis_psgc": "060600000"
+  },
+  {
+    "source_psgc": "0601900000",
+    "correspondence_code": "061900000",
+    "name": "Capiz",
+    "current_region_code": "0600000000",
+    "analysis_psgc": "061900000"
+  },
+  {
+    "source_psgc": "0603000000",
+    "correspondence_code": "063000000",
+    "name": "Iloilo",
+    "current_region_code": "0600000000",
+    "analysis_psgc": "063000000"
+  },
+  {
+    "source_psgc": "0607900000",
+    "correspondence_code": "067900000",
+    "name": "Guimaras",
+    "current_region_code": "0600000000",
+    "analysis_psgc": "067900000"
+  },
+  {
+    "source_psgc": "0701200000",
+    "correspondence_code": "071200000",
+    "name": "Bohol",
+    "current_region_code": "0700000000",
+    "analysis_psgc": "071200000"
+  },
+  {
+    "source_psgc": "0702200000",
+    "correspondence_code": "072200000",
+    "name": "Cebu",
+    "current_region_code": "0700000000",
+    "analysis_psgc": "072200000"
+  },
+  {
+    "source_psgc": "0802600000",
+    "correspondence_code": "082600000",
+    "name": "Eastern Samar",
+    "current_region_code": "0800000000",
+    "analysis_psgc": "082600000"
+  },
+  {
+    "source_psgc": "0803700000",
+    "correspondence_code": "083700000",
+    "name": "Leyte",
+    "current_region_code": "0800000000",
+    "analysis_psgc": "083700000"
+  },
+  {
+    "source_psgc": "0804800000",
+    "correspondence_code": "084800000",
+    "name": "Northern Samar",
+    "current_region_code": "0800000000",
+    "analysis_psgc": "084800000"
+  },
+  {
+    "source_psgc": "0806000000",
+    "correspondence_code": "086000000",
+    "name": "Samar",
+    "current_region_code": "0800000000",
+    "analysis_psgc": "086000000"
+  },
+  {
+    "source_psgc": "0806400000",
+    "correspondence_code": "086400000",
+    "name": "Southern Leyte",
+    "current_region_code": "0800000000",
+    "analysis_psgc": "086400000"
+  },
+  {
+    "source_psgc": "0807800000",
+    "correspondence_code": "087800000",
+    "name": "Biliran",
+    "current_region_code": "0800000000",
+    "analysis_psgc": "087800000"
+  },
+  {
+    "source_psgc": "0906600000",
+    "correspondence_code": "156600000",
+    "name": "Sulu",
+    "current_region_code": "0900000000",
+    "analysis_psgc": "156600000"
+  },
+  {
+    "source_psgc": "0907200000",
+    "correspondence_code": "097200000",
+    "name": "Zamboanga del Norte",
+    "current_region_code": "0900000000",
+    "analysis_psgc": "097200000"
+  },
+  {
+    "source_psgc": "0907300000",
+    "correspondence_code": "097300000",
+    "name": "Zamboanga del Sur",
+    "current_region_code": "0900000000",
+    "analysis_psgc": "097300000"
+  },
+  {
+    "source_psgc": "0908300000",
+    "correspondence_code": "098300000",
+    "name": "Zamboanga Sibugay",
+    "current_region_code": "0900000000",
+    "analysis_psgc": "098300000"
+  },
+  {
+    "source_psgc": "1001300000",
+    "correspondence_code": "101300000",
+    "name": "Bukidnon",
+    "current_region_code": "1000000000",
+    "analysis_psgc": "101300000"
+  },
+  {
+    "source_psgc": "1001800000",
+    "correspondence_code": "101800000",
+    "name": "Camiguin",
+    "current_region_code": "1000000000",
+    "analysis_psgc": "101800000"
+  },
+  {
+    "source_psgc": "1003500000",
+    "correspondence_code": "103500000",
+    "name": "Lanao del Norte",
+    "current_region_code": "1000000000",
+    "analysis_psgc": "103500000"
+  },
+  {
+    "source_psgc": "1004200000",
+    "correspondence_code": "104200000",
+    "name": "Misamis Occidental",
+    "current_region_code": "1000000000",
+    "analysis_psgc": "104200000"
+  },
+  {
+    "source_psgc": "1004300000",
+    "correspondence_code": "104300000",
+    "name": "Misamis Oriental",
+    "current_region_code": "1000000000",
+    "analysis_psgc": "104300000"
+  },
+  {
+    "source_psgc": "1102300000",
+    "correspondence_code": "112300000",
+    "name": "Davao del Norte",
+    "current_region_code": "1100000000",
+    "analysis_psgc": "112300000"
+  },
+  {
+    "source_psgc": "1102400000",
+    "correspondence_code": "112400000",
+    "name": "Davao del Sur",
+    "current_region_code": "1100000000",
+    "analysis_psgc": "112400000"
+  },
+  {
+    "source_psgc": "1102500000",
+    "correspondence_code": "112500000",
+    "name": "Davao Oriental",
+    "current_region_code": "1100000000",
+    "analysis_psgc": "112500000"
+  },
+  {
+    "source_psgc": "1108200000",
+    "correspondence_code": "118200000",
+    "name": "Davao de Oro",
+    "current_region_code": "1100000000",
+    "analysis_psgc": "118200000"
+  },
+  {
+    "source_psgc": "1108600000",
+    "correspondence_code": "118600000",
+    "name": "Davao Occidental",
+    "current_region_code": "1100000000",
+    "analysis_psgc": "118600000"
+  },
+  {
+    "source_psgc": "1204700000",
+    "correspondence_code": "124700000",
+    "name": "Cotabato",
+    "current_region_code": "1200000000",
+    "analysis_psgc": "124700000"
+  },
+  {
+    "source_psgc": "1206300000",
+    "correspondence_code": "126300000",
+    "name": "South Cotabato",
+    "current_region_code": "1200000000",
+    "analysis_psgc": "126300000"
+  },
+  {
+    "source_psgc": "1206500000",
+    "correspondence_code": "126500000",
+    "name": "Sultan Kudarat",
+    "current_region_code": "1200000000",
+    "analysis_psgc": "126500000"
+  },
+  {
+    "source_psgc": "1208000000",
+    "correspondence_code": "128000000",
+    "name": "Sarangani",
+    "current_region_code": "1200000000",
+    "analysis_psgc": "128000000"
+  },
+  {
+    "source_psgc": "1400100000",
+    "correspondence_code": "140100000",
+    "name": "Abra",
+    "current_region_code": "1400000000",
+    "analysis_psgc": "140100000"
+  },
+  {
+    "source_psgc": "1401100000",
+    "correspondence_code": "141100000",
+    "name": "Benguet",
+    "current_region_code": "1400000000",
+    "analysis_psgc": "141100000"
+  },
+  {
+    "source_psgc": "1402700000",
+    "correspondence_code": "142700000",
+    "name": "Ifugao",
+    "current_region_code": "1400000000",
+    "analysis_psgc": "142700000"
+  },
+  {
+    "source_psgc": "1403200000",
+    "correspondence_code": "143200000",
+    "name": "Kalinga",
+    "current_region_code": "1400000000",
+    "analysis_psgc": "143200000"
+  },
+  {
+    "source_psgc": "1404400000",
+    "correspondence_code": "144400000",
+    "name": "Mountain Province",
+    "current_region_code": "1400000000",
+    "analysis_psgc": "144400000"
+  },
+  {
+    "source_psgc": "1408100000",
+    "correspondence_code": "148100000",
+    "name": "Apayao",
+    "current_region_code": "1400000000",
+    "analysis_psgc": "148100000"
+  },
+  {
+    "source_psgc": "1600200000",
+    "correspondence_code": "160200000",
+    "name": "Agusan del Norte",
+    "current_region_code": "1600000000",
+    "analysis_psgc": "160200000"
+  },
+  {
+    "source_psgc": "1600300000",
+    "correspondence_code": "160300000",
+    "name": "Agusan del Sur",
+    "current_region_code": "1600000000",
+    "analysis_psgc": "160300000"
+  },
+  {
+    "source_psgc": "1606700000",
+    "correspondence_code": "166700000",
+    "name": "Surigao del Norte",
+    "current_region_code": "1600000000",
+    "analysis_psgc": "166700000"
+  },
+  {
+    "source_psgc": "1606800000",
+    "correspondence_code": "166800000",
+    "name": "Surigao del Sur",
+    "current_region_code": "1600000000",
+    "analysis_psgc": "166800000"
+  },
+  {
+    "source_psgc": "1608500000",
+    "correspondence_code": "168500000",
+    "name": "Dinagat Islands",
+    "current_region_code": "1600000000",
+    "analysis_psgc": "168500000"
+  },
+  {
+    "source_psgc": "1704000000",
+    "correspondence_code": "174000000",
+    "name": "Marinduque",
+    "current_region_code": "1700000000",
+    "analysis_psgc": "174000000"
+  },
+  {
+    "source_psgc": "1705100000",
+    "correspondence_code": "175100000",
+    "name": "Occidental Mindoro",
+    "current_region_code": "1700000000",
+    "analysis_psgc": "175100000"
+  },
+  {
+    "source_psgc": "1705200000",
+    "correspondence_code": "175200000",
+    "name": "Oriental Mindoro",
+    "current_region_code": "1700000000",
+    "analysis_psgc": "175200000"
+  },
+  {
+    "source_psgc": "1705300000",
+    "correspondence_code": "175300000",
+    "name": "Palawan",
+    "current_region_code": "1700000000",
+    "analysis_psgc": "175300000"
+  },
+  {
+    "source_psgc": "1705900000",
+    "correspondence_code": "175900000",
+    "name": "Romblon",
+    "current_region_code": "1700000000",
+    "analysis_psgc": "175900000"
+  },
+  {
+    "source_psgc": "1804500000",
+    "correspondence_code": "064500000",
+    "name": "Negros Occidental",
+    "current_region_code": "1800000000",
+    "analysis_psgc": "064500000"
+  },
+  {
+    "source_psgc": "1804600000",
+    "correspondence_code": "074600000",
+    "name": "Negros Oriental",
+    "current_region_code": "1800000000",
+    "analysis_psgc": "074600000"
+  },
+  {
+    "source_psgc": "1806100000",
+    "correspondence_code": "076100000",
+    "name": "Siquijor",
+    "current_region_code": "1800000000",
+    "analysis_psgc": "076100000"
+  },
+  {
+    "source_psgc": "1900700000",
+    "correspondence_code": "150700000",
+    "name": "Basilan",
+    "current_region_code": "1900000000",
+    "analysis_psgc": "150700000"
+  },
+  {
+    "source_psgc": "1903600000",
+    "correspondence_code": "153600000",
+    "name": "Lanao del Sur",
+    "current_region_code": "1900000000",
+    "analysis_psgc": "153600000"
+  },
+  {
+    "source_psgc": "1907000000",
+    "correspondence_code": "157000000",
+    "name": "Tawi-Tawi",
+    "current_region_code": "1900000000",
+    "analysis_psgc": "157000000"
+  },
+  {
+    "source_psgc": "1908700000",
+    "correspondence_code": null,
+    "name": "Maguindanao del Norte",
+    "current_region_code": "1900000000",
+    "analysis_psgc": "153800000"
+  },
+  {
+    "source_psgc": "1908800000",
+    "correspondence_code": null,
+    "name": "Maguindanao del Sur",
+    "current_region_code": "1900000000",
+    "analysis_psgc": "153800000"
+  }
+]
