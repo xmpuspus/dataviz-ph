@@ -98,7 +98,7 @@ python -m http.server -d public 8765
 open http://localhost:8765/
 ```
 
-`python -m etl.build --no-cache` ignores on-disk caches and refetches every upstream. The first PhilGEPS pull is about 620 MB across 15 parquet chunks. Subsequent runs are seconds.
+`python -m etl.build --no-cache` clears PSA and PSGC caches and refetches those sources. PhilGEPS uses a separately acquired, reviewed local snapshot; the build never downloads its 15 parquet chunks.
 
 `pytest -q` runs 100 tests. The browser regression tests drive headless Chromium via Playwright; CI installs Chromium and runs them too, so they no longer skip there.
 
@@ -110,7 +110,7 @@ open http://localhost:8765/
 
 **Smoke monitoring.** `.github/workflows/smoke.yml` runs every six hours and on manual dispatch. It asserts the homepage returns HTTP 200 with the expected title string, and that `manifest.json` parses, has `sha256_per_file` keys, and is no older than 365 days (warning at 180 days). Failures go to the GitHub Actions notification email.
 
-**Data refresh.** `python3 -m etl.build` regenerates everything in `public/data/`. Partial results land in `.etl_cache/`; pass `--no-cache` to force a full 620 MB refetch from PhilGEPS. After a refresh, commit the updated `public/data/` files and push to deploy.
+**Data refresh.** Acquire and review a complete PhilGEPS snapshot before a refresh. Then run `python3 -m etl.build` to regenerate `public/data/`. Pass `--no-cache` only to clear PSA and PSGC caches. After a refresh, commit the updated `public/data/` files and push to deploy.
 
 **Framing note.** `frame-ancestors *` in the CSP (and no `X-Frame-Options` header) allows any third-party site to embed dataviz.ph in an iframe. This is intentional: the site is public data with no authentication and no state-modifying actions, so clickjacking has no target.
 

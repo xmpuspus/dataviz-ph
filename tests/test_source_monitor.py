@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from etl import philgeps, psa_openstat, source_monitor
 from etl.source_monitor import assess_source_state
 
 
@@ -37,3 +38,21 @@ def test_monitor_flags_short_unit_coverage():
     )
 
     assert report["sources"]["poverty"]["coverage_status"] == "short"
+
+
+def test_live_monitor_normalizes_shipped_cpi_object_shape(monkeypatch):
+    metadata = {
+        "variables": [
+            {"code": "Geolocation", "values": ["A"] * 82},
+            {"code": "Year", "values": ["0", "1", "2"], "valueTexts": ["2023", "2024", "2025"]},
+        ]
+    }
+    monkeypatch.setattr(psa_openstat, "discover_table", lambda name: (f"path/{name}", metadata))
+    monkeypatch.setattr(philgeps, "load_snapshot_inventory", lambda **_: None)
+    monkeypatch.setattr(
+        source_monitor, "_live_geography_version", lambda: {"shipped": "x", "official": "x"}
+    )
+
+    report = source_monitor.run_live_checks()
+
+    assert report["sources"]["cpi"]["shipped_year"] == 2025

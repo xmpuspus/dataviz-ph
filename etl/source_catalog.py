@@ -26,36 +26,40 @@ class TableContract:
     dimensions: tuple[str, ...]
     measure_terms: tuple[str, ...]
     expected_years: tuple[int, ...]
+    vintage_terms: tuple[str, ...]
     reviewed_fallbacks: tuple[str, ...]
 
 
 PSA_TABLES: dict[str, TableContract] = {
     "poverty": TableContract(
         name="poverty",
-        directory="1E/FY",
+        directory="1F/FY",
         title_terms=("table 1a", "poverty incidence", "famil"),
         dimensions=("Geolocation", "Threshold/Incidence/Parameters", "Year"),
         measure_terms=("poverty incidence",),
         expected_years=(2018, 2021, 2023),
-        reviewed_fallbacks=("1E/FY/0021E3DF01A.px",),
+        vintage_terms=(),
+        reviewed_fallbacks=("1F/FY/0021F3DF01A.px",),
     ),
     "subsistence": TableContract(
         name="subsistence",
-        directory="1E/FY",
+        directory="1F/FY",
         title_terms=("table 3a", "subsistence incidence", "famil"),
-        dimensions=("Geolocation", "Threshold/Incidence/Parameters", "Year"),
+        dimensions=("Geolocation", "Threshold/Incidence/Measures of Precision", "Year"),
         measure_terms=("subsistence incidence",),
         expected_years=(2018, 2021, 2023),
-        reviewed_fallbacks=("1E/FY/0061E3DF03A.px",),
+        vintage_terms=(),
+        reviewed_fallbacks=("1F/FY/0061F3DF03A.px",),
     ),
     "population": TableContract(
         name="population",
-        directory="1A/PO",
+        directory="1A/PO_2020",
         title_terms=("population",),
         dimensions=("Geographic Location", "Parameter"),
         measure_terms=("total population",),
         expected_years=(),
-        reviewed_fallbacks=("1A/PO/0011A6DPHH0.px",),
+        vintage_terms=("2020",),
+        reviewed_fallbacks=("1A/PO_2020/0011A6DPHH0.px",),
     ),
     "gdp_per_capita": TableContract(
         name="gdp_per_capita",
@@ -64,7 +68,8 @@ PSA_TABLES: dict[str, TableContract] = {
         dimensions=("Geolocation", "Type of Valuation", "Year"),
         measure_terms=("constant", "2018"),
         expected_years=(2022, 2023, 2024),
-        reviewed_fallbacks=("2A/PPA/2025/0092A5GPPA8.px",),
+        vintage_terms=(),
+        reviewed_fallbacks=("2A/PPA/2025/0092A5FPPA8.px",),
     ),
     "cpi": TableContract(
         name="cpi",
@@ -73,6 +78,7 @@ PSA_TABLES: dict[str, TableContract] = {
         dimensions=("Geolocation", "Commodity Description", "Year", "Period"),
         measure_terms=("all items",),
         expected_years=(2018,),
+        vintage_terms=(),
         reviewed_fallbacks=("2M/PI/CPI/2018NEW/0012M4ACP22.px",),
     ),
 }
@@ -104,8 +110,14 @@ def validate_table_metadata(contract: TableContract, metadata: dict) -> None:
     missing_measures = [term for term in contract.measure_terms if term not in measure_text]
     if missing_measures:
         problems.append(f"measures missing {missing_measures!r}")
+    missing_vintage_terms = [
+        term for term in contract.vintage_terms if term not in title + measure_text
+    ]
+    if missing_vintage_terms:
+        problems.append(f"vintage missing {missing_vintage_terms!r}")
     if contract.expected_years:
-        year_values = variables.get("Year", {}).get("values", [])
+        year_variable = variables.get("Year", {})
+        year_values = [*year_variable.get("values", []), *year_variable.get("valueTexts", [])]
         years = {int(value) for value in year_values if str(value).isdigit()}
         missing_years = sorted(set(contract.expected_years) - years)
         if missing_years:
@@ -131,7 +143,7 @@ def resolve_reviewed_table(
     for path in candidates:
         try:
             validate_table_metadata(contract, fetch_metadata(path))
-        except (SourceContractDriftError, KeyError) as exc:
+        except Exception as exc:
             failures.append(f"{path}: {exc}")
             continue
         return path

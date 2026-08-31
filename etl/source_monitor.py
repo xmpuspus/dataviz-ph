@@ -78,7 +78,11 @@ def assess_source_state(
 def _latest_year(metadata: dict) -> int | None:
     for variable in metadata.get("variables", []):
         if variable.get("code") == "Year":
-            years = [int(value) for value in variable.get("values", []) if str(value).isdigit()]
+            years = [
+                int(value)
+                for value in [*variable.get("values", []), *variable.get("valueTexts", [])]
+                if str(value).isdigit()
+            ]
             return max(years, default=None)
     return None
 
@@ -98,7 +102,10 @@ def _shipped_years() -> dict[str, int]:
         if not path.exists():
             continue
         rows = json.loads(path.read_text())
-        values = [row.get("year") for row in rows if isinstance(row.get("year"), int)]
+        if isinstance(rows, dict):
+            values = [int(year) for year in rows if str(year).isdigit()]
+        else:
+            values = [row.get("year") for row in rows if isinstance(row.get("year"), int)]
         if values:
             years[source] = max(values)
     return years
@@ -117,7 +124,16 @@ def run_live_checks() -> dict:
     """Probe PSA metadata and local PhilGEPS inventory without changing either source."""
     evidence: dict[str, dict] = {}
     for name in PSA_TABLES:
-        path, metadata = psa_openstat.discover_table(name)
+        try:
+            path, metadata = psa_openstat.discover_table(name)
+        except Exception as exc:
+            evidence[name] = {
+                "reachable": False,
+                "error": f"{type(exc).__name__}: {exc}",
+                "latest_official_year": None,
+                "unit_coverage": None,
+            }
+            continue
         evidence[name] = {
             "reachable": True,
             "path": path,
@@ -133,7 +149,7 @@ def run_live_checks() -> dict:
                 )
             ),
         }
-    inventory = philgeps.load_snapshot_inventory(required=False)
+    inventory = philgeps.load_reviewed_snapshot_inventory(required=False)
     return assess_source_state(
         contracts=evidence,
         shipped_years=_shipped_years(),

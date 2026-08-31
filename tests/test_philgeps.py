@@ -20,7 +20,15 @@ def test_snapshot_inventory_records_identity_policy_range_hashes_and_row_counts(
     monkeypatch.setattr(philgeps, "CACHE_DIR", tmp_path)
     monkeypatch.setattr(philgeps, "N_CHUNKS", 1)
     table = pa.Table.from_pandas(
-        pd.DataFrame({"id": [1, 2], "award_date": ["2024-01-01", "2024-02-01"]})
+        pd.DataFrame(
+            {
+                "id": [1, 2],
+                "award_date": ["2024-01-01", "2024-02-01"],
+                "contract_amount": [1.0, 2.0],
+                "organization_name": ["DPWH", "DPWH"],
+                "area_of_delivery": ["Cebu", "Cebu"],
+            }
+        )
     )
     chunk = tmp_path / "facts_awards_chunk_01.parquet"
     pq.write_table(table, chunk)
@@ -30,7 +38,8 @@ def test_snapshot_inventory_records_identity_policy_range_hashes_and_row_counts(
     assert inventory["upstream_identity"]["url"] == philgeps.CHUNK_BASE
     assert inventory["fetched_at"] == "2026-08-31T00:00:00Z"
     assert inventory["correction_policy"]
-    assert inventory["supported_date_range"] == {"start": 2014, "end": 2024}
+    assert inventory["supported_date_range"] == {"start": "2024-01-01", "end": "2024-02-01"}
+    assert inventory["anomalies"]["invalid_award_date_count"] == 0
     assert (
         inventory["chunks"]["chunk_01"]["sha256"] == hashlib.sha256(chunk.read_bytes()).hexdigest()
     )
@@ -44,6 +53,54 @@ def test_snapshot_inventory_requires_every_chunk(tmp_path, monkeypatch):
 
     with pytest.raises(FileNotFoundError, match="Missing PhilGEPS chunk 1"):
         philgeps.write_snapshot_inventory()
+
+
+def test_snapshot_inventory_rejects_missing_production_columns(tmp_path, monkeypatch):
+    monkeypatch.setattr(philgeps, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(philgeps, "N_CHUNKS", 1)
+    pq.write_table(
+        pa.Table.from_pydict({"id": [1], "award_date": ["2024-01-01"]}),
+        tmp_path / "facts_awards_chunk_01.parquet",
+    )
+
+    with pytest.raises(ValueError, match="required columns"):
+        philgeps.write_snapshot_inventory()
+
+
+def test_processing_rejects_a_cache_that_differs_from_its_reviewed_inventory(tmp_path, monkeypatch):
+    monkeypatch.setattr(philgeps, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(philgeps, "N_CHUNKS", 1)
+    reviewed = tmp_path / "reviewed.json"
+    monkeypatch.setattr(philgeps, "REVIEWED_INVENTORY_PATH", reviewed)
+    table = pa.Table.from_pydict(
+        {
+            "id": [1],
+            "award_date": ["2024-01-01"],
+            "contract_amount": [10.0],
+            "organization_name": ["DPWH"],
+            "area_of_delivery": ["Cebu"],
+        }
+    )
+    chunk = tmp_path / "facts_awards_chunk_01.parquet"
+    pq.write_table(table, chunk)
+    philgeps._write_inventory(
+        reviewed, philgeps.build_snapshot_inventory(fetched_at="2026-08-31T00:00:00Z")
+    )
+    pq.write_table(
+        pa.Table.from_pydict(
+            {
+                "id": [2],
+                "award_date": ["2024-01-01"],
+                "contract_amount": [10.0],
+                "organization_name": ["DPWH"],
+                "area_of_delivery": ["Cebu"],
+            }
+        ),
+        chunk,
+    )
+
+    with pytest.raises(ValueError, match="PhilGEPS cache does not match"):
+        philgeps.verify_reviewed_snapshot()
 
 
 def test_acquisition_requires_explicit_network_authority():
@@ -83,3 +140,60 @@ def test_acquisition_keeps_existing_snapshot_when_a_download_fails(tmp_path, mon
         philgeps.acquire_snapshot(allow_network=True)
 
     assert existing.read_bytes() == b"reviewed-snapshot"
+
+
+def test_acquisition_rolls_back_if_promotion_fails(tmp_path, monkeypatch):
+    monkeypatch.setattr(philgeps, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(philgeps, "N_CHUNKS", 2)
+    table = pa.Table.from_pydict(
+        {
+            "id": [1],
+            "award_date": ["2024-01-01"],
+            "contract_amount": [1.0],
+            "organization_name": ["DPWH"],
+            "area_of_delivery": ["Cebu"],
+        }
+    )
+    old_bytes = []
+    for index in (1, 2):
+        path = tmp_path / f"facts_awards_chunk_{index:02d}.parquet"
+        pq.write_table(table, path)
+        old_bytes.append(path.read_bytes())
+    buffer = io.BytesIO()
+    pq.write_table(table, buffer)
+
+    class Response:
+        content = buffer.getvalue()
+
+        def raise_for_status(self):
+            return None
+
+    class Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return None
+
+        def get(self, _url):
+            return Response()
+
+    real_replace = philgeps.os.replace
+
+    def fail_second_promotion(source, destination):
+        if (
+            source.name == "facts_awards_chunk_02.parquet"
+            and source.parent != tmp_path
+            and source.parent.name != "backup"
+        ):
+            raise OSError("disk full")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(philgeps.httpx, "Client", lambda **_: Client())
+    monkeypatch.setattr(philgeps.os, "replace", fail_second_promotion)
+
+    with pytest.raises(OSError, match="disk full"):
+        philgeps.acquire_snapshot(allow_network=True)
+
+    assert (tmp_path / "facts_awards_chunk_01.parquet").read_bytes() == old_bytes[0]
+    assert (tmp_path / "facts_awards_chunk_02.parquet").read_bytes() == old_bytes[1]

@@ -36,6 +36,10 @@ CHUNK_BASE = (
 N_CHUNKS = 15
 CACHE_DIR = Path(__file__).resolve().parent.parent / ".etl_cache" / "philgeps"
 INVENTORY_FILENAME = "snapshot_inventory.json"
+REVIEWED_INVENTORY_PATH = Path(__file__).with_name("philgeps_snapshot_inventory.json")
+REQUIRED_COLUMNS = frozenset(
+    {"id", "award_date", "contract_amount", "organization_name", "area_of_delivery"}
+)
 SNAPSHOT_CORRECTION_POLICY = (
     "Cached chunks are immutable inputs. Acquire a new snapshot explicitly, compare "
     "hashes and row counts, then review source corrections before rebuilding published data."
@@ -74,20 +78,67 @@ def _chunk_url(i: int) -> str:
     return f"{CHUNK_BASE}/facts_awards_chunk_{i:02d}.parquet"
 
 
-def write_snapshot_inventory(*, fetched_at: str | None = None) -> dict:
-    """Inventory a complete local snapshot without contacting the upstream mirror."""
+def _snapshot_inventory_path(cache_dir: Path) -> Path:
+    return cache_dir / INVENTORY_FILENAME
+
+
+def build_snapshot_inventory(
+    cache_dir: Path | None = None, *, fetched_at: str | None = None
+) -> dict:
+    """Inspect a complete cache and return a validated, reproducible snapshot inventory."""
+    root = cache_dir or CACHE_DIR
     chunks: dict[str, dict[str, int | str]] = {}
+    snapshot_ids: set[int | str] = set()
+    duplicate_id_count = 0
+    schema_columns: list[str] | None = None
+    min_date = None
+    max_date = None
+    invalid_date_count = 0
+    out_of_panel_date_count = 0
     for i in range(1, N_CHUNKS + 1):
-        chunk = _chunk_path(i)
+        chunk = root / f"facts_awards_chunk_{i:02d}.parquet"
         if not chunk.exists():
             raise FileNotFoundError(
                 f"Missing PhilGEPS chunk {i}. Acquire a complete snapshot first."
             )
+        parquet = pq.ParquetFile(chunk)
+        columns = sorted(parquet.schema.names)
+        missing_columns = sorted(REQUIRED_COLUMNS - set(columns))
+        if missing_columns:
+            raise ValueError(f"PhilGEPS chunk {i} missing required columns: {missing_columns!r}")
+        if schema_columns is None:
+            schema_columns = columns
+        elif columns != schema_columns:
+            raise ValueError(f"PhilGEPS chunk {i} schema differs from the complete snapshot")
+        if parquet.metadata.num_rows <= 0:
+            raise ValueError(f"PhilGEPS chunk {i} is empty")
+        values = parquet.read(columns=["id", "award_date"]).to_pandas()
+        usable_ids = values["id"].notna() & values["id"].astype(str).str.strip().ne("")
+        if not bool(usable_ids.all()):
+            raise ValueError(f"PhilGEPS chunk {i} has unusable award ids")
+        ids = values.loc[usable_ids, "id"].tolist()
+        duplicate_id_count += sum(identifier in snapshot_ids for identifier in ids)
+        snapshot_ids.update(ids)
+        dates = pd.to_datetime(values["award_date"], errors="coerce", format="mixed", utc=True)
+        invalid_date_count += int(dates.isna().sum())
+        observed_dates = dates.dropna()
+        if observed_dates.empty:
+            raise ValueError(f"PhilGEPS chunk {i} has no usable award dates")
+        chunk_min = observed_dates.min().date()
+        chunk_max = observed_dates.max().date()
+        min_date = chunk_min if min_date is None else min(min_date, chunk_min)
+        max_date = chunk_max if max_date is None else max(max_date, chunk_max)
+        out_of_panel_date_count += int(
+            ((observed_dates.dt.year < PANEL_START) | (observed_dates.dt.year > PANEL_END)).sum()
+        )
         chunks[f"chunk_{i:02d}"] = {
             "sha256": hashlib.sha256(chunk.read_bytes()).hexdigest(),
-            "row_count": pq.ParquetFile(chunk).metadata.num_rows,
+            "row_count": parquet.metadata.num_rows,
+            "usable_id_count": len(ids),
+            "observed_date_range": {"start": chunk_min.isoformat(), "end": chunk_max.isoformat()},
         }
-    inventory = {
+    chunk_digests = {name: item["sha256"] for name, item in chunks.items()}
+    return {
         "schema_version": 1,
         "upstream_identity": {
             "name": "csiiiv/philgeps-awards-dashboard mirror",
@@ -97,11 +148,31 @@ def write_snapshot_inventory(*, fetched_at: str | None = None) -> dict:
         "fetched_at": fetched_at or datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "correction_policy": SNAPSHOT_CORRECTION_POLICY,
         "revision_status": "not compared to a newer snapshot",
-        "supported_date_range": {"start": PANEL_START, "end": PANEL_END},
+        "supported_date_range": {"start": min_date.isoformat(), "end": max_date.isoformat()},
+        "anomalies": {
+            "invalid_award_date_count": invalid_date_count,
+            "out_of_panel_date_count": out_of_panel_date_count,
+            "duplicate_id_count": duplicate_id_count,
+        },
+        "schema_columns": schema_columns,
+        "snapshot_id": hashlib.sha256(
+            json.dumps(chunk_digests, sort_keys=True).encode()
+        ).hexdigest(),
         "chunks": chunks,
     }
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    _inventory_path().write_text(json.dumps(inventory, indent=2, sort_keys=True) + "\n")
+
+
+def _write_inventory(path: Path, inventory: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    staging = path.with_suffix(path.suffix + ".tmp")
+    staging.write_text(json.dumps(inventory, indent=2, sort_keys=True) + "\n")
+    os.replace(staging, path)
+
+
+def write_snapshot_inventory(*, fetched_at: str | None = None) -> dict:
+    """Write an inventory for the active local cache without contacting the mirror."""
+    inventory = build_snapshot_inventory(fetched_at=fetched_at)
+    _write_inventory(_inventory_path(), inventory)
     return inventory
 
 
@@ -120,6 +191,9 @@ def load_snapshot_inventory(*, required: bool = True) -> dict | None:
         "fetched_at",
         "correction_policy",
         "supported_date_range",
+        "anomalies",
+        "schema_columns",
+        "snapshot_id",
         "chunks",
     }
     missing = required_keys - inventory.keys()
@@ -128,6 +202,25 @@ def load_snapshot_inventory(*, required: bool = True) -> dict | None:
             f"PhilGEPS snapshot inventory missing required fields: {sorted(missing)!r}"
         )
     return inventory
+
+
+def load_reviewed_snapshot_inventory(*, required: bool = True) -> dict | None:
+    """Read the tracked inventory that processing must match before aggregation."""
+    if not REVIEWED_INVENTORY_PATH.exists():
+        if required:
+            raise FileNotFoundError("Reviewed PhilGEPS inventory is missing from the repository.")
+        return None
+    return json.loads(REVIEWED_INVENTORY_PATH.read_text())
+
+
+def verify_reviewed_snapshot() -> dict:
+    """Reject cache drift before processing can publish a mixed or changed snapshot."""
+    reviewed = load_reviewed_snapshot_inventory()
+    observed = build_snapshot_inventory(fetched_at=reviewed["fetched_at"])
+    for key in ("snapshot_id", "schema_columns", "supported_date_range", "anomalies", "chunks"):
+        if observed.get(key) != reviewed.get(key):
+            raise ValueError(f"PhilGEPS cache does not match reviewed inventory: {key} differs")
+    return reviewed
 
 
 def acquire_snapshot(*, allow_network: bool = False) -> dict:
@@ -142,7 +235,7 @@ def acquire_snapshot(*, allow_network: bool = False) -> dict:
             "PhilGEPS acquisition requires explicit network authority; "
             "use a reviewed offline snapshot."
         )
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    CACHE_DIR.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="philgeps-acquire-", dir=CACHE_DIR.parent) as stage:
         stage_dir = Path(stage)
         with httpx.Client(timeout=180.0, follow_redirects=True) as client:
@@ -153,9 +246,32 @@ def acquire_snapshot(*, allow_network: bool = False) -> dict:
                 staged_chunk.write_bytes(response.content)
                 # Reject a malformed response before it can replace a reviewed chunk.
                 _ = pq.ParquetFile(staged_chunk).metadata.num_rows
-        for i in range(1, N_CHUNKS + 1):
-            os.replace(stage_dir / _chunk_path(i).name, _chunk_path(i))
-    return write_snapshot_inventory()
+        inventory = build_snapshot_inventory(stage_dir)
+        backup_dir = stage_dir / "backup"
+        backup_dir.mkdir()
+        moved_old: list[Path] = []
+        promoted: list[Path] = []
+        try:
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            for i in range(1, N_CHUNKS + 1):
+                current = _chunk_path(i)
+                if current.exists():
+                    backup = backup_dir / current.name
+                    os.replace(current, backup)
+                    moved_old.append(backup)
+            for i in range(1, N_CHUNKS + 1):
+                current = _chunk_path(i)
+                os.replace(stage_dir / current.name, current)
+                promoted.append(current)
+            _write_inventory(_inventory_path(), inventory)
+        except Exception:
+            for current in promoted:
+                if current.exists():
+                    current.unlink()
+            for backup in moved_old:
+                os.replace(backup, CACHE_DIR / backup.name)
+            raise
+    return inventory
 
 
 def _read_chunk(i: int) -> pd.DataFrame:
@@ -184,6 +300,7 @@ def _aggregate(
     Rows where area_of_delivery could not be mapped (null, multi-province, etc.)
     count toward the denominator but not the attributed numerator.
     """
+    verify_reviewed_snapshot()
     frames: list[pd.DataFrame] = []
     for i in range(1, N_CHUNKS + 1):
         if not _chunk_path(i).exists():

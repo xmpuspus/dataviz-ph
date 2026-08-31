@@ -1241,7 +1241,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--no-cache",
         action="store_true",
-        help="Ignore on-disk caches; refetch every upstream source.",
+        help="Clear PSA and PSGC caches. PhilGEPS uses a separately acquired reviewed snapshot.",
     )
     parser.add_argument(
         "--manifest-only",
