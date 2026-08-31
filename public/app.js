@@ -315,6 +315,18 @@ function failedIndicator(data, indicatorId) {
   return data.optionalFailures.some((failure) => failure.indicatorIds.includes(indicatorId));
 }
 
+function runtimeEvidence(data, indicatorId) {
+  const item = data.viewEvidence.indicators[indicatorId];
+  const failure = data.optionalFailures.find((item) => item.indicatorIds.includes(indicatorId));
+  if (!item || !failure) return item;
+  return {
+    ...item,
+    warnings: [...item.warnings, `Unavailable because ${failure.path} did not load.`],
+    coverage: item.coverage.map((row) => ({ ...row, status: "unavailable" })),
+    runtime_status: "unavailable",
+  };
+}
+
 function canonicalParams(state, view) {
   const params = new URLSearchParams();
   params.set("story", state.story.id);
@@ -2432,14 +2444,43 @@ function renderViewEvidence(view, data, state) {
   const content = document.getElementById("view-trust-content");
   const body = document.querySelector("#view-coverage tbody");
   if (!evidence || !content || !body) return;
-  const active = [view.x, view.y].map((id) => ({ id, item: evidence.indicators[id] })).filter(({ item }) => item);
+  const active = [view.x, view.y].map((id) => ({ id, item: runtimeEvidence(data, id) })).filter(({ item }) => item);
   content.replaceChildren();
   body.replaceChildren();
   for (const { id, item } of active) {
     const year = item.coverage.find((row) => row.year === state.year);
-    const p = document.createElement("p");
+    const p = document.createElement("section");
     const failed = failedIndicator(data, id);
-    p.textContent = `${data.indicators[id]?.name || id}. Source: ${item.source}. Update: ${item.release}. Grain: ${item.natural_grain}. Transform: ${item.transforms}. Current coverage: ${failed ? "unavailable, data did not load" : year ? `${year.status}, ${year.source_units} of ${year.target_units}` : "unavailable"}. Archive: ${item.archive_url}.`;
+    const heading = document.createElement("strong");
+    heading.textContent = data.indicators[id]?.name || id;
+    const fields = document.createElement("dl");
+    const add = (label, value) => {
+      const dt = document.createElement("dt");
+      dt.textContent = label;
+      const dd = document.createElement("dd");
+      dd.textContent = value;
+      fields.append(dt, dd);
+    };
+    add("Source", item.source);
+    add("Update", item.release);
+    add("Grain", item.natural_grain);
+    add("Current coverage", failed ? "unavailable, data did not load" : year ? `${year.status}, ${year.source_units} of ${year.target_units}` : "unavailable");
+    const archive = document.createElement("a");
+    archive.href = item.archive_url;
+    archive.rel = "noopener";
+    archive.textContent = "Open source archive";
+    const archiveDt = document.createElement("dt");
+    archiveDt.textContent = "Archive";
+    const archiveDd = document.createElement("dd");
+    archiveDd.appendChild(archive);
+    fields.append(archiveDt, archiveDd);
+    const transforms = document.createElement("details");
+    const transformsSummary = document.createElement("summary");
+    transformsSummary.textContent = "Transform";
+    const transformsText = document.createElement("p");
+    transformsText.textContent = item.transforms;
+    transforms.append(transformsSummary, transformsText);
+    p.append(heading, fields, transforms);
     content.appendChild(p);
     if (item.warnings.length) {
       const warning = document.createElement("p");
@@ -3908,7 +3949,7 @@ async function main() {
     }
     // Without a signal, a corrupt or missing optional file degrades every
     // visitor's chart for weeks before anyone notices.
-    track("soft_fail", { files: data.optionalFailures.join(",").slice(0, 200) });
+    track("soft_fail", { files: data.optionalFailures.map((failure) => failure.path).join(",").slice(0, 200) });
   }
 
   document.getElementById("csv").addEventListener("click", () => {
@@ -3948,8 +3989,8 @@ async function main() {
       build_timestamp: data.manifest?.built_at || "unknown",
       build_id: data.manifest?.sha256_per_file?.["view_evidence.json"] || "unknown",
       snapshot_ids: { philgeps: data.viewEvidence.procurement_status?.snapshot_identity || null },
-      warnings: [view.x, view.y].flatMap((id) => data.viewEvidence.indicators[id]?.warnings || []),
-      coverage: Object.fromEntries([view.x, view.y].map((id) => [id, data.viewEvidence.indicators[id]?.coverage || []])),
+      warnings: Object.fromEntries([view.x, view.y].map((id) => [id, runtimeEvidence(data, id)?.warnings || []])),
+      coverage: Object.fromEntries([view.x, view.y].map((id) => [id, runtimeEvidence(data, id)?.coverage || []])),
     };
   }
 

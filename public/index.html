@@ -46,7 +46,6 @@
   <header id="topbar">
     <a class="brand" href="/">dataviz.<span class="brand-tld">ph</span></a>
     <nav id="story-switcher" aria-label="story switcher"></nav>
-    <nav id="curated-view-links" aria-label="curated views"></nav>
     <div class="topbar-right">
       <a id="story-source" href="#" target="_blank" rel="noopener" hidden>Source</a>
       <a class="topbar-link" href="/methodology" data-i18n="controls.methodology">Methodology</a>
@@ -278,11 +277,8 @@
     <details id="view-trust">
       <summary>Why trust this view?</summary>
       <div id="view-trust-content"></div>
-      <table id="view-coverage">
-        <caption>Coverage for the active indicators</caption>
-        <thead><tr><th scope="col">Indicator</th><th scope="col">Year</th><th scope="col">Coverage</th></tr></thead>
-        <tbody></tbody>
-      </table>
+      <details id="view-coverage-details"><summary>Coverage by year</summary><table id="view-coverage"><caption>Coverage for the active indicators</caption><thead><tr><th scope="col">Indicator</th><th scope="col">Year</th><th scope="col">Coverage</th></tr></thead><tbody></tbody></table></details>
+      <nav id="curated-view-links" aria-label="curated views"></nav>
     </details>
   </section>
 

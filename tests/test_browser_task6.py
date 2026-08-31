@@ -70,14 +70,15 @@ def _goto(page, base_url, suffix=""):
 def test_trust_disclosure_shows_current_view_evidence_and_coverage(page, base_url):
     _goto(page, base_url, "#story=spend-vs-poverty&year=2024")
     trust = page.locator("#view-trust")
-    assert trust.locator("summary").inner_text() == "Why trust this view?"
-    trust.locator("summary").click()
+    assert trust.locator(":scope > summary").inner_text() == "Why trust this view?"
+    trust.locator(":scope > summary").click()
     text = trust.inner_text()
     assert "Source" in text
     assert "Transform" in text
     assert "Awards are not disbursements" in text
     assert "2025 is unavailable" in text
     assert "invalid and 11 future award dates" in text
+    page.locator("#view-coverage-details summary").click()
     rows = trust.locator("#view-coverage tbody tr")
     assert rows.count() >= 22
     assert any("full" in row for row in rows.all_inner_texts())
@@ -85,7 +86,8 @@ def test_trust_disclosure_shows_current_view_evidence_and_coverage(page, base_ur
 
 def test_trust_disclosure_covers_partial_rows(page, base_url):
     _goto(page, base_url, "#story=spend-vs-poverty&year=2018")
-    page.locator("#view-trust summary").click()
+    page.locator("#view-trust > summary").click()
+    page.locator("#view-coverage-details summary").click()
     coverage = page.locator("#view-coverage").inner_text()
     assert "partial" in coverage
 
@@ -123,7 +125,7 @@ def test_region_geography_failure_disables_the_active_regional_finding(page, bas
     story = page.locator('#story-switcher button[data-story-id="inflation-vs-poverty"]')
     assert story.is_disabled()
     assert "unavailable" in story.inner_text().lower()
-    page.locator("#view-trust summary").click()
+    page.locator("#view-trust > summary").click()
     assert "unavailable" in page.locator("#view-trust").inner_text().lower()
 
 

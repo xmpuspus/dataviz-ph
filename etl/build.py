@@ -721,7 +721,7 @@ def main(no_cache: bool = False) -> None:
             "name": "Poverty incidence among families",
             "unit": "%",
             "source": "PSA OpenStat 1F/FY Table 1a",
-            "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1E__FY/"),
+            "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1F__FY/"),
             "definition": (
                 "Share of families whose per-capita income falls below the official "
                 "poverty threshold for their province, as published by the PSA in Table "
@@ -746,7 +746,7 @@ def main(no_cache: bool = False) -> None:
             "name": "Subsistence incidence among families",
             "unit": "%",
             "source": "PSA OpenStat 1F/FY Table 3a",
-            "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1E__FY/"),
+            "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1F__FY/"),
             "definition": (
                 "Share of families whose per-capita income falls below the official "
                 "food (subsistence) threshold for their province, as published by the "
@@ -935,7 +935,7 @@ def main(no_cache: bool = False) -> None:
             "name": "Poverty change 2018 to 2023 (pp)",
             "unit": "percentage points",
             "source": "Derived from PSA 1F/FY Table 1a anchors",
-            "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1E__FY/"),
+            "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1F__FY/"),
             "definition": (
                 "Province-level poverty incidence in 2023 minus the same measure in "
                 "2018. Negative means poverty fell. Constant across panel years."
@@ -1030,7 +1030,7 @@ def main(no_cache: bool = False) -> None:
             "name": "Poverty incidence among families (regional)",
             "unit": "%",
             "source": "PSA OpenStat 1F/FY Table 1a, regional rows",
-            "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1E__FY/"),
+            "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__1F__FY/"),
             "definition": (
                 "Share of families below the official poverty threshold, as PSA "
                 "publishes it for each of the 18 regions in Table 1a. These are "
