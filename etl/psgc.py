@@ -18,6 +18,7 @@ from pathlib import Path
 import httpx
 
 from etl.geography import (
+    HUC_LABEL_ALIASES,
     HUC_TO_PARENT,
     MAGUINDANAO_CODE,
     enrich_analysis_provinces,
@@ -65,6 +66,7 @@ def huc_parent(raw_name: str) -> str | None:
     if not isinstance(raw_name, str):
         return None
     s = raw_name.strip().lower()
+    s = HUC_LABEL_ALIASES.get(s, s)
     return HUC_TO_PARENT.get(s)
 
 

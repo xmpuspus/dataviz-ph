@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+from hashlib import sha256
 from pathlib import Path
 
 import httpx
@@ -58,6 +59,13 @@ CPI_PATH = PSA_TABLES["cpi"].reviewed_fallbacks[0]
 
 MISSING_SENTINELS = {"..", "...", "-", "", None}
 
+POVERTY_DEPTH_MEASURES = {
+    "poverty_poor_families": {"kind": "count", "unit": "thousand families"},
+    "poverty_income_gap": {"kind": "rate", "unit": "percent"},
+    "poverty_poverty_gap": {"kind": "rate", "unit": "percent"},
+    "poverty_severity": {"kind": "rate", "unit": "percent"},
+}
+
 
 CACHE_TTL_DAYS = 30
 
@@ -65,6 +73,19 @@ CACHE_TTL_DAYS = 30
 def _cache_path(name: str) -> Path:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     return CACHE_DIR / name
+
+
+def cache_identity(prefix: str, table: str, query: dict) -> str:
+    """Return a stable cache name that changes with table and query selection."""
+    encoded = json.dumps({"table": table, "query": query}, sort_keys=True, separators=(",", ":"))
+    return f"{prefix}_{sha256(encoded.encode()).hexdigest()[:16]}.json"
+
+
+def require_source_years(rows: list[dict], years: range, label: str) -> None:
+    """Fail when an official source pull misses a reviewed release year."""
+    missing = sorted(set(years) - {row["year"] for row in rows})
+    if missing:
+        raise ValueError(f"{label} source years missing: {missing}")
 
 
 def clear_cache() -> None:
@@ -114,6 +135,8 @@ def _to_float(raw: object) -> float | None:
 def _clean_geo_text(text: str) -> str:
     """Strip leading dots, trailing footnote refs, and asterisks from PSA geo labels."""
     s = text.lstrip(".").strip()
+    if s.lower().startswith("palawan (w/o the city of puerto princesa"):
+        return "Palawan"
     # Iteratively peel trailing footnotes: '/a', '1/', '2/', 'r1', etc.
     # Examples seen: 'Sulu r1, 1/, 2/, 3/, c/', 'Cebu /a', 'Tawi-tawi 1/, 3/, b/'.
     while True:
@@ -136,6 +159,10 @@ def _fetch_or_cache(name: str, fetch: callable) -> dict:
     payload = fetch()
     cache.write_text(json.dumps(payload))
     return payload
+
+
+def _query_payload(url: str, prefix: str, table: str, query: dict) -> dict:
+    return _fetch_or_cache(cache_identity(prefix, table, query), lambda: _post_json(url, query))
 
 
 def _directory_paths(directory: str, title_terms: tuple[str, ...]) -> list[str]:
@@ -405,6 +432,284 @@ def fetch_population_2020(
                 agg[parent] = agg.get(parent, 0) + int(value)
 
     return [{"psgc": psgc, "year": 2020, "value": v} for psgc, v in agg.items()]
+
+
+def fetch_population_2024(
+    provinces: dict,
+    normalize_name,
+    huc_parent=None,
+) -> list[dict]:
+    """Fetch and roll up the official 2024 POPCEN population anchor."""
+    path, _ = discover_table("population_2024")
+    url = f"{API_BASE}/{path}"
+    meta = _fetch_or_cache(cache_identity("population_meta", path, {}), lambda: _get_json(url))
+    geo_var = next(
+        variable
+        for variable in meta["variables"]
+        if "Geographic Location" in (variable.get("code") or variable.get("text", ""))
+    )
+    parameter = next(
+        variable for variable in meta["variables"] if variable.get("code") == "Parameter"
+    )
+    total = next(
+        value
+        for value, text in zip(parameter["values"], parameter["valueTexts"], strict=False)
+        if "total population" in text.lower()
+    )
+    query = {
+        "query": [
+            {"code": geo_var["code"], "selection": {"filter": "item", "values": geo_var["values"]}},
+            {"code": "Parameter", "selection": {"filter": "item", "values": [total]}},
+        ],
+        "response": {"format": "json"},
+    }
+    payload = _query_payload(url, "population_data", path, query)
+    labels = dict(zip(geo_var["values"], geo_var["valueTexts"], strict=False))
+    aggregate: dict[str, int] = {}
+    for entry in payload.get("data", []):
+        key = entry.get("key", [])
+        if not key:
+            continue
+        value = _to_float(entry.get("values", [None])[0])
+        if value is None:
+            continue
+        name = _clean_geo_text(labels.get(key[0], ""))
+        psgc = normalize_name(name, provinces, series="population")
+        if psgc is None and huc_parent is not None:
+            psgc = huc_parent(name)
+        if psgc in provinces:
+            aggregate[psgc] = aggregate.get(psgc, 0) + round(value)
+    return [{"psgc": psgc, "year": 2024, "value": value} for psgc, value in aggregate.items()]
+
+
+def interpolate_population_anchors(
+    population_2020: list[dict], population_2024: list[dict], years: list[int]
+) -> list[dict]:
+    """Keep the 2020 census anchor and interpolate only until the 2024 anchor."""
+    by_2020 = {row["psgc"]: row["value"] for row in population_2020}
+    by_2024 = {row["psgc"]: row["value"] for row in population_2024}
+    if set(by_2020) != set(by_2024):
+        missing = sorted(set(by_2020) ^ set(by_2024))
+        raise ValueError(f"population anchors have unmatched units: {missing}")
+    rows = []
+    for psgc in sorted(by_2020):
+        start, end = by_2020[psgc], by_2024[psgc]
+        for year in years:
+            if year < 2020 or year > 2024:
+                value = start if year <= 2020 else end
+                estimate = False
+                official = year == 2020
+            elif year in {2020, 2024}:
+                value = start if year == 2020 else end
+                estimate = False
+                official = True
+            else:
+                value = round(start + (end - start) * (year - 2020) / 4)
+                estimate = True
+                official = False
+            rows.append(
+                {
+                    "psgc": psgc,
+                    "year": year,
+                    "value": value,
+                    "estimate": estimate,
+                    "official": official,
+                }
+            )
+    return rows
+
+
+def recompute_gdp_per_capita(gdp_rows: list[dict], published_rows: list[dict]) -> list[dict]:
+    """Sum GDP and matching source-implied populations before division."""
+    published: dict[tuple[str, int], float] = {}
+    for row in published_rows:
+        key = (row["source_id"], row["year"])
+        if key in published:
+            raise ValueError(f"duplicate published per-capita denominator: {key}")
+        published[key] = row["value"]
+    totals: dict[tuple[str, int], tuple[float, float]] = {}
+    for row in gdp_rows:
+        published_value = published.get((row["source_id"], row["year"]))
+        if published_value is None or published_value <= 0:
+            continue
+        key = (row["psgc"], row["year"])
+        gdp, population = totals.get(key, (0.0, 0.0))
+        totals[key] = (
+            gdp + row["value"],
+            population + row["value"] / published_value,
+        )
+    return [
+        {"psgc": psgc, "year": year, "value": gdp / population}
+        for (psgc, year), (gdp, population) in sorted(totals.items())
+        if population > 0
+    ]
+
+
+def fetch_gdp_total(provinces: dict, normalize_name, huc_parent) -> list[dict]:
+    """Fetch additive constant-price GDP for defensible stable-area recomputation."""
+    path, _ = discover_table("gdp_total")
+    url = f"{API_BASE}/{path}"
+    meta = _fetch_or_cache(cache_identity("gdp_total_meta", path, {}), lambda: _get_json(url))
+    geo_var = next(variable for variable in meta["variables"] if variable["code"] == "Geolocation")
+    valuation = next(
+        variable for variable in meta["variables"] if variable["code"] == "Type of Valuation"
+    )
+    year_var = next(variable for variable in meta["variables"] if variable["code"] == "Year")
+    constant = next(
+        value
+        for value, text in zip(valuation["values"], valuation["valueTexts"], strict=False)
+        if "constant" in text.lower() and "2018" in text
+    )
+    query = {
+        "query": [
+            {"code": "Geolocation", "selection": {"filter": "item", "values": geo_var["values"]}},
+            {"code": "Type of Valuation", "selection": {"filter": "item", "values": [constant]}},
+            {"code": "Year", "selection": {"filter": "item", "values": year_var["values"]}},
+        ],
+        "response": {"format": "json"},
+    }
+    payload = _query_payload(url, "gdp_total_data", path, query)
+    labels = dict(zip(geo_var["values"], geo_var["valueTexts"], strict=False))
+    years = dict(zip(year_var["values"], year_var["valueTexts"], strict=False))
+    rows = []
+    for entry in payload.get("data", []):
+        key = entry.get("key", [])
+        if len(key) < 3:
+            continue
+        value = _to_float(entry.get("values", [None])[0])
+        if value is None:
+            continue
+        name = _clean_geo_text(labels.get(key[0], ""))
+        psgc = normalize_name(name, provinces, series="gdp_recomputation")
+        if psgc is None:
+            psgc = huc_parent(name)
+        if psgc not in provinces:
+            continue
+        try:
+            year = int(years.get(key[2], key[2]))
+        except ValueError:
+            continue
+        rows.append({"source_id": key[0], "psgc": psgc, "year": year, "value": value * 1_000})
+    return rows
+
+
+def fetch_gdp_per_capita_source(provinces: dict, normalize_name, huc_parent) -> list[dict]:
+    """Fetch the published PPA per-person series as a matching denominator source."""
+    path, _ = discover_table("gdp_per_capita")
+    url = f"{API_BASE}/{path}"
+    meta = _fetch_or_cache(cache_identity("gdp_per_capita_meta", path, {}), lambda: _get_json(url))
+    geo_var = next(variable for variable in meta["variables"] if variable["code"] == "Geolocation")
+    valuation = next(
+        variable for variable in meta["variables"] if variable["code"] == "Type of Valuation"
+    )
+    year_var = next(variable for variable in meta["variables"] if variable["code"] == "Year")
+    constant = next(
+        value
+        for value, text in zip(valuation["values"], valuation["valueTexts"], strict=False)
+        if "constant" in text.lower() and "2018" in text
+    )
+    query = {
+        "query": [
+            {"code": "Geolocation", "selection": {"filter": "item", "values": geo_var["values"]}},
+            {"code": "Type of Valuation", "selection": {"filter": "item", "values": [constant]}},
+            {"code": "Year", "selection": {"filter": "item", "values": year_var["values"]}},
+        ],
+        "response": {"format": "json"},
+    }
+    payload = _query_payload(url, "gdp_per_capita_data", path, query)
+    labels = dict(zip(geo_var["values"], geo_var["valueTexts"], strict=False))
+    years = dict(zip(year_var["values"], year_var["valueTexts"], strict=False))
+    rows = []
+    for entry in payload.get("data", []):
+        key = entry.get("key", [])
+        if len(key) < 3:
+            continue
+        value = _to_float(entry.get("values", [None])[0])
+        if value is None:
+            continue
+        name = _clean_geo_text(labels.get(key[0], ""))
+        psgc = normalize_name(name, provinces, series="gdp_recomputation")
+        if psgc is None:
+            psgc = huc_parent(name)
+        if psgc not in provinces:
+            continue
+        try:
+            year = int(years.get(key[2], key[2]))
+        except ValueError:
+            continue
+        rows.append({"source_id": key[0], "psgc": psgc, "year": year, "value": value})
+    return rows
+
+
+def validate_gdp_industry_contract() -> dict:
+    """Check the PPA industry table without treating its sectors as total GDP."""
+    path, metadata = discover_table("gdp_industry")
+    sector = next(variable for variable in metadata["variables"] if variable["code"] == "Sector")
+    valuation = next(
+        variable for variable in metadata["variables"] if variable["code"] == "Type of Valuation"
+    )
+    year = next(variable for variable in metadata["variables"] if variable["code"] == "Year")
+    if len(sector["values"]) != 16:
+        raise ValueError(f"PPA industry contract needs 16 sectors, got {len(sector['values'])}")
+    valuation_text = " ".join(valuation["valueTexts"]).lower()
+    if "current" not in valuation_text or "constant" not in valuation_text:
+        raise ValueError("PPA industry contract needs current and constant valuations")
+    require_source_years(
+        [{"year": int(value)} for value in year["valueTexts"]], range(2018, 2026), "PPA industry"
+    )
+    return {"path": path, "sectors": len(sector["values"]), "unit": "thousand Philippine pesos"}
+
+
+def fetch_poverty_depth(table: str, provinces: dict, normalize_name) -> list[dict]:
+    """Fetch a poverty-depth measure at its published, non-averaged area grain."""
+    contract = POVERTY_DEPTH_MEASURES.get(table)
+    if contract is None:
+        raise ValueError(f"unknown poverty-depth table: {table}")
+    path, _ = discover_table(table)
+    url = f"{API_BASE}/{path}"
+    meta = _fetch_or_cache(cache_identity("poverty_depth_meta", path, {}), lambda: _get_json(url))
+    geo_var = next(variable for variable in meta["variables"] if variable["code"] == "Geolocation")
+    measure_var = next(
+        variable
+        for variable in meta["variables"]
+        if variable["code"] == "Estimates/Measures of Precision"
+    )
+    year_var = next(variable for variable in meta["variables"] if variable["code"] == "Year")
+    estimate = next(
+        value
+        for value, text in zip(measure_var["values"], measure_var["valueTexts"], strict=False)
+        if text.lower().startswith("estimate")
+    )
+    query = {
+        "query": [
+            {"code": "Geolocation", "selection": {"filter": "item", "values": geo_var["values"]}},
+            {"code": measure_var["code"], "selection": {"filter": "item", "values": [estimate]}},
+            {"code": "Year", "selection": {"filter": "item", "values": year_var["values"]}},
+        ],
+        "response": {"format": "json"},
+    }
+    payload = _query_payload(url, "poverty_depth_data", path, query)
+    labels = dict(zip(geo_var["values"], geo_var["valueTexts"], strict=False))
+    years = dict(zip(year_var["values"], year_var["valueTexts"], strict=False))
+    rows = []
+    for entry in payload.get("data", []):
+        key = entry.get("key", [])
+        if len(key) < 3:
+            continue
+        value = _to_float(entry.get("values", [None])[0])
+        if value is None:
+            continue
+        psgc = normalize_name(
+            _clean_geo_text(labels.get(key[0], "")), provinces, series="poverty_fies"
+        )
+        if psgc not in provinces:
+            continue
+        try:
+            year = int(years.get(key[2], key[2]))
+        except ValueError:
+            continue
+        rows.append({"psgc": psgc, "year": year, "value": value, "measure": table, **contract})
+    return rows
 
 
 def fetch_gdp_per_capita(provinces: dict, normalize_name) -> list[dict]:

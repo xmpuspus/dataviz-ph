@@ -128,4 +128,4 @@ def test_gdp_contract_discovers_from_published_root_and_requires_2025():
 
     assert contract.directory == "2A/PPA"
     assert contract.expected_years[-1] == 2025
-    assert contract.reviewed_fallbacks == ("2A/PPA/2025/0092A5FPPA8.px",)
+    assert contract.reviewed_fallbacks == ("2A/PPA/0092A5FPPA8.px",)

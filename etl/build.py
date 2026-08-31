@@ -19,8 +19,8 @@ POVERTY_ANCHORS = [2018, 2021, 2023]
 # Regional story panel: poverty anchors that have a year-on-year inflation
 # print (regional CPI is 2018-based, so YoY starts 2019; 2018 drops out).
 REGION_STORY_YEARS = [2021, 2023]
-GDP_PANEL_YEARS = [2022, 2023, 2024]
-GDP_ANCHORS = [2022, 2023, 2024]  # PSA publishes all three; no interpolation needed
+GDP_PANEL_YEARS = list(range(2018, 2026))
+GDP_ANCHORS = GDP_PANEL_YEARS
 CPI_YOY_YEARS = list(range(2019, 2026))  # need year-prior so series starts at 2019
 
 # Cumulative spend window for spend-vs-poverty-change preset.
@@ -48,6 +48,35 @@ def compute_dpwh_share(dpwh_spend: list[dict], all_spend: list[dict]) -> list[di
             pct = 100.0
         out.append({"psgc": key[0], "year": key[1], "value": pct})
     return out
+
+
+def poverty_depth_coverage(rows: list[dict], expected_units: int, units: set[str]) -> list[dict]:
+    """Describe published poverty-depth coverage without averaging unsafe values."""
+    coverage = []
+    for measure in psa_openstat.POVERTY_DEPTH_MEASURES:
+        for year in POVERTY_ANCHORS:
+            observed = sum(row["measure"] == measure and row["year"] == year for row in rows)
+            present = {
+                row["psgc"] for row in rows if row["measure"] == measure and row["year"] == year
+            }
+            coverage.append(
+                {
+                    "measure": measure,
+                    "year": year,
+                    "expected_units": expected_units,
+                    "observed_units": observed,
+                    "status": "full" if observed == expected_units else "partial",
+                    "missing_psgcs": sorted(units - present),
+                    "missing_status": "none"
+                    if observed == expected_units
+                    else "source_unavailable",
+                    "warning": (
+                        "PSA publishes this measure at its natural grain. The build does not "
+                        "average rates or custom-roll up HUC estimates."
+                    ),
+                }
+            )
+    return coverage
 
 
 def compute_cpi_yoy(cpi: dict[int, float]) -> list[dict]:
@@ -332,13 +361,19 @@ def main(no_cache: bool = False) -> None:
     n_units = len(provinces)  # 82: 81 provinces + Metro Manila
 
     print(">> fetch 2020 population (with HUC rollup into parent provinces)")
-    population = psa_openstat.fetch_population_2020(
+    population_2020 = psa_openstat.fetch_population_2020(
         provinces, normalize_name, huc_parent=huc_parent
     )
-    validate.validate_all(population, schema="population")
-    pop_by_psgc = {r["psgc"]: r["value"] for r in population}
+    validate.validate_all(population_2020, schema="population")
+    pop_by_psgc = {r["psgc"]: r["value"] for r in population_2020}
     total_pop = sum(pop_by_psgc.values())
     print(f"   total covered pop: {total_pop:,} (PSA 2020 Census national = ~109,033,245)")
+
+    print(">> fetch 2024 POPCEN anchor (with HUC rollup into parent provinces)")
+    population_2024 = psa_openstat.fetch_population_2024(
+        provinces, normalize_name, huc_parent=huc_parent
+    )
+    validate.validate_all(population_2024, schema="population")
 
     print(">> fetch poverty (PSA 1E/FY 1a, anchors 2018/2021/2023, with 95% CI)")
     poverty_anchors = psa_openstat.fetch_poverty(provinces, normalize_name)
@@ -392,9 +427,23 @@ def main(no_cache: bool = False) -> None:
             d = deflators.get(r["year"])
             r["value_real"] = (r["value"] * d) if d is not None else None
 
-    print(">> fetch GDP per capita (PSA 2A/PPA, constant 2018 prices, 2022-2024)")
-    gdp = psa_openstat.fetch_gdp_per_capita(provinces, normalize_name)
+    print(">> fetch additive GDP (PSA 2A/PPA, constant 2018 prices, 2018-2025)")
+    gdp_total = psa_openstat.fetch_gdp_total(provinces, normalize_name, huc_parent)
+    gdp_published = psa_openstat.fetch_gdp_per_capita_source(provinces, normalize_name, huc_parent)
+    psa_openstat.validate_gdp_industry_contract()
+    psa_openstat.require_source_years(gdp_total, range(2018, 2026), "PPA GDP")
+    psa_openstat.require_source_years(gdp_published, range(2018, 2026), "PPA per-capita GDP")
+    gdp = psa_openstat.recompute_gdp_per_capita(gdp_total, gdp_published)
     validate.validate_all(gdp, schema="peso_per_capita_gdp")
+
+    print(">> fetch poverty-depth measures at the published area grain")
+    poverty_depth = []
+    for table in psa_openstat.POVERTY_DEPTH_MEASURES:
+        poverty_depth.extend(psa_openstat.fetch_poverty_depth(table, provinces, normalize_name))
+    for row in poverty_depth:
+        schema = "poor_families_thousands" if row["kind"] == "count" else "poverty_gap_pct"
+        validate.validate_all([row], schema=schema)
+    poverty_depth_status = poverty_depth_coverage(poverty_depth, n_units, set(provinces))
 
     # Carry the 95% CI + CV through onto anchor years only (interpolated years are
     # model estimates, not survey estimates, so they carry no precision).
@@ -421,7 +470,13 @@ def main(no_cache: bool = False) -> None:
 
     # provinces.json enriched with population
     provinces_out = {
-        code: {**info, "population_2020": pop_by_psgc.get(code, 0)}
+        code: {
+            **info,
+            "population_2020": pop_by_psgc.get(code, 0),
+            "population_2024": next(
+                (row["value"] for row in population_2024 if row["psgc"] == code), 0
+            ),
+        }
         for code, info in provinces.items()
     }
 
@@ -432,7 +487,9 @@ def main(no_cache: bool = False) -> None:
     validate.validate_all(cpi_yoy, schema="yoy_pct")
     poverty_change = compute_poverty_change(poverty_anchors)
     validate.validate_all(poverty_change, schema="delta_pp")
-    population_series = expand_population(provinces_out, PANEL_YEARS)
+    population_series = psa_openstat.interpolate_population_anchors(
+        population_2020, population_2024, PANEL_YEARS
+    )
     validate.validate_all(population_series, schema="population")
 
     print(">> fetch regional poverty + regional CPI (18 regions, PSA 1a + 2M/PI/CPI)")
@@ -463,6 +520,11 @@ def main(no_cache: bool = False) -> None:
     validate.validate_uniqueness(poverty_anchors, "poverty_anchors")
     validate.validate_coverage(population_series, n_units, PANEL_YEARS, "population")
     validate.validate_uniqueness(population_series, "population")
+    validate.validate_uniqueness(gdp, "gdp_per_capita")
+    for measure in psa_openstat.POVERTY_DEPTH_MEASURES:
+        validate.validate_uniqueness(
+            [row for row in poverty_depth if row["measure"] == measure], measure
+        )
     validate.validate_uniqueness(dpwh_spend, "dpwh_spend_per_capita")
     validate.validate_uniqueness(all_spend, "all_spend_per_capita")
 
@@ -483,6 +545,8 @@ def main(no_cache: bool = False) -> None:
     write_json("doh_spend_per_capita.json", doh_spend)
     write_json("infra_spend_per_capita.json", infra_spend)
     write_json("gdp_per_capita.json", gdp)
+    write_json("poverty_depth.json", poverty_depth)
+    write_json("poverty_depth_coverage.json", poverty_depth_status)
     write_json("cpi.json", {str(y): v for y, v in cpi.items()})
     write_json("dpwh_share_pct.json", dpwh_share)
     write_json("cpi_yoy_pct.json", cpi_yoy)
@@ -600,7 +664,7 @@ def main(no_cache: bool = False) -> None:
             "id": "gdp_per_capita",
             "name": "Per capita GDP",
             "unit": "PHP per person per year (constant 2018 prices)",
-            "source": "PSA OpenStat 2A/PPA/2025 Table 9 (Per Capita GDP, constant 2018 prices)",
+            "source": "PSA OpenStat PPA Tables 1 and 9, constant 2018 prices",
             "source_url": ("https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__2A__PPA/"),
             "definition": (
                 "Total provincial economic output divided by population, expressed in "
@@ -608,18 +672,20 @@ def main(no_cache: bool = False) -> None:
                 "comparable without an inflation adjustment."
             ),
             "vintage": (
-                "PSA province-level estimates, 2022, 2023, 2024. Already at constant 2018 "
-                "prices. HUCs are published as separate rows (Cebu City, Davao City, etc.) "
-                "and are NOT rolled into parent provinces here; the chart uses PSA's "
-                "province-level value as published, so Cebu shows province-without-HUC "
-                "GDP per capita. Maguindanao is split into del Norte / del Sur since 2022 "
-                "and is omitted here for consistency with the rest of the panel."
+                "Custom historical-area recomputation for 2018-2025. The build sums "
+                "constant-price GDP and source-implied PPA population before division. "
+                "It does not average published per-capita GDP. HUCs roll into their parent "
+                "provinces. Makati excludes EMBO barangays in 2022-2024. The published "
+                "PPA per-capita series supplies the matching source-implied denominator."
             ),
             "log_natural": True,
             "panel_years": GDP_PANEL_YEARS,
             "anchor_years": GDP_ANCHORS,
             "can_deflate": False,
-            "coverage_label": "PSA publishes provincial GDP from 2022 only (3 years).",
+            "coverage_label": (
+                "Custom stable-area values cover 2018-2025. The global common panel can "
+                "end earlier when another indicator lacks a matching year."
+            ),
         },
         {
             "id": "doh_spend_per_capita",
@@ -685,24 +751,26 @@ def main(no_cache: bool = False) -> None:
         },
         {
             "id": "population",
-            "name": "Population (2020 Census)",
+            "name": "Population (2020 and 2024 POPCEN)",
             "unit": "people",
-            "source": "PSA 2020 Census of Population and Housing",
+            "source": "PSA 2020 Census and 2024 POPCEN",
             "source_url": "https://psa.gov.ph/population-and-housing",
             "definition": (
-                "Whole-province population from the 2020 Census, including Highly "
-                "Urbanized Cities rolled into their geographic parent province. NCR "
-                "is reported as the regional aggregate (16 cities)."
+                "Whole-province population from the 2020 Census and 2024 POPCEN, including "
+                "Highly Urbanized Cities rolled into their geographic parent province. NCR "
+                "uses the published regional total."
             ),
             "vintage": (
-                "Single 2020 snapshot, repeated across the panel so the picker can "
-                "plot it against year-varying indicators."
+                "The 2020 and 2024 values are official anchors. The build interpolates "
+                "2021-2023. Years through 2020 retain the 2020 Census value."
             ),
             "log_natural": True,
             "panel_years": PANEL_YEARS,
-            "anchor_years": [2020],
-            "static_snapshot": True,
-            "snapshot_label": "2020 Census only. Does not vary by year.",
+            "anchor_years": [2020, 2024],
+            "static_snapshot": False,
+            "snapshot_label": (
+                "2020 Census through 2020. 2021-2023 are estimates. 2024 is official POPCEN."
+            ),
         },
         {
             "id": "poverty_change_pp",
@@ -1061,8 +1129,10 @@ def main(no_cache: bool = False) -> None:
             "row_counts": {
                 "poverty_anchors": len(poverty_anchors),
                 "subsistence_anchors": len(subsistence_anchors),
-                "population": len(population),
+                "population_2020": len(population_2020),
+                "population_2024": len(population_2024),
                 "gdp": len(gdp),
+                "poverty_depth": len(poverty_depth),
                 "cpi_years": len(cpi),
                 "region_poverty": len(region_poverty),
                 "region_cpi_yoy": len(region_cpi_yoy),
@@ -1097,6 +1167,8 @@ def main(no_cache: bool = False) -> None:
             "doh_spend_per_capita": len(doh_spend),
             "infra_spend_per_capita": len(infra_spend),
             "gdp_per_capita": len(gdp),
+            "poverty_depth": len(poverty_depth),
+            "poverty_depth_coverage": len(poverty_depth_status),
             "cpi": len(cpi),
             "dpwh_share_pct": len(dpwh_share),
             "cpi_yoy_pct": len(cpi_yoy),
@@ -1177,8 +1249,8 @@ def build_manifest(
             "poverty": "PSA OpenStat 1E/FY Table 1a, anchors 2018/2021/2023",
             "cpi": "PSA OpenStat 2M/PI/CPI/2018NEW, annual averages 2018-2025",
             "philgeps": "csiiiv/philgeps-awards-dashboard mirror, 2014-2024",
-            "gdp_per_capita": "PSA OpenStat 2A/PPA/2025 Table 9, constant 2018 prices, 2022-2024",
-            "population": "PSA 2020 Census of Population and Housing",
+            "gdp_per_capita": "PSA OpenStat PPA Tables 1 and 9, constant 2018 prices, 2018-2025",
+            "population": "PSA 2020 Census and 2024 POPCEN",
             "psgc": "psgc.gitlab.io community mirror",
         },
         "inputs": inputs or {},
@@ -1187,6 +1259,118 @@ def build_manifest(
         "file_bytes": sizes,
         "sha256_per_file": sha,
     }
+
+
+def refresh_automated_psa_public_data() -> None:
+    """Refresh PSA-only public artifacts without fetching the protected PhilGEPS snapshot."""
+    provinces = load_provinces()
+    population_2020 = psa_openstat.fetch_population_2020(
+        provinces, normalize_name, huc_parent=huc_parent
+    )
+    population_2024 = psa_openstat.fetch_population_2024(
+        provinces, normalize_name, huc_parent=huc_parent
+    )
+    population = psa_openstat.interpolate_population_anchors(
+        population_2020, population_2024, PANEL_YEARS
+    )
+    gdp_total = psa_openstat.fetch_gdp_total(provinces, normalize_name, huc_parent)
+    gdp_published = psa_openstat.fetch_gdp_per_capita_source(provinces, normalize_name, huc_parent)
+    ppa_industry = psa_openstat.validate_gdp_industry_contract()
+    psa_openstat.require_source_years(gdp_total, range(2018, 2026), "PPA GDP")
+    psa_openstat.require_source_years(gdp_published, range(2018, 2026), "PPA per-capita GDP")
+    gdp = psa_openstat.recompute_gdp_per_capita(gdp_total, gdp_published)
+    poverty_depth = []
+    for table in psa_openstat.POVERTY_DEPTH_MEASURES:
+        poverty_depth.extend(psa_openstat.fetch_poverty_depth(table, provinces, normalize_name))
+    for measure in psa_openstat.POVERTY_DEPTH_MEASURES:
+        validate.validate_uniqueness(
+            [row for row in poverty_depth if row["measure"] == measure], measure
+        )
+    poverty_depth_status = poverty_depth_coverage(poverty_depth, len(provinces), set(provinces))
+    validate.validate_coverage(population, len(provinces), PANEL_YEARS, "population")
+    validate.validate_uniqueness(population, "population")
+    validate.validate_uniqueness(gdp, "gdp_per_capita")
+    validate.validate_all(gdp, schema="peso_per_capita_gdp")
+
+    provinces_out = json.loads((PUBLIC_DATA / "provinces.json").read_text())
+    pop_2020 = {row["psgc"]: row["value"] for row in population_2020}
+    pop_2024 = {row["psgc"]: row["value"] for row in population_2024}
+    for code in provinces_out:
+        provinces_out[code]["population_2020"] = pop_2020[code]
+        provinces_out[code]["population_2024"] = pop_2024[code]
+    write_json("provinces.json", provinces_out)
+    write_json("population.json", population)
+    write_json("gdp_per_capita.json", gdp)
+    write_json("poverty_depth.json", poverty_depth)
+    write_json("poverty_depth_coverage.json", poverty_depth_status)
+
+    indicators = json.loads((PUBLIC_DATA / "indicators.json").read_text())
+    by_id = {indicator["id"]: indicator for indicator in indicators}
+    by_id["population"].update(
+        {
+            "name": "Population (2020 and 2024 POPCEN)",
+            "source": "PSA 2020 Census and 2024 POPCEN",
+            "vintage": "2020 and 2024 are official anchors. 2021-2023 are linear estimates.",
+            "anchor_years": [2020, 2024],
+            "static_snapshot": False,
+            "snapshot_label": (
+                "2020 Census through 2020. 2021-2023 are estimates. 2024 is official POPCEN."
+            ),
+        }
+    )
+    by_id["gdp_per_capita"].update(
+        {
+            "source": "PSA OpenStat PPA Tables 1 and 9, constant 2018 prices",
+            "panel_years": GDP_PANEL_YEARS,
+            "anchor_years": GDP_ANCHORS,
+            "coverage_label": "Custom stable-area values cover 2018-2025.",
+            "vintage": (
+                "Custom historical-area recomputation sums GDP and source-implied population "
+                "before division. Makati excludes EMBO barangays in 2022-2024."
+            ),
+        }
+    )
+    write_json("indicators.json", indicators)
+
+    existing = json.loads((PUBLIC_DATA / "manifest.json").read_text())
+    row_counts = existing.get("row_counts", {})
+    row_counts.update(
+        {
+            "provinces": len(provinces_out),
+            "population": len(population),
+            "gdp_per_capita": len(gdp),
+            "poverty_depth": len(poverty_depth),
+            "poverty_depth_coverage": len(poverty_depth_status),
+        }
+    )
+    inputs = existing.get("inputs", {})
+    inputs["psa_openstat"] = {
+        "source": psa_openstat.API_BASE,
+        "release": "PPA updated 2026-08-28; poverty-depth tables updated 2024-08-15",
+        "population_2024_path": "1A/PO_2024/0191A6DTHP8.px",
+        "ppa_industry_contract": ppa_industry,
+        "ppa_paths": [
+            "2A/PPA/0012A5FPPA0.px",
+            "2A/PPA/0022A5FPPA1.px",
+            "2A/PPA/0092A5FPPA8.px",
+        ],
+        "poverty_depth_paths": [
+            "1F/FY/0101F3DF05A.px",
+            "1F/FY/0191F3DF10A.px",
+            "1F/FY/0211F3DF11A.px",
+            "1F/FY/0231F3DF12A.px",
+        ],
+        "row_counts": {
+            "population_2020": len(population_2020),
+            "population_2024": len(population_2024),
+            "gdp": len(gdp),
+            "poverty_depth": len(poverty_depth),
+        },
+    }
+    write_json(
+        "manifest.json",
+        build_manifest(row_counts=row_counts, derived=existing.get("derived", {}), inputs=inputs),
+    )
 
 
 def _count_rows(payload: object) -> int:

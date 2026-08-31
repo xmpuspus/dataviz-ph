@@ -106,6 +106,22 @@ def test_denominator_transforms_are_declared_for_hucs_and_virtual_ncr() -> None:
     assert "Cotabato City" in transforms["whole_province_population_huc_rollup"]["excluded_hucs"]
 
 
+@pytest.mark.parametrize(
+    ("label", "parent"),
+    [
+        ("City of Lapu-Lapu", "072200000"),
+        ("City of General Santos", "126300000"),
+        ("City of Isabela (Not a Province)", "150700000"),
+    ],
+)
+def test_population_contract_maps_reviewed_official_huc_labels_once(
+    label: str, parent: str
+) -> None:
+    from etl.psgc import huc_parent
+
+    assert huc_parent(label) == parent
+
+
 def test_crosswalk_rejects_an_invented_official_identity() -> None:
     crosswalk = build_geography_crosswalk()
     crosswalk["mappings"][0]["name"] = "Invented Province"
@@ -153,6 +169,7 @@ def test_series_policies_declare_supported_operations_and_prohibited_averages() 
     assert policies["procurement"]["split_maguindanao"] == "sum_additive_values"
     assert policies["poverty_fies"]["split_maguindanao"] == "omit_without_recomputation"
     assert policies["gdp_per_capita"]["split_maguindanao"] == "omit_without_recomputation"
+    assert policies["gdp_per_capita"]["component_series"] == "gdp_recomputation"
     assert all(policy["prohibited_operation"] == "average" for policy in policies.values())
 
 
@@ -204,7 +221,7 @@ def test_split_maguindanao_rejects_missing_unknown_or_misspelled_series(series: 
     assert normalize_name("Maguindanao del Norte", provinces, series=series) is None
 
 
-@pytest.mark.parametrize("series", ["population", "procurement"])
+@pytest.mark.parametrize("series", ["population", "procurement", "gdp_recomputation"])
 def test_split_maguindanao_allows_only_declared_additive_series(series: str) -> None:
     from etl.psgc import normalize_name
 

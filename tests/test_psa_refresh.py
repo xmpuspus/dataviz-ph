@@ -1,0 +1,214 @@
+"""Offline contracts for the 2024 population and 2025 PSA source refresh."""
+
+from __future__ import annotations
+
+import json
+import math
+from pathlib import Path
+
+import pytest
+
+from etl import psa_openstat
+
+FIXTURE_DIR = Path(__file__).parent / "fixtures" / "psa"
+CONTRACT = FIXTURE_DIR / "automated-refresh-contracts.json"
+CONTENT = FIXTURE_DIR / "official-refresh-representative.json"
+
+
+def _fixtures() -> tuple[dict, dict]:
+    return json.loads(CONTRACT.read_text()), json.loads(CONTENT.read_text())
+
+
+def _load_table(monkeypatch, table: str, content: dict) -> list[dict]:
+    source = content["tables"][table]
+    queries: list[dict] = []
+
+    def query_payload(_url: str, _prefix: str, _path: str, query: dict) -> dict:
+        queries.append(query)
+        return source["payload"]
+
+    monkeypatch.setattr(psa_openstat, "discover_table", lambda _name: (source["path"], {}))
+    monkeypatch.setattr(psa_openstat, "_fetch_or_cache", lambda *_args: source["metadata"])
+    monkeypatch.setattr(psa_openstat, "_query_payload", query_payload)
+    return queries
+
+
+def _normalizer(name: str, _provinces: dict, series: str | None = None) -> str | None:
+    direct = {
+        "National Capital Region (NCR)": "130000000",
+        "Isabela": "020310000",
+        "Palawan": "170530000",
+        "Maguindanao": "153800000",
+    }
+    if name in {"Maguindanao del Norte", "Maguindanao del Sur"}:
+        return "153800000" if series in {"population", "gdp_recomputation"} else None
+    return direct.get(name)
+
+
+def _huc_parent(name: str) -> str | None:
+    return {
+        "City of Lapu-Lapu": "072200000",
+        "City of General Santos": "126300000",
+        "City of Isabela (Not a Province)": "150700000",
+        "City of Cebu": "072200000",
+    }.get(name)
+
+
+def test_reviewed_source_fixtures_pin_all_eight_upstream_responses() -> None:
+    contract, content = _fixtures()
+    expected = {
+        "population_2024",
+        "gdp_total",
+        "gdp_industry",
+        "gdp_per_capita",
+        "poverty_poor_families",
+        "poverty_income_gap",
+        "poverty_poverty_gap",
+        "poverty_severity",
+    }
+
+    assert expected <= set(contract)
+    assert content["fetched_at"] == "2026-08-31T10:43:00+08:00"
+    for name in expected:
+        for digest in contract[name].values():
+            if isinstance(digest, str) and digest.endswith(".px"):
+                continue
+            assert len(digest) == 64
+            int(digest, 16)
+
+
+def test_population_fixture_uses_real_loader_and_prevents_regional_double_count(
+    monkeypatch,
+) -> None:
+    _, content = _fixtures()
+    queries = _load_table(monkeypatch, "population_2024", content)
+    provinces = {
+        code: {}
+        for code in ("130000000", "020310000", "072200000", "126300000", "150700000", "153800000")
+    }
+
+    rows = psa_openstat.fetch_population_2024(provinces, _normalizer, _huc_parent)
+
+    values = {row["psgc"]: row["value"] for row in rows}
+    assert values == {
+        "020310000": 1_733_048,
+        "072200000": 497_813,
+        "126300000": 722_059,
+        "130000000": 14_001_751,
+        "150700000": 151_297,
+        "153800000": 1_938_054,
+    }
+    assert sum(values.values()) < 112_729_484
+    assert queries == [content["tables"]["population_2024"]["query"]]
+
+
+@pytest.mark.parametrize("table", ["gdp_total", "gdp_per_capita"])
+def test_ppa_fixture_selects_constant_price_rows_and_complete_year_contract(
+    monkeypatch, table: str
+) -> None:
+    _, content = _fixtures()
+    queries = _load_table(monkeypatch, table, content)
+    provinces = {code: {} for code in ("072200000", "130000000", "153800000")}
+    loader = (
+        psa_openstat.fetch_gdp_total
+        if table == "gdp_total"
+        else psa_openstat.fetch_gdp_per_capita_source
+    )
+
+    rows = loader(provinces, _normalizer, _huc_parent)
+
+    assert {row["year"] for row in rows} == {2018, 2025}
+    assert {row["source_id"] for row in rows} == {"0", "83", "84", "132", "133"}
+    if table == "gdp_total":
+        assert math.isclose(rows[0]["value"], 5_814_440_130_224.75)
+    else:
+        assert math.isclose(rows[0]["value"], 432_181.459230047)
+    years = content["tables"][table]["metadata"]["variables"][2]["valueTexts"]
+    assert years == [str(year) for year in range(2018, 2026)]
+    assert queries == [content["tables"][table]["query"]]
+
+
+def test_ppa_recomputation_uses_source_implied_population_and_additive_components(
+    monkeypatch,
+) -> None:
+    _, content = _fixtures()
+    provinces = {code: {} for code in ("072200000", "130000000", "153800000")}
+    total_queries = _load_table(monkeypatch, "gdp_total", content)
+    total = psa_openstat.fetch_gdp_total(provinces, _normalizer, _huc_parent)
+    per_capita_queries = _load_table(monkeypatch, "gdp_per_capita", content)
+    per_capita = psa_openstat.fetch_gdp_per_capita_source(provinces, _normalizer, _huc_parent)
+
+    rows = psa_openstat.recompute_gdp_per_capita(total, per_capita)
+
+    maguindanao = next(row for row in rows if row["psgc"] == "153800000" and row["year"] == 2025)
+    assert maguindanao["value"] == pytest.approx(64_871.17504091287)
+    assert total_queries == [content["tables"]["gdp_total"]["query"]]
+    assert per_capita_queries == [content["tables"]["gdp_per_capita"]["query"]]
+
+
+def test_industry_fixture_checks_contract_without_summing_sectors(monkeypatch) -> None:
+    _, content = _fixtures()
+    source = content["tables"]["gdp_industry"]
+    monkeypatch.setattr(
+        psa_openstat, "discover_table", lambda _name: (source["path"], source["metadata"])
+    )
+
+    contract = psa_openstat.validate_gdp_industry_contract()
+
+    assert contract == {
+        "path": "2A/PPA/0022A5FPPA1.px",
+        "sectors": 16,
+        "unit": "thousand Philippine pesos",
+    }
+    assert source["suppression_markers"] == ["..", "...", "-", "/s"]
+
+
+@pytest.mark.parametrize(
+    ("table", "expected_kind", "expect_ncr"),
+    [
+        ("poverty_poor_families", "count", True),
+        ("poverty_income_gap", "rate", True),
+        ("poverty_poverty_gap", "rate", False),
+        ("poverty_severity", "rate", True),
+    ],
+)
+def test_poverty_depth_fixtures_use_real_loader_and_keep_safe_source_rows(
+    monkeypatch, table: str, expected_kind: str, expect_ncr: bool
+) -> None:
+    _, content = _fixtures()
+    depth = content["poverty_depth"]
+    source = depth["tables"][table]
+    monkeypatch.setattr(psa_openstat, "discover_table", lambda _name: (source["path"], {}))
+    monkeypatch.setattr(psa_openstat, "_fetch_or_cache", lambda *_args: depth["metadata"])
+    queries: list[dict] = []
+
+    def query_payload(_url: str, _prefix: str, _path: str, query: dict) -> dict:
+        queries.append(query)
+        return source["payload"]
+
+    monkeypatch.setattr(psa_openstat, "_query_payload", query_payload)
+    provinces = {code: {} for code in ("130000000", "153800000", "170530000")}
+
+    rows = psa_openstat.fetch_poverty_depth(table, provinces, _normalizer)
+
+    assert {row["kind"] for row in rows} == {expected_kind}
+    assert {row["unit"] for row in rows} == {psa_openstat.POVERTY_DEPTH_MEASURES[table]["unit"]}
+    expected = {("153800000", 2023), ("170530000", 2023)}
+    if expect_ncr:
+        expected.add(("130000000", 2023))
+    assert {(row["psgc"], row["year"]) for row in rows} == expected
+    assert all(row["psgc"] != "190870000" for row in rows)
+    assert queries == [depth["query"]]
+
+
+def test_cache_identity_changes_with_query_and_source_years_reject_gaps() -> None:
+    first = psa_openstat.cache_identity("ppa_gdp", "0012A5FPPA0.px", {"Year": ["2024"]})
+    second = psa_openstat.cache_identity("ppa_gdp", "0012A5FPPA0.px", {"Year": ["2025"]})
+
+    assert first != second
+    with pytest.raises(ValueError, match="2025"):
+        psa_openstat.require_source_years([{"year": 2024}], range(2018, 2026), "PPA")
+
+
+def test_clean_geo_text_recovers_reviewed_palawan_label() -> None:
+    assert psa_openstat._clean_geo_text("Palawan (w/o the City of Puerto Princesa") == "Palawan"

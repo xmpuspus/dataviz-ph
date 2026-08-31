@@ -1016,6 +1016,7 @@
       "ncr": "published_regional_per_capita_value",
       "split_maguindanao": "omit_without_recomputation",
       "allowed_operation": "recompute_from_additive_gdp_and_population",
+      "component_series": "gdp_recomputation",
       "recomputation": "required_before_historical_rollup",
       "prohibited_operation": "average"
     }

@@ -47,7 +47,12 @@ HUC_TO_PARENT: dict[str, str] = {
     "city of butuan": "160200000",
     "city of isabela": "150700000",
 }
-ADDITIVE_SPLIT_SERIES = {"population", "procurement"}
+HUC_LABEL_ALIASES = {
+    "city of lapu-lapu": "city of lapu-lapu (opon)",
+    "city of general santos": "city of general santos (dadiangas)",
+    "city of isabela (not a province)": "city of isabela",
+}
+ADDITIVE_SPLIT_SERIES = {"population", "procurement", "gdp_recomputation"}
 
 
 def _analysis_provinces() -> dict[str, dict]:
@@ -188,6 +193,7 @@ def build_geography_crosswalk() -> dict:
                 "ncr": "published_regional_per_capita_value",
                 "split_maguindanao": "omit_without_recomputation",
                 "allowed_operation": "recompute_from_additive_gdp_and_population",
+                "component_series": "gdp_recomputation",
                 "recomputation": "required_before_historical_rollup",
                 "prohibited_operation": "average",
             },
@@ -251,12 +257,16 @@ def validate_crosswalk(crosswalk: dict) -> None:
             not in {"exclude", "no_huc_rollup", "source_name_not_attributed_as_huc"}
             or policy.get("huc_to_parent") != HUC_TO_PARENT
             or policy.get("prohibited_operation") != "average"
+            or (
+                policy["id"] == "gdp_per_capita"
+                and policy.get("component_series") != "gdp_recomputation"
+            )
         ):
             raise ValueError("series_policies must retain the declared HUC and averaging rules")
 
 
 def series_allows_split_mapping(series: str | None) -> bool:
-    """Return whether the series can sum current Maguindanao source rows."""
+    """Return whether the series can sum current Maguindanao source components."""
     return series in ADDITIVE_SPLIT_SERIES
 
 

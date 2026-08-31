@@ -1,0 +1,42 @@
+{
+  "fixture": "official-refresh-representative.json",
+  "population_2024": {
+    "path": "1A/PO_2024/0191A6DTHP8.px",
+    "metadata_sha256": "f0239d70ff8bae0daaae4af689ca4a3a44468b776089ec1cde5bb8f10ce8652a",
+    "payload_sha256": "04930c7f49d59fc341ef42ebfc1400bf3cb8c06bf924e2d5a3dcecc5096a76bc"
+  },
+  "gdp_total": {
+    "path": "2A/PPA/0012A5FPPA0.px",
+    "metadata_sha256": "245a6f6328bab08c157f4e9be73e168c6556d151b50e5f8a0b8d6f56878bb998",
+    "payload_sha256": "6c20ac6ab2d3d1ea428a5ea2c3c5a2309da123dde2afc3a9fec9c2559b2567f4"
+  },
+  "gdp_industry": {
+    "path": "2A/PPA/0022A5FPPA1.px",
+    "metadata_sha256": "954a899c17de429d3593f1d7524d406a48a6a77f985047ee24ff39e32590be75"
+  },
+  "gdp_per_capita": {
+    "path": "2A/PPA/0092A5FPPA8.px",
+    "metadata_sha256": "ec04555a13099bb026910040ba769cf051e4612b90d6292c40fe97f19f15e79c",
+    "payload_sha256": "794dbb283debd30b77a8b2cdb39794750e778316f00a360779eaeae01901f55b"
+  },
+  "poverty_poor_families": {
+    "path": "1F/FY/0101F3DF05A.px",
+    "metadata_sha256": "3e80ce97ab308e2072b66dce252b24d05de8eb65949c9b2dccf6efe6e9532083",
+    "payload_sha256": "945f005890e40cdb8331cb679ede9aee45e7e4bb729bcbd919f59c64faa1844c"
+  },
+  "poverty_income_gap": {
+    "path": "1F/FY/0191F3DF10A.px",
+    "metadata_sha256": "09ab52f65f9bbffd72d17af9100f35b16f56d6aa1a4fff4ae9e9658f9145c28a",
+    "payload_sha256": "d062dfd8c7e0daf52f0296a8dc6905cc94318788e5e472c848f29a8971764c05"
+  },
+  "poverty_poverty_gap": {
+    "path": "1F/FY/0211F3DF11A.px",
+    "metadata_sha256": "0f5d3eaae0a3b28693f0502dbfe0a21cf7449821ab7a68e01bd414c400514bd4",
+    "payload_sha256": "46f127d58a40b45edd5abf2c6d73a73da17fd78b892dda55cdeeb39b74a48082"
+  },
+  "poverty_severity": {
+    "path": "1F/FY/0231F3DF12A.px",
+    "metadata_sha256": "6ad5d7e9c8694ebd33f0ae846a6fdbf79924e826f9e14f01aae43401afb292fb",
+    "payload_sha256": "f1bc7dd3eda539519ae7251f03bd36b1106042c99e3727d80959f9ded3d30b68"
+  }
+}

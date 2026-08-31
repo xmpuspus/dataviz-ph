@@ -1,0 +1,1125 @@
+{
+  "fetched_at": "2026-08-31T10:43:00+08:00",
+  "format": "json",
+  "tables": {
+    "population_2024": {
+      "path": "1A/PO_2024/0191A6DTHP8.px",
+      "title": "Total Population, Household Population, Number of Households and Average Household Size by Region, Province, and Highly Urbanized City: Philippines, 2024",
+      "query": {
+        "query": [
+          {
+            "code": "Geographic Location",
+            "selection": {
+              "filter": "item",
+              "values": [
+                "0000000000",
+                "1300000000",
+                "0731100000",
+                "0990100000",
+                "1230800000",
+                "0203100000",
+                "1908700000",
+                "1908800000",
+                "0100000000"
+              ]
+            }
+          },
+          {
+            "code": "Parameter",
+            "selection": {
+              "filter": "item",
+              "values": [
+                "0"
+              ]
+            }
+          }
+        ],
+        "response": {
+          "format": "json"
+        }
+      },
+      "metadata": {
+        "variables": [
+          {
+            "code": "Geographic Location",
+            "text": "Geographic Location",
+            "values": [
+              "0000000000",
+              "1300000000",
+              "0731100000",
+              "0990100000",
+              "1230800000",
+              "0203100000",
+              "1908700000",
+              "1908800000",
+              "0100000000"
+            ],
+            "valueTexts": [
+              "Philippines a",
+              "..National Capital Region (NCR)",
+              "....City of Lapu-Lapu",
+              "....City of Isabela (Not a Province) **",
+              "....City of General Santos",
+              "....Isabela",
+              "....Maguindanao del Norte 7/",
+              "....Maguindanao del Sur 7/",
+              "..Region I (Ilocos Region)"
+            ]
+          },
+          {
+            "code": "Parameter",
+            "text": "Parameter",
+            "values": [
+              "0",
+              "1",
+              "2",
+              "3"
+            ],
+            "valueTexts": [
+              "Total Population",
+              "Household Population",
+              "Number of Households",
+              "Average Household Size"
+            ]
+          }
+        ]
+      },
+      "payload": {
+        "data": [
+          {
+            "key": [
+              "0000000000",
+              "0"
+            ],
+            "values": [
+              "112729484"
+            ]
+          },
+          {
+            "key": [
+              "1300000000",
+              "0"
+            ],
+            "values": [
+              "14001751"
+            ]
+          },
+          {
+            "key": [
+              "0731100000",
+              "0"
+            ],
+            "values": [
+              "497813"
+            ]
+          },
+          {
+            "key": [
+              "0990100000",
+              "0"
+            ],
+            "values": [
+              "151297"
+            ]
+          },
+          {
+            "key": [
+              "1230800000",
+              "0"
+            ],
+            "values": [
+              "722059"
+            ]
+          },
+          {
+            "key": [
+              "0203100000",
+              "0"
+            ],
+            "values": [
+              "1733048"
+            ]
+          },
+          {
+            "key": [
+              "1908700000",
+              "0"
+            ],
+            "values": [
+              "1124811"
+            ]
+          },
+          {
+            "key": [
+              "1908800000",
+              "0"
+            ],
+            "values": [
+              "813243"
+            ]
+          },
+          {
+            "key": [
+              "0100000000",
+              "0"
+            ],
+            "values": [
+              "5365054"
+            ]
+          }
+        ]
+      }
+    },
+    "gdp_total": {
+      "path": "2A/PPA/0012A5FPPA0.px",
+      "title": "Gross Domestic Product by Province and HUC",
+      "unit": "thousand Philippine pesos",
+      "query": {
+        "query": [
+          {
+            "code": "Geolocation",
+            "selection": {
+              "filter": "item",
+              "values": [
+                "0",
+                "83",
+                "84",
+                "132",
+                "133"
+              ]
+            }
+          },
+          {
+            "code": "Type of Valuation",
+            "selection": {
+              "filter": "item",
+              "values": [
+                "1"
+              ]
+            }
+          },
+          {
+            "code": "Year",
+            "selection": {
+              "filter": "item",
+              "values": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7"
+              ]
+            }
+          }
+        ],
+        "response": {
+          "format": "json"
+        }
+      },
+      "metadata": {
+        "variables": [
+          {
+            "code": "Geolocation",
+            "text": "Geolocation",
+            "values": [
+              "0",
+              "83",
+              "84",
+              "132",
+              "133"
+            ],
+            "valueTexts": [
+              "National Capital Region (NCR)",
+              "..City of Cebu",
+              "..City of Lapu-Lapu",
+              "..Maguindanao del Norte",
+              "..Maguindanao del Sur"
+            ]
+          },
+          {
+            "code": "Type of Valuation",
+            "text": "Type of Valuation",
+            "values": [
+              "0",
+              "1"
+            ],
+            "valueTexts": [
+              "At Current Prices",
+              "At Constant 2018 Prices"
+            ]
+          },
+          {
+            "code": "Year",
+            "text": "Year",
+            "values": [
+              "0",
+              "1",
+              "2",
+              "3",
+              "4",
+              "5",
+              "6",
+              "7"
+            ],
+            "valueTexts": [
+              "2018",
+              "2019",
+              "2020",
+              "2021",
+              "2022",
+              "2023",
+              "2024",
+              "2025"
+            ]
+          }
+        ]
+      },
+      "payload": {
+        "data": [
+          {
+            "key": [
+              "0",
+              "1",
+              "0"
+            ],
+            "values": [
+              "5814440130.2247500"
+            ]
+          },
+          {
+            "key": [
+              "0",
+              "1",
+              "7"
+            ],
+            "values": [
+              "7243133798.9196100"
+            ]
+          },
+          {
+            "key": [
+              "83",
+              "1",
+              "0"
+            ],
+            "values": [
+              "258239870.3982940"
+            ]
+          },
+          {
+            "key": [
+              "83",
+              "1",
+              "7"
+            ],
+            "values": [
+              "353808403.9721190"
+            ]
+          },
+          {
+            "key": [
+              "84",
+              "1",
+              "0"
+            ],
+            "values": [
+              "147788795.4193720"
+            ]
+          },
+          {
+            "key": [
+              "84",
+              "1",
+              "7"
+            ],
+            "values": [
+              "182141157.2771420"
+            ]
+          },
+          {
+            "key": [
+              "132",
+              "1",
+              "0"
+            ],
+            "values": [
+              "65485521.9835849"
+            ]
+          },
+          {
+            "key": [
+              "132",
+              "1",
+              "7"
+            ],
+            "values": [
+              "90977039.8167907"
+            ]
+          },
+          {
+            "key": [
+              "133",
+              "1",
+              "0"
+            ],
+            "values": [
+              "31143253.7124601"
+            ]
+          },
+          {
+            "key": [
+              "133",
+              "1",
+              "7"
+            ],
+            "values": [
+              "43446414.2559873"
+            ]
+          }
+        ]
+      }
+    },
+    "gdp_per_capita": {
+      "path": "2A/PPA/0092A5FPPA8.px",
+      "title": "Per Capita Gross Domestic Product by Province and HUC",
+      "unit": "Philippine pesos per person",
+      "query": {
+        "query": [
+          {
+            "code": "Geolocation",
+            "selection": {
+              "filter": "item",
+              "values": [
+                "0",
+                "83",
+                "84",
+                "132",
+                "133"
+              ]
+            }
+          },
+          {
+            "code": "Type of Valuation",
+            "selection": {
+              "filter": "item",
+              "values": [
+                "1"
+              ]
+            }
+          },
+          {
+            "code": "Year",
+            "selection": {
+              "filter": "item",
+              "values": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7"
+              ]
+            }
+          }
+        ],
+        "response": {
+          "format": "json"
+        }
+      },
+      "metadata": {
+        "variables": [
+          {
+            "code": "Geolocation",
+            "text": "Geolocation",
+            "values": [
+              "0",
+              "83",
+              "84",
+              "132",
+              "133"
+            ],
+            "valueTexts": [
+              "National Capital Region (NCR)",
+              "..City of Cebu",
+              "..City of Lapu-Lapu",
+              "..Maguindanao del Norte",
+              "..Maguindanao del Sur"
+            ]
+          },
+          {
+            "code": "Type of Valuation",
+            "text": "Type of Valuation",
+            "values": [
+              "0",
+              "1"
+            ],
+            "valueTexts": [
+              "At Current Prices",
+              "At Constant 2018 Prices"
+            ]
+          },
+          {
+            "code": "Year",
+            "text": "Year",
+            "values": [
+              "0",
+              "1",
+              "2",
+              "3",
+              "4",
+              "5",
+              "6",
+              "7"
+            ],
+            "valueTexts": [
+              "2018",
+              "2019",
+              "2020",
+              "2021",
+              "2022",
+              "2023",
+              "2024",
+              "2025"
+            ]
+          }
+        ]
+      },
+      "payload": {
+        "data": [
+          {
+            "key": [
+              "0",
+              "1",
+              "0"
+            ],
+            "values": [
+              "432181.4592300470"
+            ]
+          },
+          {
+            "key": [
+              "0",
+              "1",
+              "7"
+            ],
+            "values": [
+              "522564.4619961400"
+            ]
+          },
+          {
+            "key": [
+              "83",
+              "1",
+              "0"
+            ],
+            "values": [
+              "270519.3967817300"
+            ]
+          },
+          {
+            "key": [
+              "83",
+              "1",
+              "7"
+            ],
+            "values": [
+              "365036.5636329030"
+            ]
+          },
+          {
+            "key": [
+              "84",
+              "1",
+              "0"
+            ],
+            "values": [
+              "333629.2425700920"
+            ]
+          },
+          {
+            "key": [
+              "84",
+              "1",
+              "7"
+            ],
+            "values": [
+              "321285.3400641750"
+            ]
+          },
+          {
+            "key": [
+              "132",
+              "1",
+              "0"
+            ],
+            "values": [
+              "60040.8221487972"
+            ]
+          },
+          {
+            "key": [
+              "132",
+              "1",
+              "7"
+            ],
+            "values": [
+              "72055.7137706218"
+            ]
+          },
+          {
+            "key": [
+              "133",
+              "1",
+              "0"
+            ],
+            "values": [
+              "45132.5313860520"
+            ]
+          },
+          {
+            "key": [
+              "133",
+              "1",
+              "7"
+            ],
+            "values": [
+              "53666.2367117080"
+            ]
+          }
+        ]
+      }
+    },
+    "gdp_industry": {
+      "path": "2A/PPA/0022A5FPPA1.px",
+      "title": "Gross Domestic Product by Industry, Province and HUC",
+      "unit": "thousand Philippine pesos",
+      "suppression_markers": [
+        "..",
+        "...",
+        "-",
+        "/s"
+      ],
+      "metadata": {
+        "variables": [
+          {
+            "code": "Sector",
+            "text": "Sector",
+            "values": [
+              "0",
+              "1",
+              "2",
+              "3",
+              "4",
+              "5",
+              "6",
+              "7",
+              "8",
+              "9",
+              "10",
+              "11",
+              "12",
+              "13",
+              "14",
+              "15"
+            ],
+            "valueTexts": [
+              "Agriculture, Forestry, and Fishing",
+              "Mining and Quarrying",
+              "Manufacturing",
+              "Electricity, Steam, Water and Waste Management",
+              "Construction",
+              "Wholesale and Retail Trade; Repair of Motor Vehicles and Motorcycles",
+              "Transportation and Storage",
+              "Accommodation and Food Service Activities",
+              "Information and Communication",
+              "Financial and Insurance Activities",
+              "Real Estate and Ownership of Dwellings",
+              "Professional and Business Services",
+              "Public Administration and Defense; Compulsory Social Activities",
+              "Education",
+              "Human Health and Social Work Activities",
+              "Other Services"
+            ]
+          },
+          {
+            "code": "Geolocation",
+            "text": "Geolocation",
+            "values": [
+              "0",
+              "83"
+            ],
+            "valueTexts": [
+              "National Capital Region (NCR)",
+              "..City of Cebu"
+            ]
+          },
+          {
+            "code": "Type of Valuation",
+            "text": "Type of Valuation",
+            "values": [
+              "0",
+              "1"
+            ],
+            "valueTexts": [
+              "At Current Prices",
+              "At Constant 2018 Prices"
+            ]
+          },
+          {
+            "code": "Year",
+            "text": "Year",
+            "values": [
+              "0",
+              "1",
+              "2",
+              "3",
+              "4",
+              "5",
+              "6",
+              "7"
+            ],
+            "valueTexts": [
+              "2018",
+              "2019",
+              "2020",
+              "2021",
+              "2022",
+              "2023",
+              "2024",
+              "2025"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "poverty_depth": {
+    "metadata": {
+      "variables": [
+        {
+          "code": "Geolocation",
+          "text": "Geolocation",
+          "values": [
+            "0",
+            "1",
+            "63",
+            "88",
+            "136",
+            "137",
+            "138"
+          ],
+          "valueTexts": [
+            "PHILIPPINES  r1, 1/, 2/",
+            "..National Capital Region (NCR) 1/, 2/, a/",
+            "....Palawan (w/o the City of Puerto Princesa 3/, a/, b/, c/",
+            "....City of Cebu 1/, 2/, a/, b/, c/",
+            "....Maguindanao",
+            "......Maguindanao del Norte",
+            "......Maguindanao del Sur"
+          ]
+        },
+        {
+          "code": "Estimates/Measures of Precision",
+          "text": "Estimates/Measures of Precision",
+          "values": [
+            "0",
+            "1",
+            "2",
+            "3",
+            "4"
+          ],
+          "valueTexts": [
+            "Estimate (%)",
+            "Coefficient of Variation",
+            "Standard Error",
+            "95% Confidence Interval (Lower Limit)",
+            "95% Confidence Interval (Upper Limit)"
+          ]
+        },
+        {
+          "code": "Year",
+          "text": "Year",
+          "values": [
+            "0",
+            "1",
+            "2"
+          ],
+          "valueTexts": [
+            "2018",
+            "2021",
+            "2023"
+          ]
+        }
+      ]
+    },
+    "query": {
+      "query": [
+        {
+          "code": "Geolocation",
+          "selection": {
+            "filter": "item",
+            "values": [
+              "0",
+              "1",
+              "63",
+              "88",
+              "136",
+              "137",
+              "138"
+            ]
+          }
+        },
+        {
+          "code": "Estimates/Measures of Precision",
+          "selection": {
+            "filter": "item",
+            "values": [
+              "0"
+            ]
+          }
+        },
+        {
+          "code": "Year",
+          "selection": {
+            "filter": "item",
+            "values": [
+              "0",
+              "1",
+              "2"
+            ]
+          }
+        }
+      ],
+      "response": {
+        "format": "json"
+      }
+    },
+    "tables": {
+      "poverty_poor_families": {
+        "path": "1F/FY/0101F3DF05A.px",
+        "title": "Table 5a. Magnitude of Poor Families with Measures of Precision, by Region, Province and Highly Urbanized Cities:  2018, 2021, and 2023",
+        "kind": "count",
+        "unit": "thousand families",
+        "payload": {
+          "data": [
+            {
+              "key": [
+                "0",
+                "0",
+                "0"
+              ],
+              "values": [
+                "21.7"
+              ]
+            },
+            {
+              "key": [
+                "1",
+                "0",
+                "2"
+              ],
+              "values": [
+                "12.4"
+              ]
+            },
+            {
+              "key": [
+                "63",
+                "0",
+                "2"
+              ],
+              "values": [
+                "21.7"
+              ]
+            },
+            {
+              "key": [
+                "88",
+                "0",
+                "2"
+              ],
+              "values": [
+                "17.3"
+              ]
+            },
+            {
+              "key": [
+                "136",
+                "0",
+                "2"
+              ],
+              "values": [
+                "20.5"
+              ]
+            },
+            {
+              "key": [
+                "137",
+                "0",
+                "2"
+              ],
+              "values": [
+                "20.2"
+              ]
+            },
+            {
+              "key": [
+                "138",
+                "0",
+                "2"
+              ],
+              "values": [
+                "20.7"
+              ]
+            }
+          ]
+        }
+      },
+      "poverty_income_gap": {
+        "path": "1F/FY/0191F3DF10A.px",
+        "title": "Table 10a. Income Gap with Measures of Precision, by Region, Province and Highly Urbanized Cities:  2018, 2021, and 2023",
+        "kind": "rate",
+        "unit": "percent",
+        "payload": {
+          "data": [
+            {
+              "key": [
+                "0",
+                "0",
+                "0"
+              ],
+              "values": [
+                "3004.61"
+              ]
+            },
+            {
+              "key": [
+                "1",
+                "0",
+                "2"
+              ],
+              "values": [
+                "41.28"
+              ]
+            },
+            {
+              "key": [
+                "63",
+                "0",
+                "2"
+              ],
+              "values": [
+                "48.83"
+              ]
+            },
+            {
+              "key": [
+                "88",
+                "0",
+                "2"
+              ],
+              "values": [
+                "12.82"
+              ]
+            },
+            {
+              "key": [
+                "136",
+                "0",
+                "2"
+              ],
+              "values": [
+                "70.99"
+              ]
+            },
+            {
+              "key": [
+                "137",
+                "0",
+                "2"
+              ],
+              "values": [
+                "31.26"
+              ]
+            },
+            {
+              "key": [
+                "138",
+                "0",
+                "2"
+              ],
+              "values": [
+                "39.72"
+              ]
+            }
+          ]
+        }
+      },
+      "poverty_poverty_gap": {
+        "path": "1F/FY/0211F3DF11A.px",
+        "title": "Table 11a. Poverty Gap with Measures of Precision, by Region, Province and Highly Urbanized Cities:  2018, 2021, and 2023",
+        "kind": "rate",
+        "unit": "percent",
+        "payload": {
+          "data": [
+            {
+              "key": [
+                "0",
+                "0",
+                "0"
+              ],
+              "values": [
+                "0.9"
+              ]
+            },
+            {
+              "key": [
+                "1",
+                "0",
+                "2"
+              ],
+              "values": [
+                "-"
+              ]
+            },
+            {
+              "key": [
+                "63",
+                "0",
+                "2"
+              ],
+              "values": [
+                "1.4"
+              ]
+            },
+            {
+              "key": [
+                "88",
+                "0",
+                "2"
+              ],
+              "values": [
+                "0.3"
+              ]
+            },
+            {
+              "key": [
+                "136",
+                "0",
+                "2"
+              ],
+              "values": [
+                "1.9"
+              ]
+            },
+            {
+              "key": [
+                "137",
+                "0",
+                "2"
+              ],
+              "values": [
+                "1.7"
+              ]
+            },
+            {
+              "key": [
+                "138",
+                "0",
+                "2"
+              ],
+              "values": [
+                "2.0"
+              ]
+            }
+          ]
+        }
+      },
+      "poverty_severity": {
+        "path": "1F/FY/0231F3DF12A.px",
+        "title": "Table 12a. Severity of Poverty with Measures of Precision, by Region, Province and Highly Urbanized Cities:  2018, 2021, and 2023",
+        "kind": "rate",
+        "unit": "percent",
+        "payload": {
+          "data": [
+            {
+              "key": [
+                "0",
+                "0",
+                "0"
+              ],
+              "values": [
+                "2.6"
+              ]
+            },
+            {
+              "key": [
+                "1",
+                "0",
+                "2"
+              ],
+              "values": [
+                "0.1"
+              ]
+            },
+            {
+              "key": [
+                "63",
+                "0",
+                "2"
+              ],
+              "values": [
+                "4.2"
+              ]
+            },
+            {
+              "key": [
+                "88",
+                "0",
+                "2"
+              ],
+              "values": [
+                "0.9"
+              ]
+            },
+            {
+              "key": [
+                "136",
+                "0",
+                "2"
+              ],
+              "values": [
+                "6.2"
+              ]
+            },
+            {
+              "key": [
+                "137",
+                "0",
+                "2"
+              ],
+              "values": [
+                "5.7"
+              ]
+            },
+            {
+              "key": [
+                "138",
+                "0",
+                "2"
+              ],
+              "values": [
+                "6.6"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

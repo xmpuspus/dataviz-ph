@@ -24,6 +24,8 @@ SCHEMAS = {
     "share_pct": {"min": 0, "max": 100},
     "yoy_pct": {"min": -20, "max": 30},
     "delta_pp": {"min": -100, "max": 100},
+    "poor_families_thousands": {"min": 0, "max": 10_000},
+    "poverty_gap_pct": {"min": 0, "max": 100},
 }
 
 PUBLIC_DATA = Path(__file__).resolve().parent.parent / "public" / "data"
