@@ -70,6 +70,7 @@ INFRA_KEYWORDS = (
 )
 PANEL_START = 2014
 PANEL_END = 2024
+LATEST_REVIEWED_COMPLETE_YEAR = 2024
 # Anything < this PHP/cap is almost certainly a coverage gap (typo in
 # area_of_delivery, contract tagged with a city that we can't map, etc.).
 # Treat it as missing data rather than publishing PHP 0.08 / cap.
@@ -174,7 +175,7 @@ def procurement_status(inventory: dict, *, candidate_year: int | None = None) ->
         "status": gate["status"],
         "panel_start": PANEL_START,
         "panel_end": PANEL_END,
-        "latest_complete_year": PANEL_END,
+        "latest_complete_year": LATEST_REVIEWED_COMPLETE_YEAR,
         "candidate_year": candidate_year,
         "failed_gates": gate["failed_gates"],
         "snapshot_id": inventory.get("snapshot_id"),

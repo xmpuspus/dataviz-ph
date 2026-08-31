@@ -392,6 +392,33 @@ def test_snapshot_identity_changes_when_candidate_or_attestation_changes():
     assert philgeps.snapshot_identity(inventory) != first
 
 
+def test_procurement_status_keeps_reviewed_complete_year_when_panel_changes(monkeypatch):
+    monkeypatch.setattr(philgeps, "PANEL_END", 2030)
+    status = philgeps.procurement_status(
+        {
+            "snapshot_id": "current",
+            "anomalies": {"invalid_award_date_count": 0, "future_award_date_count": 0},
+            "correction_attestation": {
+                "prior_snapshot_id": "prior",
+                "current_snapshot_id": "current",
+                "reviewed_at": "2026-08-31T00:00:00Z",
+                "status": "reviewed",
+                "result": "no_material_corrections",
+            },
+            "year_candidates": {
+                "2025": {
+                    "unique_award_id_count": 1,
+                    "date_range": {"start": "2025-01-01", "end": "2025-12-31"},
+                    "month_counts": {str(month): 1 for month in range(1, 13)},
+                }
+            },
+        }
+    )
+
+    assert status["latest_complete_year"] == 2024
+    assert status["candidate_year"] == 2025
+
+
 def test_processing_rejects_a_cache_that_differs_from_its_reviewed_inventory(tmp_path, monkeypatch):
     monkeypatch.setattr(philgeps, "CACHE_DIR", tmp_path)
     monkeypatch.setattr(philgeps, "N_CHUNKS", 1)

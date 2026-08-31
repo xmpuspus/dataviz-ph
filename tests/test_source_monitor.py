@@ -115,6 +115,7 @@ def test_monitor_uses_reviewed_candidate_year_and_attestation(monkeypatch):
     )
 
     snapshot = report["snapshot"]
+    assert snapshot["latest_complete_philgeps_year"] == 2024
     assert snapshot["candidate_year"] == 2025
     assert snapshot["candidate_year_status"]["status"] == "available"
     assert snapshot["correction_attestation_status"] == "reviewed"

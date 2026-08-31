@@ -66,7 +66,7 @@ def assess_source_state(
             "status": "present",
             "age_days": age_days,
             "supported_date_range": snapshot_inventory.get("supported_date_range"),
-            "latest_complete_philgeps_year": philgeps.PANEL_END,
+            "latest_complete_philgeps_year": philgeps.LATEST_REVIEWED_COMPLETE_YEAR,
             "candidate_year": candidate_year,
             "correction_attestation": attestation,
             "correction_attestation_status": attestation_status,
