@@ -66,6 +66,16 @@ POVERTY_DEPTH_MEASURES = {
     "poverty_severity": {"kind": "rate", "unit": "percent"},
 }
 
+INDUSTRY_REVIEWED_SEMANTICS = {
+    "provenance": "PSA OpenSTAT reviewed metadata, 2026-08-31",
+    "metadata_sha256": "954a899c17de429d3593f1d7524d406a48a6a77f985047ee24ff39e32590be75",
+    "unit": "thousand Philippine pesos",
+    "decimals": 12,
+    "suppression_markers": ["-", "..", "...", "/s"],
+    "years": list(range(2018, 2026)),
+    "valuations": ["At Current Prices", "At Constant 2018 Prices"],
+}
+
 
 CACHE_TTL_DAYS = 30
 
@@ -677,14 +687,12 @@ def validate_gdp_industry_contract() -> dict:
     require_source_years(
         [{"year": int(value)} for value in year["valueTexts"]], range(2018, 2026), "PPA industry"
     )
+    if [*valuation["valueTexts"]] != INDUSTRY_REVIEWED_SEMANTICS["valuations"]:
+        raise ValueError("PPA industry valuations differ from reviewed semantics")
     return {
         "path": path,
         "sectors": len(sector["values"]),
-        "unit": "thousand Philippine pesos",
-        "decimals": 12,
-        "suppression_markers": sorted(MISSING_SENTINELS - {"", None}),
-        "years": list(range(2018, 2026)),
-        "valuations": ["At Current Prices", "At Constant 2018 Prices"],
+        **INDUSTRY_REVIEWED_SEMANTICS,
     }
 
 

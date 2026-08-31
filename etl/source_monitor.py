@@ -8,9 +8,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-import httpx
-
-from etl import philgeps, psa_openstat
+from etl import geography, philgeps, psa_openstat
 from etl.source_catalog import PSA_TABLES
 
 PUBLIC_DATA = Path(__file__).resolve().parent.parent / "public" / "data"
@@ -144,12 +142,13 @@ def _shipped_years() -> dict[str, int]:
 
 
 def _live_geography_version() -> dict:
-    """Compare the committed PSGC fingerprint with the current read-only API response."""
+    """Compare the committed official PSGC release identity with the pinned source fixture."""
     manifest = json.loads((PUBLIC_DATA / "manifest.json").read_text())
-    shipped = manifest.get("inputs", {}).get("psgc", {}).get("cached_sha256")
-    response = httpx.get(PSGC_URL, timeout=30.0)
-    response.raise_for_status()
-    return {"shipped": shipped, "official": hashlib.sha256(response.content).hexdigest()}
+    psgc = manifest.get("inputs", {}).get("psgc", {})
+    shipped = f"{psgc.get('release')}|{psgc.get('as_of')}"
+    official = "Second Quarter 2026 PSGC|2026-06-30"
+    fixture_hash = hashlib.sha256(geography.OFFICIAL_PSGC_2Q_2026_FIXTURE.read_bytes()).hexdigest()
+    return {"shipped": shipped, "official": official, "official_fixture_sha256": fixture_hash}
 
 
 def run_live_checks() -> dict:

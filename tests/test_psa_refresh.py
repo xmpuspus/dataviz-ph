@@ -127,8 +127,28 @@ def test_population_fixture_uses_real_loader_and_prevents_regional_double_count(
 
 
 def test_population_geography_contract_has_all_reviewed_huc_identities_once() -> None:
-    assert len(HUC_TO_PARENT) == 18
-    assert len(set(HUC_TO_PARENT)) == 18
+    expected = {
+        "city of cebu": "072200000",
+        "city of lapu-lapu (opon)": "072200000",
+        "city of mandaue": "072200000",
+        "city of iloilo": "063000000",
+        "city of bacolod": "064500000",
+        "city of tacloban": "083700000",
+        "city of angeles": "035400000",
+        "city of olongapo": "037100000",
+        "city of lucena": "045600000",
+        "city of puerto princesa": "175300000",
+        "city of baguio": "141100000",
+        "city of davao": "112400000",
+        "city of general santos (dadiangas)": "126300000",
+        "city of zamboanga": "097300000",
+        "city of cagayan de oro": "104300000",
+        "city of iligan": "103500000",
+        "city of butuan": "160200000",
+        "city of isabela": "150700000",
+    }
+    assert expected == HUC_TO_PARENT
+    assert all(huc_parent(label.title()) == parent for label, parent in expected.items())
     assert HUC_LABEL_ALIASES == {
         "city of lapu-lapu": "city of lapu-lapu (opon)",
         "city of general santos": "city of general santos (dadiangas)",
