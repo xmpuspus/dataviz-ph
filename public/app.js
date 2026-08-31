@@ -233,9 +233,9 @@ async function loadData() {
   // the page can say so (a silently absent population.json would otherwise just
   // strip the size encoding with no signal to the reader).
   const optionalFailures = [];
-  const optJson = (path, fallback, indicatorId) =>
+  const optJson = (path, fallback, indicatorIds = []) =>
     fetchJson(path).catch(() => {
-      optionalFailures.push({ path, indicatorId });
+      optionalFailures.push({ path, indicatorIds: Array.isArray(indicatorIds) ? indicatorIds : [indicatorIds] });
       return fallback;
     });
   const [
@@ -262,7 +262,7 @@ async function loadData() {
     viewEvidence,
   ] = await Promise.all([
     fetchJson("data/provinces.json"),
-    optJson("data/regions.json", {}),
+    optJson("data/regions.json", {}, ["region_poverty", "region_cpi_yoy_pct"]),
     fetchJson("data/poverty.json"),
     optJson("data/subsistence.json", [], "subsistence_incidence"),
     fetchJson("data/dpwh_spend_per_capita.json"),
@@ -312,7 +312,7 @@ async function loadData() {
 }
 
 function failedIndicator(data, indicatorId) {
-  return data.optionalFailures.some((failure) => failure.indicatorId === indicatorId);
+  return data.optionalFailures.some((failure) => failure.indicatorIds.includes(indicatorId));
 }
 
 function canonicalParams(state, view) {
@@ -2432,17 +2432,23 @@ function renderViewEvidence(view, data, state) {
   const content = document.getElementById("view-trust-content");
   const body = document.querySelector("#view-coverage tbody");
   if (!evidence || !content || !body) return;
-  const active = [view.x, view.y].map((id) => evidence.indicators[id]).filter(Boolean);
+  const active = [view.x, view.y].map((id) => ({ id, item: evidence.indicators[id] })).filter(({ item }) => item);
   content.replaceChildren();
   body.replaceChildren();
-  for (const item of active) {
+  for (const { id, item } of active) {
     const year = item.coverage.find((row) => row.year === state.year);
     const p = document.createElement("p");
-    p.textContent = `Source: ${item.source}. Update: ${item.release}. Grain: ${item.natural_grain}. Transforms: ${item.transforms}. Current-year coverage: ${year ? `${year.status}, ${year.source_units} of ${year.target_units}` : "unavailable"}. Archive: ${item.archive_url}.`;
+    const failed = failedIndicator(data, id);
+    p.textContent = `${data.indicators[id]?.name || id}. Source: ${item.source}. Update: ${item.release}. Grain: ${item.natural_grain}. Transform: ${item.transforms}. Current coverage: ${failed ? "unavailable, data did not load" : year ? `${year.status}, ${year.source_units} of ${year.target_units}` : "unavailable"}. Archive: ${item.archive_url}.`;
     content.appendChild(p);
+    if (item.warnings.length) {
+      const warning = document.createElement("p");
+      warning.textContent = `Warning: ${item.warnings.join(" ")}`;
+      content.appendChild(warning);
+    }
     for (const row of item.coverage) {
       const tr = document.createElement("tr");
-      for (const value of [item.source_id, row.year, `${row.status}, ${row.source_units} of ${row.target_units}`]) {
+      for (const value of [data.indicators[id]?.name || id, row.year, failed ? "unavailable, data did not load" : `${row.status}, ${row.source_units} of ${row.target_units}`]) {
         const td = document.createElement("td");
         td.textContent = String(value);
         tr.appendChild(td);
@@ -2453,7 +2459,7 @@ function renderViewEvidence(view, data, state) {
   const procurement = evidence.procurement_status;
   if (procurement) {
     const p = document.createElement("p");
-    p.textContent = `Status: Awards are not disbursements. 2025 is unavailable. Failed gates: ${procurement.failed_gates.join(", ")}. The ${procurement.snapshot_anomalies.invalid_award_date_count} invalid and ${procurement.snapshot_anomalies.future_award_date_count} future award dates are snapshot-wide, not 2025-row anomalies. Snapshot: ${procurement.snapshot_identity}.`;
+    p.textContent = `Status: ${evidence.procurement_warning} ${procurement.candidate_year} is ${procurement.status}. Failed gates: ${procurement.failed_gates.join(", ")}. The ${procurement.snapshot_anomalies.invalid_award_date_count} invalid and ${procurement.snapshot_anomalies.future_award_date_count} future award dates are snapshot-wide. Snapshot: ${procurement.snapshot_identity}.`;
     content.appendChild(p);
   }
 }
@@ -2720,17 +2726,21 @@ function renderStorySwitcher(stories, state, view, data, render) {
   // its X/Y picks (i.e. view is not custom AND its story id matches).
   const activeId = view.isCustom ? null : state.story.id;
   for (const s of stories) {
-    const btn = document.createElement("button");
-    btn.type = "button";
+    const btn = document.createElement("a");
+    btn.href = `#story=${encodeURIComponent(s.id)}&year=${s.default_year}`;
+    btn.dataset.storyId = s.id;
     btn.setAttribute("aria-pressed", s.id === activeId ? "true" : "false");
     btn.className = "story-btn" + (s.id === activeId ? " active" : "");
     const unavailable = failedIndicator(data, s.x) || failedIndicator(data, s.y);
-    btn.disabled = unavailable;
-    if (unavailable) btn.title = "Unavailable because its supporting data did not load.";
-    btn.textContent = t(
+    if (unavailable) {
+      btn.setAttribute("aria-disabled", "true");
+      btn.removeAttribute("href");
+    }
+    const label = t(
       `stories.${s.id}.tab_label`,
       s.tab_label || s.headline.split(".")[0],
     );
+    btn.textContent = unavailable ? `${label} (unavailable)` : label;
     btn.addEventListener("click", () => {
       if (unavailable) return;
       track("story", { id: s.id });
@@ -3077,6 +3087,10 @@ function showIndicatorPanel(anchorBtn, kind, currentId, otherId, data) {
       const isCurrent = ind.id === currentId;
       if (isCurrent) li.classList.add("active");
       if (sameAsOther) li.classList.add("disabled");
+      if (failedIndicator(data, ind.id)) {
+        li.setAttribute("aria-disabled", "true");
+        name.textContent = `${ind.name} (unavailable)`;
+      }
       li.setAttribute("aria-selected", isCurrent ? "true" : "false");
       const name = document.createElement("div");
       name.className = "ipanel-name";
@@ -3796,6 +3810,7 @@ async function main() {
     // a "chart is showing YEAR" note), and the URL hash.
     renderYearControls(state, view, render);
     updateFindingBox(view);
+    renderViewEvidence(view, data, state);
     writeHash(state, view);
     const now = Date.now();
     if (now - srTableLastAt >= SR_TABLE_PLAY_THROTTLE_MS) {
@@ -3906,8 +3921,9 @@ async function main() {
     const params = canonicalParams(state, view);
     params.delete("embed");
     const viewUrl = `${window.location.origin}${window.location.pathname}#${params.toString()}`;
-    const sourceIds = [view.x, view.y].map((id) => data.viewEvidence.indicators[id]?.source_id);
-    const citation = `dataviz.ph. ${view.headline}. ${viewUrl}. Accessed ${data.manifest?.built_at || "committed build"}.`;
+    const sourceIds = Object.fromEntries([view.x, view.y].map((id) => [id, data.manifest?.sha256_per_file?.[data.viewEvidence.indicators[id]?.source_id] || null]));
+    const pairName = view.isCustom ? `${view.x}-vs-${view.y}` : view.id;
+    const citation = `dataviz.ph. ${view.headline}. ${viewUrl}. Build timestamp: ${data.manifest?.built_at || "unknown"}.`;
     return {
       canonical_state: { ...Object.fromEntries(params), year: state.year },
       csv_field_contract: ["psgc", "province", "island_group", "year", "x_indicator", "x_value", "x_unit", "y_indicator", "y_value", "y_unit", "population_2020", "interpolated", "extrapolated"],
@@ -3915,20 +3931,24 @@ async function main() {
       method_url: `${window.location.origin}/methodology`,
       view_url: viewUrl,
       source_ids: sourceIds,
-      build_id: data.manifest?.built_at || "unknown",
+      build_timestamp: data.manifest?.built_at || "unknown",
+      build_id: data.manifest?.sha256_per_file?.["view_evidence.json"] || "unknown",
+      snapshot_ids: { philgeps: data.viewEvidence.procurement_status?.snapshot_identity || null },
       warnings: [view.x, view.y].flatMap((id) => data.viewEvidence.indicators[id]?.warnings || []),
-      coverage: [view.x, view.y].map((id) => data.viewEvidence.indicators[id]?.coverage || []),
+      coverage: Object.fromEntries([view.x, view.y].map((id) => [id, data.viewEvidence.indicators[id]?.coverage || []])),
     };
   }
 
   document.getElementById("metadata-json").addEventListener("click", () => {
     const view = state.view || state.story;
-    downloadText(JSON.stringify(viewBundle(), null, 2) + "\n", `dataviz-ph-${view.id || "view"}-${state.year}-metadata.json`, "application/json");
+    const pairName = view.isCustom ? `${view.x}-vs-${view.y}` : view.id;
+    downloadText(JSON.stringify(viewBundle(), null, 2) + "\n", `dataviz-ph-${pairName}-${state.year}-metadata.json`, "application/json");
   });
 
   document.getElementById("citation-text").addEventListener("click", () => {
     const view = state.view || state.story;
-    downloadText(viewBundle().citation + "\n", `dataviz-ph-${view.id || "view"}-${state.year}-citation.txt`, "text/plain;charset=utf-8");
+    const pairName = view.isCustom ? `${view.x}-vs-${view.y}` : view.id;
+    downloadText(viewBundle().citation + "\n", `dataviz-ph-${pairName}-${state.year}-citation.txt`, "text/plain;charset=utf-8");
   });
 
   // Island-group focus filter: each legend row toggles its group in/out of the

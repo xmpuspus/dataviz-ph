@@ -411,33 +411,45 @@ def build_view_evidence() -> dict:
         "region_cpi_yoy_pct": "region_cpi_yoy_pct.json",
         "region_poverty": "region_poverty.json",
     }
-    expected = {"provinces": 82, "regions": 18}
+    geography = {
+        "provinces": len(json.loads((PUBLIC_DATA / "provinces.json").read_text())),
+        "regions": len(json.loads((PUBLIC_DATA / "regions.json").read_text())),
+        "national": 1,
+    }
+    stories = json.loads((PUBLIC_DATA / "stories.json").read_text())
     out = {}
     for indicator in indicators:
         indicator_id = indicator["id"]
-        unit_set = indicator.get("unit_set", "provinces")
+        unit_set = (
+            "national" if indicator_id == "cpi_yoy_pct" else indicator.get("unit_set", "provinces")
+        )
         rows = json.loads((PUBLIC_DATA / file_by_indicator[indicator_id]).read_text())
         coverage = []
         for year in indicator["panel_years"]:
             source_units = {
                 row["psgc"]
                 for row in rows
-                if row["year"] == year and row.get("psgc") not in {None, "000000000"}
+                if row["year"] == year
+                and row.get("psgc") is not None
+                and (unit_set == "national" or row.get("psgc") != "000000000")
             }
             count = len(source_units)
             coverage.append(
                 {
                     "year": year,
-                    "target_units": expected[unit_set],
+                    "target_units": geography[unit_set],
                     "source_units": count,
                     "status": "full"
-                    if count == expected[unit_set]
+                    if count == geography[unit_set]
                     else "partial"
                     if count
                     else "unavailable",
                 }
             )
-        source_url = indicator.get("source_url") or "https://openstat.psa.gov.ph/"
+        source = indicator["source"]
+        source_url = (
+            indicator.get("source_url") or "https://github.com/csiiiv/philgeps-awards-dashboard"
+        )
         if indicator_id in {
             "poverty",
             "subsistence_incidence",
@@ -445,16 +457,19 @@ def build_view_evidence() -> dict:
             "region_poverty",
         }:
             source_url = source_url.replace("DB__1E__FY", "DB__1F__FY")
+            source = source.replace("1E/FY", "1F/FY")
         out[indicator_id] = {
             "unit_set": unit_set,
-            "natural_grain": "province" if unit_set == "provinces" else "region",
+            "natural_grain": {"provinces": "province", "regions": "region", "national": "national"}[
+                unit_set
+            ],
             "years": indicator["panel_years"],
-            "source": indicator["source"],
+            "source": source,
             "source_url": source_url,
             "archive_url": source_url,
             "release": indicator.get("vintage", "Committed data release"),
             "transforms": indicator.get("definition", "No additional transform."),
-            "warnings": [indicator["coverage_label"]] if indicator.get("coverage_label") else [],
+            "warnings": ([indicator["coverage_label"]] if indicator.get("coverage_label") else []),
             "coverage": coverage,
             "source_id": file_by_indicator[indicator_id],
         }
@@ -464,6 +479,17 @@ def build_view_evidence() -> dict:
         "indicators": out,
         "supplemental_coverage": {"poverty_depth": depth},
         "procurement_status": procurement,
+        "procurement_warning": "Awards are not disbursements.",
+        "curated_views": [
+            {
+                "id": story["id"],
+                "label": story.get("tab_label", story["id"]),
+                "x": story["x"],
+                "y": story["y"],
+                "year": story["default_year"],
+            }
+            for story in stories
+        ],
     }
 
 
@@ -1232,6 +1258,7 @@ def main(no_cache: bool = False) -> None:
 
     # Write manifest LAST so its sha256 covers every freshly-written file.
     procurement_status = write_procurement_status()
+    write_json("view_evidence.json", build_view_evidence())
     dpwh_total = compute_dpwh_attributed_total(dpwh_spend, pop_by_psgc)
 
     # Per-province attribution coverage for manifest

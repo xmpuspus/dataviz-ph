@@ -116,6 +116,27 @@ def test_story_links_and_optional_failures_stay_honest(page, base_url):
     assert "unavailable" in page.locator("#optional-load-notice").inner_text().lower()
 
 
+def test_region_geography_failure_disables_the_active_regional_finding(page, base_url):
+    page.route("**/data/regions.json", lambda route: route.fulfill(status=500))
+    _goto(page, base_url, "#story=inflation-vs-poverty&year=2023")
+    assert "unavailable" in page.locator("#story-finding").inner_text().lower()
+    story = page.locator('#story-switcher a[data-story-id="inflation-vs-poverty"]')
+    assert story.get_attribute("aria-disabled") == "true"
+    assert "unavailable" in story.inner_text().lower()
+    page.locator("#view-trust summary").click()
+    assert "unavailable" in page.locator("#view-trust").inner_text().lower()
+
+
+def test_curated_view_anchors_match_story_contract(page, base_url):
+    _goto(page, base_url)
+    stories = json.loads((PUBLIC / "data" / "stories.json").read_text())
+    links = page.locator("#story-switcher a[data-story-id]")
+    assert links.count() == len(stories)
+    for story in stories:
+        link = page.locator(f'a[data-story-id="{story["id"]}"]')
+        assert f"story={story['id']}" in link.get_attribute("href")
+
+
 def test_canonical_hash_and_embed_link_keep_full_state(page, base_url):
     _goto(
         page,

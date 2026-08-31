@@ -52,3 +52,18 @@ def test_tagalog_locale_covers_view_evidence_actions():
     locale = json.loads((PUBLIC_DATA.parent / "locales" / "tl.json").read_text())
     assert locale["controls"]["metadata_json"]
     assert locale["controls"]["citation_text"]
+
+
+def test_view_evidence_uses_reviewed_sources_and_geography_contract():
+    evidence = json.loads((PUBLIC_DATA / "view_evidence.json").read_text())
+    assert evidence["indicators"]["cpi_yoy_pct"]["natural_grain"] == "national"
+    assert all(
+        row["status"] == "full" and row["target_units"] == row["source_units"] == 1
+        for row in evidence["indicators"]["cpi_yoy_pct"]["coverage"]
+    )
+    for indicator_id in ("poverty", "subsistence_incidence", "poverty_change_pp", "region_poverty"):
+        item = evidence["indicators"][indicator_id]
+        assert "1F/FY" in item["source"]
+        assert "1F__FY" in item["archive_url"]
+    assert "philgeps" in evidence["indicators"]["dpwh_share_pct"]["archive_url"]
+    assert evidence["curated_views"]
