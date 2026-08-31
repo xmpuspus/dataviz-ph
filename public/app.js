@@ -2563,6 +2563,7 @@ function wireSearch(input, data, state, render) {
   const closeList = () => {
     list.replaceChildren();
     setActive(-1);
+    input.setAttribute("aria-expanded", "false");
   };
 
   const updateList = () => {
@@ -2575,25 +2576,20 @@ function wireSearch(input, data, state, render) {
       li.textContent = m.name + (selected ? "  ✓" : "");
       li.dataset.psgc = m.psgc;
       li.id = `search-opt-${m.psgc}`;
-      li.tabIndex = 0;
+      li.tabIndex = -1;
       li.setAttribute("role", "option");
       li.setAttribute("aria-selected", selected ? "true" : "false");
       const choose = () => {
-        toggleSel(m.psgc, state, render);
+        chooseArea(m.psgc, state, render);
         input.value = "";
         closeList();
         input.focus();
       };
       li.addEventListener("click", choose);
-      li.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          choose();
-        }
-      });
       list.appendChild(li);
     }
     setActive(-1);
+    input.setAttribute("aria-expanded", ms.length ? "true" : "false");
   };
 
   input.addEventListener("input", updateList);
@@ -2609,26 +2605,27 @@ function wireSearch(input, data, state, render) {
       const pick =
         activeIdx >= 0 && items[activeIdx] ? items[activeIdx].dataset.psgc : null;
       if (pick) {
-        toggleSel(pick, state, render);
+        chooseArea(pick, state, render);
         input.value = "";
         closeList();
+        input.focus();
         return;
       }
       const ms = matches(input.value);
       if (ms.length) {
-        toggleSel(ms[0].psgc, state, render);
+        chooseArea(ms[0].psgc, state, render);
         input.value = "";
         closeList();
+        input.focus();
       }
     } else if (e.key === "Escape") {
       input.value = "";
       closeList();
-      input.blur();
     }
   });
 }
 
-function toggleSel(psgc, state, render) {
+function chooseArea(psgc, state, render) {
   if (state.sel.has(psgc)) state.sel.delete(psgc);
   else state.sel.add(psgc);
   render();
@@ -2671,12 +2668,22 @@ function renderSelChips(state, data, render) {
     chip.style.color = ink;
     chip.appendChild(document.createTextNode(info.name + " "));
     const btn = document.createElement("button");
-    btn.setAttribute("aria-label", `remove ${info.name}`);
+    btn.id = `chip-remove-${psgc}`;
+    btn.setAttribute("aria-label", tFill(t("controls.remove_area", "Remove {name}"), { name: info.name }));
     btn.style.color = ink;
     btn.textContent = "×";
     btn.addEventListener("click", () => {
+      const ids = [...state.sel];
+      const index = ids.indexOf(psgc);
+      const next = ids[index + 1] || ids[index - 1] || null;
       state.sel.delete(psgc);
       render();
+      queueMicrotask(() => {
+        const target = next
+          ? document.getElementById(`chip-remove-${next}`)
+          : document.getElementById("search");
+        if (target) target.focus();
+      });
     });
     chip.appendChild(btn);
     root.appendChild(chip);
@@ -2895,7 +2902,7 @@ function renderIndicatorPickers(state, view, data, render) {
 
 // ---------- sr-only data table ----------
 
-function renderSrTable(story, data, state) {
+function renderSrTable(story, data, state, render) {
   const root = document.getElementById("chart-sr-table");
   const regionMode = isRegionView(story, data);
   const rows = [];
@@ -2938,6 +2945,7 @@ function renderSrTable(story, data, state) {
     shortAxisName(story.x, state),
     shortAxisName(story.y, state),
     "Population (2020)",
+    t("controls.select_area", "Select area"),
   ]) {
     const th = document.createElement("th");
     th.scope = "col";
@@ -2950,8 +2958,11 @@ function renderSrTable(story, data, state) {
   const tbody = document.createElement("tbody");
   for (const r of rows) {
     const tr = document.createElement("tr");
+    const name = document.createElement("th");
+    name.scope = "row";
+    name.textContent = r.name;
+    tr.appendChild(name);
     for (const cell of [
-      r.name,
       ISLAND_LABEL[r.island] || r.island,
       formatValue(r.x, story.x),
       formatValue(r.y, story.y),
@@ -2961,6 +2972,18 @@ function renderSrTable(story, data, state) {
       td.textContent = cell;
       tr.appendChild(td);
     }
+    const action = document.createElement("td");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.areaId = r.psgc;
+    button.textContent = t("controls.select_area", "Select area");
+    button.setAttribute(
+      "aria-label",
+      tFill(t("controls.select_area_named", "Select {name}"), { name: r.name }),
+    );
+    button.addEventListener("click", () => chooseArea(r.psgc, state, render));
+    action.appendChild(button);
+    tr.appendChild(action);
     tbody.appendChild(tr);
   }
   tbl.appendChild(tbody);
@@ -3786,6 +3809,15 @@ async function main() {
           ? t("controls.find_region", "Find a region")
           : t("controls.find", findHead.dataset.i18nEn || "Find a province");
       }
+      const search = document.getElementById("search");
+      if (search) {
+        search.setAttribute(
+          "aria-label",
+          regionMode
+            ? t("controls.find_region", "Find a region")
+            : t("controls.find", "Find a province"),
+        );
+      }
       const selHint = document.getElementById("selected-hint");
       if (selHint) {
         // On touch, the first tap on a bubble shows the tooltip and the second
@@ -3844,7 +3876,7 @@ async function main() {
       // Selection chips
       renderSelChips(state, data, render);
       // SR mirror
-      renderSrTable(view, data, state);
+      renderSrTable(view, data, state, render);
       // URL hash
       writeHash(state, view);
       // Keep the finding/caveat on the correct side of the chart for this width.
@@ -3902,7 +3934,7 @@ async function main() {
     const now = Date.now();
     if (now - srTableLastAt >= SR_TABLE_PLAY_THROTTLE_MS) {
       srTableLastAt = now;
-      renderSrTable(view, data, state);
+      renderSrTable(view, data, state, render);
     }
   }
 
@@ -3911,7 +3943,7 @@ async function main() {
     const panel = (state.view && state.view.panel_years) || state.story.panel_years;
     state.year = panel[e.currentIndex];
     writeHash(state, state.view);
-    if (state.view) renderSrTable(state.view, data, state);
+    if (state.view) renderSrTable(state.view, data, state, render);
   });
 
   let lastTapPsgc = null;
@@ -3921,7 +3953,7 @@ async function main() {
     // Map mode: click a province to pin/unpin it (round-trips with bubble select).
     if (params.seriesId === "map") {
       const mpsgc = params.data && params.data.psgc;
-      if (mpsgc) toggleSel(mpsgc, state, render);
+      if (mpsgc) chooseArea(mpsgc, state, render);
       return;
     }
     if (params.seriesId !== "bubbles") return;
@@ -3937,12 +3969,12 @@ async function main() {
       lastTapPsgc = psgc;
       lastTapAt = now;
       if (isRepeat) {
-        toggleSel(psgc, state, render);
+        chooseArea(psgc, state, render);
         lastTapPsgc = null;
       }
       return;
     }
-    toggleSel(psgc, state, render);
+    chooseArea(psgc, state, render);
   });
 
   document.getElementById("log-toggle").addEventListener("click", () => {
@@ -4146,6 +4178,7 @@ async function main() {
   // perf script and browser tests time the full render vs the play-tick frame
   // path directly instead of guessing from wall-clock playback.
   window.__datavizph_render = render;
+  window.__datavizph_chooseArea = (psgc) => chooseArea(psgc, state, render);
   window.__datavizph_playTick = playTick;
   // Read-only: true while the autoplay interval is armed. Lets the visibility
   // pause/resume test assert timer state without racing wall-clock year advance.

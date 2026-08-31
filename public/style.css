@@ -638,6 +638,53 @@ select:focus-visible {
 
 .chip button:hover { background: rgba(255, 255, 255, 0.5); }
 
+#sr-data {
+  margin: 0.75rem 1.25rem;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
+#chart-data-table summary {
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+#chart-sr-table { overflow-x: auto; }
+
+#chart-sr-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+#chart-sr-table caption {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  color: var(--muted);
+}
+
+#chart-sr-table th,
+#chart-sr-table td {
+  padding: 0.4rem 0.55rem;
+  border-top: 1px solid var(--rule);
+  text-align: left;
+  vertical-align: top;
+}
+
+#chart-sr-table tbody th { font-weight: 600; }
+
+#chart-sr-table button {
+  min-height: 32px;
+  padding: 0.25rem 0.45rem;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  color: var(--brand-hot);
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
 .legend-list {
   list-style: none;
   padding: 0;
