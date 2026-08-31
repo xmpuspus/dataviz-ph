@@ -67,6 +67,11 @@ def _goto(page, base_url, suffix=""):
     page.wait_for_selector("#chart canvas", timeout=15000)
 
 
+def _goto_load_error(page, base_url):
+    page.goto(base_url, wait_until="networkidle")
+    page.wait_for_selector("#chart #loading[role=alert]", timeout=15000)
+
+
 def test_trust_disclosure_shows_current_view_evidence_and_coverage(page, base_url):
     _goto(page, base_url, "#story=spend-vs-poverty&year=2024")
     trust = page.locator("#view-trust")
@@ -127,6 +132,13 @@ def test_story_links_and_optional_failures_stay_honest(page, base_url):
     assert "unavailable" in page.locator("#optional-load-notice").inner_text().lower()
 
 
+def test_missing_manifest_fails_closed_without_unknown_metadata(page, base_url):
+    page.route("**/data/manifest.json", lambda route: route.fulfill(status=500))
+    _goto_load_error(page, base_url)
+    assert "could not load" in page.locator("#chart #loading").inner_text().lower()
+    assert page.locator("#controls").is_hidden()
+
+
 def test_region_geography_failure_disables_the_active_regional_finding(page, base_url):
     page.route("**/data/regions.json", lambda route: route.fulfill(status=500))
     _goto(page, base_url, "#story=inflation-vs-poverty&year=2023")
@@ -152,6 +164,47 @@ def test_optional_indicator_failure_disables_native_choices(page, base_url, path
     page.route(f"**/data/{path}", lambda route: route.fulfill(status=500))
     _goto(page, base_url)
     assert page.locator(f'#x-select option[value="{indicator}"]').is_disabled()
+
+
+@pytest.mark.parametrize(
+    ("path", "indicator", "story"),
+    [
+        ("subsistence.json", "subsistence_incidence", None),
+        ("population.json", "population", None),
+        ("cpi_yoy_pct.json", "cpi_yoy_pct", None),
+        ("region_poverty.json", "region_poverty", "inflation-vs-poverty"),
+        ("regions.json", "region_poverty", "inflation-vs-poverty"),
+    ],
+)
+def test_optional_dependencies_mark_controls_and_curated_views_unavailable(
+    page, base_url, path, indicator, story
+):
+    page.route(f"**/data/{path}", lambda route: route.fulfill(status=500))
+    _goto(page, base_url, "#story=inflation-vs-poverty&year=2023" if story else "")
+    assert page.locator(f'#x-select option[value="{indicator}"]').is_disabled()
+    if story:
+        assert (
+            page.locator(f'#curated-view-links [data-story-id="{story}"]').get_attribute(
+                "aria-disabled"
+            )
+            == "true"
+        )
+
+
+def test_pair_headlines_failure_keeps_chart_and_uses_generic_copy(page, base_url):
+    page.route("**/data/pair_headlines.json", lambda route: route.fulfill(status=500))
+    _goto(page, base_url)
+    page.select_option("#x-select", "doh_spend_per_capita")
+    assert page.locator("#chart canvas").count() == 1
+    assert "Custom view" in page.locator("#story-tagline").inner_text()
+
+
+def test_population_failure_keeps_plot_and_announces_equal_size_fallback(page, base_url):
+    page.route("**/data/population.json", lambda route: route.fulfill(status=500))
+    _goto(page, base_url)
+    assert page.locator("#chart canvas").count() == 1
+    assert page.locator('#x-select option[value="population"]').is_disabled()
+    assert "equal-size" in page.locator("#optional-load-notice").inner_text().lower()
 
 
 def test_curated_view_anchors_match_story_contract(page, base_url):
@@ -193,3 +246,36 @@ def test_history_restores_extrapolate_selection_and_groups(page, base_url):
     page.go_forward(wait_until="networkidle")
     page.wait_for_function("() => location.hash.includes('extrap=on')")
     assert page.locator("#extrap-toggle").get_attribute("aria-pressed") == "true"
+
+
+def test_history_back_and_forward_restore_distinct_view_states(page, base_url):
+    a = "#story=spend-vs-poverty&year=2018&sel=012800000&grp=luzon&extrap=on"
+    b = "#story=spend-vs-poverty&year=2024&sel=174000000&grp=visayas"
+    _goto(page, base_url, a)
+    page.evaluate(f"() => location.hash = {b!r}")
+    page.wait_for_function("() => location.hash.includes('year=2024')")
+    page.go_back(wait_until="networkidle")
+    page.wait_for_function("() => location.hash.includes('year=2018')")
+    assert page.locator("#extrap-toggle").get_attribute("aria-pressed") == "true"
+    assert page.locator("#selected-chips").inner_text().find("Ilocos Norte") >= 0
+    assert (
+        page.locator('.legend-toggle[data-group="luzon"]').get_attribute("aria-pressed") == "true"
+    )
+    page.go_forward(wait_until="networkidle")
+    page.wait_for_function("() => location.hash.includes('year=2024')")
+    assert page.locator("#extrap-toggle").get_attribute("aria-pressed") == "false"
+    assert page.locator("#selected-chips").inner_text().find("Marinduque") >= 0
+    assert (
+        page.locator('.legend-toggle[data-group="visayas"]').get_attribute("aria-pressed") == "true"
+    )
+
+
+def test_tagalog_localizes_the_trust_surface_and_failure_notice(page, base_url):
+    page.route("**/data/subsistence.json", lambda route: route.fulfill(status=500))
+    _goto(page, base_url)
+    page.click("#lang-toggle")
+    page.locator("#view-trust > summary").click()
+    text = page.locator("#view-trust").inner_text()
+    assert "Pinagmulan" in text
+    assert "Saklaw ayon sa taon" in text
+    assert "hindi makuha" in page.locator("#optional-load-notice").inner_text().lower()

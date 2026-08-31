@@ -321,10 +321,24 @@ function runtimeEvidence(data, indicatorId) {
   if (!item || !failure) return item;
   return {
     ...item,
-    warnings: [...item.warnings, `Unavailable because ${failure.path} did not load.`],
+    warnings: [...item.warnings, tFill(t("trust.file_unavailable", "Unavailable because {path} did not load."), { path: failure.path })],
     coverage: item.coverage.map((row) => ({ ...row, status: "unavailable" })),
     runtime_status: "unavailable",
   };
+}
+
+function anomalyScopeLabel(scope) {
+  return String(scope || "unknown").replace(/_/g, " ");
+}
+
+function coverageLabel(row, failed = false) {
+  if (failed) return t("trust.unavailable_load", "unavailable, data did not load");
+  if (!row) return t("trust.unavailable", "unavailable");
+  return tFill(t("trust.coverage_value", "{status}, {source} of {target}"), {
+    status: t(`trust.status_${row.status}`, row.status),
+    source: row.source_units,
+    target: row.target_units,
+  });
 }
 
 function canonicalParams(state, view) {
@@ -2461,22 +2475,22 @@ function renderViewEvidence(view, data, state) {
       dd.textContent = value;
       fields.append(dt, dd);
     };
-    add("Source", item.source);
-    add("Update", item.release);
-    add("Grain", item.natural_grain);
-    add("Current coverage", failed ? "unavailable, data did not load" : year ? `${year.status}, ${year.source_units} of ${year.target_units}` : "unavailable");
+    add(t("trust.source", "Source"), item.source);
+    add(t("trust.update", "Update"), item.release);
+    add(t("trust.grain", "Grain"), item.natural_grain);
+    add(t("trust.current_coverage", "Current coverage"), coverageLabel(year, failed));
     const archive = document.createElement("a");
     archive.href = item.archive_url;
     archive.rel = "noopener";
-    archive.textContent = "Open source archive";
+    archive.textContent = t("trust.open_archive", "Open source archive");
     const archiveDt = document.createElement("dt");
-    archiveDt.textContent = "Archive";
+    archiveDt.textContent = t("trust.archive", "Archive");
     const archiveDd = document.createElement("dd");
     archiveDd.appendChild(archive);
     fields.append(archiveDt, archiveDd);
     const transforms = document.createElement("details");
     const transformsSummary = document.createElement("summary");
-    transformsSummary.textContent = "Transform";
+    transformsSummary.textContent = t("trust.transform", "Transform");
     const transformsText = document.createElement("p");
     transformsText.textContent = item.transforms;
     transforms.append(transformsSummary, transformsText);
@@ -2484,12 +2498,12 @@ function renderViewEvidence(view, data, state) {
     content.appendChild(p);
     if (item.warnings.length) {
       const warning = document.createElement("p");
-      warning.textContent = `Warning: ${item.warnings.join(" ")}`;
+      warning.textContent = `${t("trust.warning", "Warning")}: ${item.warnings.join(" ")}`;
       content.appendChild(warning);
     }
     for (const row of item.coverage) {
       const tr = document.createElement("tr");
-      for (const value of [data.indicators[id]?.name || id, row.year, failed ? "unavailable, data did not load" : `${row.status}, ${row.source_units} of ${row.target_units}`]) {
+      for (const value of [data.indicators[id]?.name || id, row.year, coverageLabel(row, failed)]) {
         const td = document.createElement("td");
         td.textContent = String(value);
         tr.appendChild(td);
@@ -2500,7 +2514,16 @@ function renderViewEvidence(view, data, state) {
   const procurement = evidence.procurement_status;
   if (procurement) {
     const p = document.createElement("p");
-    p.textContent = `Status: ${evidence.procurement_warning} ${procurement.candidate_year} is ${procurement.status}. Failed gates: ${procurement.failed_gates.join(", ")}. The ${procurement.snapshot_anomalies.invalid_award_date_count} invalid and ${procurement.snapshot_anomalies.future_award_date_count} future award dates are ${procurement.snapshot_anomalies.scope}. Snapshot: ${procurement.snapshot_identity}.`;
+    p.textContent = tFill(t("trust.procurement", "Status: {warning} {year} is {status}. Failed gates: {gates}. The {invalid} invalid and {future} future award dates are {scope}. Snapshot: {snapshot}."), {
+      warning: evidence.procurement_warning,
+      year: procurement.candidate_year,
+      status: t(`trust.status_${procurement.status}`, procurement.status),
+      gates: procurement.failed_gates.join(", "),
+      invalid: procurement.snapshot_anomalies.invalid_award_date_count,
+      future: procurement.snapshot_anomalies.future_award_date_count,
+      scope: anomalyScopeLabel(procurement.snapshot_anomalies.scope),
+      snapshot: procurement.snapshot_identity,
+    });
     content.appendChild(p);
   }
 }
@@ -2765,6 +2788,7 @@ function renderStorySwitcher(stories, state, view, data, render) {
   const curated = document.getElementById("curated-view-links");
   nav.replaceChildren();
   if (curated) curated.replaceChildren();
+  if (curated) curated.setAttribute("aria-label", t("trust.curated_views", "curated views"));
   // A preset tab counts as active only when the user has not deviated from
   // its X/Y picks (i.e. view is not custom AND its story id matches).
   const activeId = view.isCustom ? null : state.story.id;
@@ -2783,7 +2807,7 @@ function renderStorySwitcher(stories, state, view, data, render) {
       `stories.${s.id}.tab_label`,
       s.tab_label || s.headline.split(".")[0],
     );
-    btn.textContent = unavailable ? `${label} (unavailable)` : label;
+    btn.textContent = unavailable ? `${label} (${t("trust.unavailable", "unavailable")})` : label;
     btn.addEventListener("click", () => {
       if (unavailable) return;
       track("story", { id: s.id });
@@ -2803,7 +2827,7 @@ function renderStorySwitcher(stories, state, view, data, render) {
       if (unavailable) {
         link.removeAttribute("href");
         link.setAttribute("aria-disabled", "true");
-        link.textContent = `${label} (unavailable)`;
+        link.textContent = `${label} (${t("trust.unavailable", "unavailable")})`;
       }
       curated.appendChild(link);
     }
@@ -3147,8 +3171,9 @@ function showIndicatorPanel(anchorBtn, kind, currentId, otherId, data) {
       if (sameAsOther) li.classList.add("disabled");
       if (failedIndicator(data, ind.id)) {
         li.setAttribute("aria-disabled", "true");
-        name.textContent = `${ind.name} (unavailable)`;
+        name.textContent = `${ind.name} (${t("trust.unavailable", "unavailable")})`;
       }
+      li.dataset.indicator = ind.id;
       li.setAttribute("aria-selected", isCurrent ? "true" : "false");
       const meta = document.createElement("div");
       meta.className = "ipanel-meta";
@@ -3945,7 +3970,10 @@ async function main() {
     const optNotice = document.getElementById("optional-load-notice");
     if (optNotice) {
       optNotice.hidden = false;
-      optNotice.textContent = "Some optional indicators are unavailable because their data did not load. Refresh to retry.";
+      const populationFailed = failedIndicator(data, "population");
+      optNotice.textContent = populationFailed
+        ? t("trust.population_fallback", "Population data did not load. The plot uses equal-size bubbles. Refresh to retry.")
+        : t("trust.optional_failure", "Some optional indicators are unavailable because their data did not load. Refresh to retry.");
     }
     // Without a signal, a corrupt or missing optional file degrades every
     // visitor's chart for weeks before anyone notices.
@@ -4631,6 +4659,12 @@ async function main() {
       applyStaticLocale();
       syncLangButton();
       render();
+      const optNotice = document.getElementById("optional-load-notice");
+      if (optNotice && data.optionalFailures.length) {
+        optNotice.textContent = failedIndicator(data, "population")
+          ? t("trust.population_fallback", "Population data did not load. The plot uses equal-size bubbles. Refresh to retry.")
+          : t("trust.optional_failure", "Some optional indicators are unavailable because their data did not load. Refresh to retry.");
+      }
       // Be honest that the Tagalog layer is partial: the first-read surface and
       // controls are translated, but the methodology, footer, and the public-data
       // disclaimer stay in English. Saying "beta" reads as in-progress, not broken.
@@ -4815,7 +4849,7 @@ main().catch((e) => {
   root.appendChild(msg);
   // Without data every control is dead weight; hide the shell so the page does
   // not look interactive when nothing behind it works.
-  for (const id of ["controls", "chart-type-strip", "big-play"]) {
+  for (const id of ["controls", "chart-type-strip", "big-play", "view-evidence-panel"]) {
     const el = document.getElementById(id);
     if (el) el.hidden = true;
   }
