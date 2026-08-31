@@ -110,6 +110,15 @@ def test_view_bundle_downloads_deterministic_metadata_and_citation(page, base_ur
     assert "dataviz.ph" in Path(citation_download.value.path()).read_text()
 
 
+def test_repeated_metadata_downloads_are_identical(page, base_url):
+    _goto(page, base_url, "#story=spend-vs-poverty&year=2024")
+    with page.expect_download() as first:
+        page.click("#metadata-json")
+    with page.expect_download() as second:
+        page.click("#metadata-json")
+    assert Path(first.value.path()).read_bytes() == Path(second.value.path()).read_bytes()
+
+
 def test_story_links_and_optional_failures_stay_honest(page, base_url):
     page.route("**/data/region_cpi_yoy_pct.json", lambda route: route.fulfill(status=500))
     _goto(page, base_url)
@@ -153,3 +162,16 @@ def test_canonical_hash_and_embed_link_keep_full_state(page, base_url):
     assert "embed=1" not in href
     assert "extrap=on" in href
     assert "sel=012800000%2C174000000" in href
+
+
+def test_history_restores_extrapolate_selection_and_groups(page, base_url):
+    _goto(page, base_url, "#story=spend-vs-poverty&year=2018")
+    page.evaluate(
+        "() => location.hash = "
+        "'#story=spend-vs-poverty&year=2018&extrap=on&sel=012800000&grp=luzon'"
+    )
+    page.wait_for_function("() => location.hash.includes('extrap=on')")
+    page.go_back(wait_until="networkidle")
+    page.go_forward(wait_until="networkidle")
+    page.wait_for_function("() => location.hash.includes('extrap=on')")
+    assert page.locator("#extrap-toggle").get_attribute("aria-pressed") == "true"
