@@ -150,6 +150,7 @@ def test_correction_attestation_requires_bound_review_evidence():
         ("prior_snapshot_id", " current ", "current", "prior snapshot"),
         ("current_snapshot_id", "current", "", "observed snapshot"),
         ("reviewed_at", pd.NaT, "current", "reviewed_at"),
+        ("reviewed_at", "NaT", "current", "reviewed_at"),
         ("reviewed_at", "not-a-timestamp", "current", "reviewed_at"),
     ],
 )

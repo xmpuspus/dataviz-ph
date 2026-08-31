@@ -80,6 +80,8 @@ PENDING_PRIOR_SNAPSHOT_ID = "not-yet-compared"
 
 def _parse_utc_timestamp(value: str | None) -> tuple[pd.Timestamp, str]:
     timestamp = pd.Timestamp(value) if value else pd.Timestamp.now(tz="UTC")
+    if pd.isna(timestamp):
+        raise ValueError("PhilGEPS timestamp is invalid")
     if timestamp.tzinfo is None:
         timestamp = timestamp.tz_localize("UTC")
     else:
