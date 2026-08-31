@@ -190,9 +190,9 @@
       "award_status_null_count": 506831,
       "candidate_series_coverage": {
         "all_spend": 82,
-        "doh": 4,
+        "doh": 44,
         "dpwh": 78,
-        "infrastructure": 81
+        "infrastructure": 82
       },
       "date_range": {
         "end": "2025-12-27",

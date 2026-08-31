@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Sources, geography, coverage, and limits for dataviz.ph.">
-  <title>Methodology: dataviz.ph</title>
+  <title>Data method | dataviz.ph</title>
   <link rel="canonical" href="https://dataviz.ph/methodology">
   <link rel="stylesheet" href="/style.css">
   <script defer src="/_vercel/insights/script.js"></script>
@@ -22,14 +22,28 @@
     <p>The first chart stays static. Select Play the guided story for the explanation. Select Explore the data for direct control.</p>
 
     <h2>The 82-area contract keeps historical comparisons stable</h2>
-    <p>The analysis layer has 81 provinces and virtual NCR. The versioned crosswalk keeps source-native identifiers and records each transform.</p>
-    <p>Highly Urbanized Cities roll up to parent provinces. The crosswalk records historical Maguindanao, the Negros Island Region change, and the Sulu transfer.</p>
-    <p>Population uses the 2020 and 2024 anchors. The build estimates 2021 through 2023 between the two anchors. Per-capita denominators follow this contract.</p>
+    <p>The analysis layer has 81 provinces and virtual NCR. The versioned crosswalk keeps source-native identifiers and records each change.</p>
+    <p>Population and award totals sum additive values for a Highly Urbanized City into its matching historical analysis area. Cotabato City remains unattributed. Poverty, FIES, and GDP rates are never averaged. The build recomputes them from additive numerators and denominators or leaves them unavailable.</p>
+    <p>Population uses the 2020 and 2024 anchors. Years 2014 through 2019 use the 2020 Census value. The build estimates 2021 through 2023 and uses the official 2024 value. It sums eligible city populations, excludes Cotabato City, and uses the published NCR regional total.</p>
+    <p>The crosswalk records historical Maguindanao, the Negros Island Region change, and the Sulu transfer.</p>
 
-    <h2>The shipped data has defined coverage</h2>
+    <h2>Shipped data follows fixed coverage dates</h2>
     <p>GDP covers 2018 through 2025. Poverty-depth data ends in 2023. PSA poverty-depth tables use 1F/FY. The chart marks partial coverage and unavailable indicators.</p>
-    <p>PhilGEPS figures are contract awards, not disbursements. Awards show committed contract value. They do not show cash paid to a project.</p>
+    <p><strong>Contract awards differ from disbursement.</strong> PhilGEPS figures show committed contract value. They do not show cash paid to a project.</p>
     <p>Correlation describes association. It does not prove causation.</p>
+
+    <p id="methodology-scale" hidden>
+      <strong>Scale and trend.</strong> Province-attributed DPWH contract awards total
+      <span data-ctx="total"></span> across 2014 to 2024. The yearly figure rose
+      from about <span data-ctx="early"></span> a year in 2014 to 2016 to a peak of
+      <span data-ctx="peak"></span> in <span data-ctx="peakyr"></span>. The 2022 to
+      2024 average was about <span data-ctx="ratio"></span> the 2014 to 2016 average.
+      These figures are computed from the same province data as the chart.
+    </p>
+
+    <h2>Data limits state what the figures omit</h2>
+    <p>About one fifth of DPWH award value cannot be assigned to one province and is excluded. BARMM attribution is especially limited, so its province figures are lower bounds.</p>
+    <p>Poverty rates are survey estimates. Interpolated years and held values are labelled, and the product keeps published confidence and precision fields where available.</p>
 
     <h2>The 2025 workbooks need source gates before publication</h2>
     <p>The official 2025 poverty and FIES workbooks do not ship. They need source, precision, crosswalk, weight, and revision gates before publication.</p>
@@ -40,14 +54,20 @@
     <h2>The trust panel gives the evidence for the active view</h2>
     <p>View evidence, shown as Why trust this view, lists source, update, grain, transforms, status, coverage, warnings, and archive information. The coverage table lists full, partial, and unavailable years.</p>
     <p>Each view can download CSV data, metadata JSON, and citation text. The metadata JSON includes the view URL, method URL, source and build identifiers, warnings, and coverage.</p>
-    <p>Curated views and stateful links preserve the active view. Embed attribution links back to the full explorer with the same state.</p>
+    <p>Named views and stateful links preserve the active view. Embed attribution links back to the full explorer with the same state.</p>
 
     <h2>The build refreshes PSA data but not protected sources</h2>
-    <p>`--no-cache` refreshes PSA data. The build reads the committed geography contract.</p>
+    <p><code>--no-cache</code> refreshes PSA data. The build reads the committed geography contract.</p>
     <p>The build does not get PhilGEPS snapshots or protected 2025 workbooks. A maintainer must review and commit a source artifact before a build can use it.</p>
 
     <h2>The source ledger states what the product ships</h2>
-    <p>Read the dated source status ledger in `docs/roadmap.md` for shipped, unavailable, and adoption-gated sources.</p>
+    <p>Read the dated source status ledger in <code>docs/roadmap.md</code> for shipped, unavailable, and adoption-gated sources.</p>
   </section>
+
+  <footer>
+    <p>Sources include PSA OpenStat, PhilGEPS, and PSA Census.</p>
+    <p id="data-freshness" class="freshness"></p>
+    <p class="disclaimer">This explorer visualizes public statistical indicators. Any specific allegation needs independent evidence.</p>
+  </footer>
 </body>
 </html>

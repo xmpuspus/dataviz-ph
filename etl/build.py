@@ -22,6 +22,7 @@ POVERTY_ANCHORS = [2018, 2021, 2023]
 REGION_STORY_YEARS = [2021, 2023]
 GDP_PANEL_YEARS = list(range(2018, 2026))
 GDP_ANCHORS = GDP_PANEL_YEARS
+GDP_STORY_YEARS = list(range(2018, 2025))
 CPI_YOY_YEARS = list(range(2019, 2026))  # need year-prior so series starts at 2019
 
 # Cumulative spend window for spend-vs-poverty-change preset.
@@ -575,7 +576,7 @@ def main(no_cache: bool = False) -> None:
     print(">> fetch additive GDP (PSA 2A/PPA, constant 2018 prices, 2018-2025)")
     gdp_total = psa_openstat.fetch_gdp_total(provinces, normalize_name, huc_parent)
     gdp_published = psa_openstat.fetch_gdp_per_capita_source(provinces, normalize_name, huc_parent)
-    psa_openstat.validate_gdp_industry_contract()
+    ppa_industry = psa_openstat.validate_gdp_industry_contract()
     psa_openstat.require_source_years(gdp_total, range(2018, 2026), "PPA GDP")
     psa_openstat.require_source_years(gdp_published, range(2018, 2026), "PPA per-capita GDP")
     gdp = psa_openstat.recompute_gdp_per_capita(gdp_total, gdp_published)
@@ -1022,7 +1023,7 @@ def main(no_cache: bool = False) -> None:
             "unit_set": "regions",
             "coverage_label": (
                 "Regional grain: PSA publishes CPI by region, so this view has 18 "
-                "units instead of the 82 provincial units elsewhere on the site."
+                "units instead of the 82 analysis areas used elsewhere on the site."
             ),
         },
         {
@@ -1118,8 +1119,8 @@ def main(no_cache: bool = False) -> None:
             "tab_label": "Spend vs GDP",
             "headline": "Does spending follow wealth, or chase poverty?",
             "tagline": (
-                "81 provinces and Metro Manila. 2022 to 2024. All government "
-                "contracts per capita against per-capita GDP."
+                "81 provinces and virtual NCR. Shared years 2018 to 2024. All "
+                "government contracts per capita against per-capita GDP."
             ),
             "why": (
                 "DPWH-vs-poverty and all-spend-vs-poverty both ask whether money "
@@ -1133,7 +1134,7 @@ def main(no_cache: bool = False) -> None:
             "x": "all_spend_per_capita",
             "y": "gdp_per_capita",
             "size": "population_2020",
-            "panel_years": GDP_PANEL_YEARS,
+            "panel_years": GDP_STORY_YEARS,
             "default_year": 2023,
             "default_log_x": True,
             "awards_caveat": AWARDS_CAVEAT,
@@ -1144,20 +1145,20 @@ def main(no_cache: bool = False) -> None:
             "headline": "Wealthier provinces, lower poverty?",
             "tagline": (
                 "Per capita GDP (constant 2018 PHP) against poverty incidence. "
-                "Three years of PSA province data, 2022 to 2024."
+                "Shared years 2018 to 2024. The GDP source covers 2025."
             ),
             "why": (
                 "GDP per capita is the headline wealth measure. Pairing it with "
                 "poverty incidence shows whether the two are negatively correlated "
                 "across provinces in the way most economic theory predicts, and where "
-                "the outliers sit. PSA only publishes provincial per-capita GDP from "
-                "2022 onward, so the panel is short."
+                "the outliers sit. This paired view ends in 2024 because the poverty "
+                "panel has no matching 2025 value."
             ),
             "source_url": "https://openstat.psa.gov.ph/PXWeb/pxweb/en/DB/DB__2A__PPA/",
             "x": "gdp_per_capita",
             "y": "poverty",
             "size": "population_2020",
-            "panel_years": GDP_PANEL_YEARS,
+            "panel_years": GDP_STORY_YEARS,
             "default_year": 2023,
             "default_log_x": True,
         },
@@ -1204,8 +1205,9 @@ def main(no_cache: bool = False) -> None:
             "headline": "Where prices rise fastest, who already lives poor?",
             "tagline": (
                 "Regional CPI inflation (year-on-year) against poverty incidence. "
-                "PSA publishes CPI by region, not province, so this story drops "
-                "from the 82 provincial units used elsewhere to 18 regions. "
+                "PSA publishes this CPI series by region. It has no province series, "
+                "so this story drops "
+                "from the 82 analysis areas used elsewhere to 18 regions. "
                 "PSA survey years 2021 and 2023."
             ),
             "why": (
@@ -1279,14 +1281,31 @@ def main(no_cache: bool = False) -> None:
         },
         "philgeps_snapshot": procurement_status,
         "psgc": {
-            "source": "https://psgc.gitlab.io/api/provinces.json",
-            "note": "mutable community mirror. Cached copy sha256 recorded.",
+            "source": "https://psa.gov.ph/classification/psgc/provinces",
+            "release": "Second Quarter 2026 PSGC",
+            "as_of": "2026-06-30",
+            "note": (
+                "Official identity source; historical analysis IDs remain in "
+                "geography-crosswalk.json."
+            ),
             "cached_sha256": psgc_sha,
         },
         "psa_openstat": {
-            "source": "https://openstat.psa.gov.ph/PXWeb/api/v1/en/DB",
+            "source": psa_openstat.API_BASE,
+            "release": "PPA updated 2026-08-28; poverty-depth tables updated 2024-08-15",
             "note": "live API; pinning impossible. Fetch date and row counts recorded.",
             "fetch_date": datetime.now(UTC).date().isoformat(),
+            "population_2024_path": "1A/PO_2024/0191A6DTHP8.px",
+            "ppa_industry_contract": ppa_industry,
+            "ppa_paths": [
+                "2A/PPA/0012A5FPPA0.px",
+                "2A/PPA/0022A5FPPA1.px",
+                "2A/PPA/0092A5FPPA8.px",
+            ],
+            "poverty_depth_paths": [
+                PSA_TABLES[table].reviewed_fallbacks[0]
+                for table in psa_openstat.POVERTY_DEPTH_MEASURES
+            ],
             "row_counts": {
                 "poverty_anchors": len(poverty_anchors),
                 "subsistence_anchors": len(subsistence_anchors),
@@ -1341,6 +1360,16 @@ def main(no_cache: bool = False) -> None:
             "region_cpi_yoy_pct": len(region_cpi_yoy),
             "stories": len(stories),
             "indicators": len(indicators),
+            "geography-crosswalk": _count_rows(
+                json.loads((PUBLIC_DATA / "geography-crosswalk.json").read_text())
+            ),
+            "pair_headlines": _count_rows(
+                json.loads((PUBLIC_DATA / "pair_headlines.json").read_text())
+            ),
+            "procurement_status": _count_rows(procurement_status),
+            "view_evidence": _count_rows(
+                json.loads((PUBLIC_DATA / "view_evidence.json").read_text())
+            ),
         },
         inputs=inputs,
     )

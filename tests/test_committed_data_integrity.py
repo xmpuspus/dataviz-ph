@@ -153,9 +153,9 @@ def test_procurement_2025_gate_publishes_unavailable_status() -> None:
     assert status["evidence"]["unique_award_id_count"] == 506_831
     assert status["evidence"]["candidate_series_coverage"] == {
         "all_spend": 82,
-        "doh": 4,
+        "doh": 44,
         "dpwh": 78,
-        "infrastructure": 81,
+        "infrastructure": 82,
     }
     assert status["snapshot_anomalies"] == {
         "scope": "snapshot_wide",

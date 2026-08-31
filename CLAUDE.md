@@ -41,7 +41,7 @@ node docs/build_og_cards.js
 
 `--no-cache` refreshes PSA data and the build reads the committed geography contract. It does not get PhilGEPS snapshots or protected workbooks.
 
-Do not hand-edit generated share pages, embed kit files, or cards. The share-page byte drift test checks HTML output. Card bytes can differ by browser rendering, so inspect each changed 1200 by 630 card.
+Do not hand-edit generated share pages, embed kit files, or cards. The share-page byte drift test checks HTML output. Card bytes can differ by browser rendering, so inspect each changed 1200 by 630 card. Classify `public/og.png` as the site-wide fallback card and `public/og/<story>.png` as story cards. Check both classes when their visible inputs change.
 
 ## The checks show current behavior
 
@@ -54,4 +54,20 @@ node --check docs/build_og_cards.js
 git diff --check
 ```
 
-Serve the site with `python3 -m http.server -d public 8099`. The recorder waits for `networkidle`, selects Play, and records headless. Use two-pass ffmpeg palette conversion. Check frame count with ffprobe and inspect the GIF in a real browser.
+Serve the site with `python3 -m http.server -d public 8099`. The recorder waits for `networkidle`, chooses Play, and records headless. Convert its WebM with the exact two-pass process below. Replace `DEMO_INPUT` with the recorded file path printed by the recorder.
+
+```bash
+DEMO_INPUT=/tmp/dataviz-demo-record/recording.webm
+ffmpeg -i "$DEMO_INPUT" \
+  -vf "setpts=0.67*PTS,fps=8,scale=720:-1:flags=lanczos,palettegen=max_colors=128:stats_mode=diff" \
+  -y /tmp/dataviz-demo-palette.png
+ffmpeg -i "$DEMO_INPUT" -i /tmp/dataviz-demo-palette.png \
+  -lavfi "[0:v]setpts=0.67*PTS,fps=8,scale=720:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" \
+  -y docs/demo.gif
+ffprobe -v error -select_streams v:0 -count_frames \
+  -show_entries stream=width,height,r_frame_rate,nb_read_frames \
+  -show_entries format=duration,size -of json docs/demo.gif
+python3 -m http.server 8124 --bind 127.0.0.1 --directory docs
+```
+
+Open `http://127.0.0.1:8124/demo.gif` in a real browser. Compare the opening frame with a frame at least five seconds later, and inspect the Sulu and GDP-switch frames. The GIF must have more than one frame and stay below 8 MB.

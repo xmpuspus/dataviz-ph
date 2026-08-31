@@ -94,6 +94,12 @@ def region_id_for(label: str) -> str | None:
     return None
 
 
+def _normalize_region_name(clean: str, _units: dict, *, series: str | None = None) -> str | None:
+    """Adapt region matching to the shared series-aware normalizer contract."""
+    del series
+    return region_id_for(clean)
+
+
 def fetch_regional_poverty() -> list[dict]:
     """Poverty incidence among families (%) + precision for the 18 regions.
 
@@ -115,7 +121,7 @@ def fetch_regional_poverty() -> list[dict]:
         lambda t: "poverty incidence" in t and "famil" in t,
         "PSA table 1a (regional rows)",
         regions,
-        lambda clean, _units: region_id_for(clean),
+        _normalize_region_name,
     )
 
 

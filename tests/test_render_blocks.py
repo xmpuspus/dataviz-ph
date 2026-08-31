@@ -278,8 +278,8 @@ def test_methodology_page_renders_with_live_scale(browser, base_url):
         # Directory index: serves methodology/index.html both locally and on Vercel.
         pg.goto(base_url + "methodology/", wait_until="networkidle")
         body = pg.inner_text("body")
-        assert "Awards, not disbursement" in body
-        assert "Honesty notes" in body
+        assert "Contract awards differ from disbursement" in body
+        assert "Data limits" in body
         # The "Scale and trend" line is computed by methodology.js and unhides once
         # the data loads; its figures must be peso-scaled, not raw or blank.
         pg.wait_for_selector("#methodology-scale:not([hidden])", timeout=15000)

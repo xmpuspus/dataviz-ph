@@ -38,6 +38,14 @@ def test_manifest_references_no_missing_file() -> None:
         assert (PUBLIC_DATA / name).exists(), f"manifest references missing file {name}"
 
 
+def test_every_data_file_has_a_manifest_row_count() -> None:
+    man = _manifest()
+    row_counts = man["row_counts"]
+    on_disk = sorted(p for p in PUBLIC_DATA.glob("*.json") if p.name != "manifest.json")
+    for path in on_disk:
+        assert path.stem in row_counts, f"{path.name} has no manifest row count"
+
+
 def test_dpwh_headline_matches_computed_total() -> None:
     """The DPWH story headline cites a peso figure; it must match the data.
 

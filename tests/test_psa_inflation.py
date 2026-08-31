@@ -10,6 +10,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import etl.psa_inflation as psa_inflation
 from etl.psa_inflation import (
     REGIONS,
     compute_regional_cpi_yoy,
@@ -76,6 +77,11 @@ def test_region_id_for_rejects_lookalikes():
         assert region_id_for(label) is None, label
 
 
+def test_regional_poverty_adapter_accepts_the_series_keyword():
+    normalizer = psa_inflation._normalize_region_name
+    assert normalizer("National Capital Region (NCR)", {}, series="poverty_fies") == "ncr"
+
+
 def test_compute_regional_cpi_yoy_arithmetic_and_guards():
     series = {
         "r01": {2018: 100.0, 2019: 104.0, 2020: 106.08},
@@ -101,7 +107,7 @@ def test_compute_regional_cpi_yoy_drops_in_progress_year():
     assert (this_year - 1) in years
 
 
-# ---- committed data files -----------------------------------------------------
+# Committed data files
 
 
 def test_committed_region_files_cover_18_units():

@@ -140,12 +140,12 @@ def _embed_kit(stories: list[dict]) -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Embed kit — dataviz.ph</title>
+  <title>Embed kit | dataviz.ph</title>
   <meta name="description" content="Embed any dataviz.ph chart in your story. Copy-paste iframe snippets, responsive, attribution-ready.">
   <link rel="canonical" href="{SITE}/embed-kit">
   <meta property="og:type" content="website">
   <meta property="og:url" content="{SITE}/embed-kit">
-  <meta property="og:title" content="Embed kit — dataviz.ph">
+  <meta property="og:title" content="Embed kit | dataviz.ph">
   <meta property="og:description" content="Drop any dataviz.ph chart into your article with one line of HTML. Free, open data, attribution-ready.">
   <meta property="og:image" content="{SITE}/og.png">
   <meta name="twitter:card" content="summary_large_image">
@@ -182,21 +182,22 @@ def _embed_kit(stories: list[dict]) -> str:
 <body>
   <main class="ek">
     <div class="brand">dataviz.<span>ph</span></div>
-    <h1>Embed kit for journalists & researchers</h1>
+    <h1>Embed kit for journalists and researchers</h1>
     <p class="lead">Every chart on dataviz.ph embeds in one line of HTML. The embed is the
-      live, animated chart — readers can hit play and scrub the years inside your article.
+      live, animated chart. Readers can play it and move through the years inside your article.
       Pick a story below, copy the snippet, paste it into your CMS.</p>
-    <p class="lead">All figures are computed from public data (PSA OpenStat, PhilGEPS, PSA
-      Census). Correlation, not causation; spend is contract awards, not verified disbursement.</p>
+    <p class="lead">All figures come from public data (PSA OpenStat, PhilGEPS, and PSA
+      Census). Correlation does not show causation. Spend figures show contract awards.
+      They do not show cash disbursement.</p>
     {"".join(cards)}
     <div class="meta">
       <strong>Sizing.</strong> The snippet is responsive (it scales to its container, capped at 800px).
       For a fixed size, set <code>width</code> and <code>height</code> directly.<br>
       <strong>Attribution.</strong> Please credit &ldquo;dataviz.ph&rdquo; with a link to
       <a href="https://dataviz.ph">https://dataviz.ph</a>. The data and code are open
-      (MIT). Method notes: <a href="/methodology">dataviz.ph/methodology</a>.<br>
-      <strong>Custom views.</strong> Any view you build in the explorer has its own URL —
-      add <code>&amp;embed=1</code> to that link to embed exactly what you see.
+      (MIT). Read the method at <a href="/methodology">dataviz.ph/methodology</a>.<br>
+      <strong>Custom views.</strong> Any view you build in the explorer has its own URL.
+      Add <code>&amp;embed=1</code> to that link to embed exactly what you see.
       The embed keeps the active view state and links back to the full explorer.
       <a class="home" href="/">&larr; Back to the explorer</a>
     </div>

@@ -4,83 +4,33 @@ Updated 2026-08-31. This ledger describes current public behavior. It does not a
 
 ## Shipped
 
-### PSA GDP
+| Dataset | Grain | Years | Status | Update check | Failed gate |
+| --- | --- | --- | --- | --- | --- |
+| PSA GDP | Province and virtual NCR | 2018 to 2025 | Shipped | Review each official release | None |
+| PSA population | Province and virtual NCR | 2020 and 2024 anchors | Shipped | Review each census release | None |
+| PSA poverty depth | Published source-native area | Through 2023 | Shipped | Review each official release | None |
+| PhilGEPS awards | Province and virtual NCR | 2014 to 2024 | Shipped | Review each new snapshot | None |
 
-- The grain is province and virtual NCR.
-- The years are 2018 to 2025.
-- dataviz.ph ships this source.
-- Check each official release.
-- The build uses the committed geography contract.
+Population estimates use the 2020 value through 2020, interpolate 2021 through 2023, and use the official 2024 POPCEN value. The product never averages rates across areas. It recomputes rates from additive components when the source contract permits that operation.
 
-### PSA population
-
-- The grain is province and virtual NCR.
-- The years use 2020 and 2024 anchors.
-- dataviz.ph ships this source.
-- Check each census release.
-- The build estimates 2021 through 2023 between anchors.
-
-### PSA poverty depth
-
-- The grain is province and virtual NCR.
-- The years end in 2023.
-- dataviz.ph ships this source.
-- Check each official release.
-- The source ends in 2023.
-
-### PhilGEPS awards
-
-- The grain is province and virtual NCR.
-- The source covers reviewed snapshot years.
-- dataviz.ph ships this source.
-- Review a new snapshot before use.
-- Awards are not disbursements.
+PhilGEPS values are contract awards. They do not show cash disbursement.
 
 ## Unavailable
 
-### PhilGEPS 2025
-
-- The grain is an award record.
-- The year is 2025.
-- The release status is unavailable.
-- Review a complete corrected snapshot.
-- The failed gate has incomplete dates, invalid dates, future dates, and correction comparison.
-
-### PSA 2025 poverty workbook
-
-- The grain is a source-native area.
-- The year is 2025.
-- The release status is unavailable.
-- Check the official workbook release.
-- The failed gate has source, precision, crosswalk, weight, and revision policy.
-
-### PSA 2025 FIES workbook
-
-- The grain is a source-native area.
-- The year is 2025.
-- The release status is unavailable.
-- Check the official workbook release.
-- The failed gate has source, precision, crosswalk, weight, and revision policy.
+| Dataset | Grain | Years | Status | Update check | Failed gate |
+| --- | --- | --- | --- | --- | --- |
+| PhilGEPS 2025 | Award record | 2025 | Unavailable | Review corrected snapshot | Date coverage, invalid and future dates, correction comparison |
+| PSA 2025 poverty workbook | Source-native area | 2025 | Unavailable | Check official release | Source, precision, crosswalk, weights, revision policy |
+| PSA 2025 FIES workbook | Source-native area | 2025 | Unavailable | Check official release | Source, precision, crosswalk, weights, revision policy |
 
 If an official 2025 workbook passes its gates, label its figures preliminary until the publisher gives a final revision status.
 
 ## Adoption-gated
 
-### DBM COMPASS
-
-- The grain is not accepted.
-- The years are not accepted.
-- The release status is adoption-gated.
-- Review before adoption.
-- The needed gate has credentials, grain, coverage, and a reproducible source contract.
-
-### CBMS
-
-- The grain is not accepted.
-- The years are not accepted.
-- The release status is adoption-gated.
-- Review before adoption.
-- The needed gate has access, grain, coverage, suppression rules, and a reproducible source contract.
+| Dataset | Grain | Years | Status | Update check | Failed gate |
+| --- | --- | --- | --- | --- | --- |
+| DBM COMPASS | Not accepted | Not accepted | Adoption-gated | Review before adoption | Credentials, grain, coverage, and reproducible source contract |
+| CBMS | Not accepted | Not accepted | Adoption-gated | Review before adoption | Access, grain, coverage, suppression rules, and reproducible source contract |
 
 ## Future work stays outside the shipped product
 

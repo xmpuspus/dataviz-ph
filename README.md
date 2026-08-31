@@ -24,7 +24,7 @@ The embed kit at `/embed-kit` gives a responsive iframe for each named view. Emb
 
 The analysis layer has 81 provinces plus virtual NCR. The versioned geography contract preserves source-native identifiers and documents all roll-ups and changes.
 
-Highly Urbanized Cities roll up to their parent province. The contract records the historical Maguindanao treatment, the Negros Island Region change, and the Sulu transfer. It keeps virtual NCR for comparable historical analysis.
+Population and award totals sum additive Highly Urbanized City values into the matching historical analysis area. Cotabato City remains unattributed. The build never averages poverty, FIES, or GDP rates across areas. It recomputes a rate from additive components or leaves it unavailable. The contract records the historical Maguindanao treatment, the Negros Island Region change, the Sulu transfer, and virtual NCR.
 
 GDP covers 2018 through 2025. Population uses 2020 and 2024 anchors, then estimates 2021 through 2023 between them. Poverty-depth data ends in 2023.
 
@@ -50,9 +50,9 @@ python3 -m http.server -d public 8765
 
 `--no-cache` refreshes PSA data. The build reads the committed geography contract. It does not get PhilGEPS snapshots, 2025 poverty workbooks, or 2025 FIES workbooks.
 
-Run `python3 -m etl.build_share_pages` after a story change. Run `node docs/build_og_cards.js` after a visible card change. The share-page test compares generated pages with committed pages. Card PNG bytes can differ by browser rendering, so inspect every changed card at 1200 by 630 pixels before commit.
+Run `python3 -m etl.build_share_pages` after a story change. Run `node docs/build_og_cards.js` after a visible card change. The share-page test compares generated pages with committed pages. Card PNG bytes can differ by browser rendering, so inspect every changed card at 1200 by 630 pixels before commit. Treat `public/og.png` as the site-wide fallback card and each `public/og/<story>.png` as a story card. Classify and inspect both kinds when their visible inputs change.
 
-To record the demo, serve `public/` on port 8099, then run `node docs/record_demo.js`. The recorder selects Play after `networkidle`. Use the documented two-pass ffmpeg palette process and inspect the output in a browser.
+To record the demo, serve `public/` on port 8099, then run `node docs/record_demo.js`. The recorder chooses Play after `networkidle`. Follow the exact two-pass ffmpeg and browser-check commands in `CLAUDE.md`.
 
 ## The repository keeps source and generated files separate
 
