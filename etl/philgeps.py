@@ -66,6 +66,87 @@ PANEL_END = 2024
 MIN_PESO_PER_CAPITA = 100.0
 
 
+def snapshot_identity(inventory: dict) -> str:
+    """Return the reviewed snapshot identity without reference to chart years."""
+    fields = {
+        "snapshot_id": inventory.get("snapshot_id"),
+        "supported_date_range": inventory.get("supported_date_range"),
+        "anomalies": inventory.get("anomalies"),
+        "chunks": inventory.get("chunks"),
+    }
+    return hashlib.sha256(
+        json.dumps(fields, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def assess_year_gate(inventory: dict, year: int) -> dict:
+    """Fail closed unless a reviewed candidate year meets every publication gate."""
+    candidate = inventory.get("year_candidates", {}).get(str(year), {})
+    date_range = candidate.get("date_range", {})
+    failed_gates = []
+    if date_range.get("start") != f"{year}-01-01" or date_range.get("end") != f"{year}-12-31":
+        failed_gates.append("date_range_incomplete")
+    invalid_dates = candidate.get(
+        "invalid_award_date_count",
+        inventory.get("anomalies", {}).get("invalid_award_date_count", 0),
+    )
+    if invalid_dates:
+        failed_gates.append("invalid_award_dates")
+    future_dates = candidate.get(
+        "future_award_date_count", inventory.get("anomalies", {}).get("future_award_date_count", 0)
+    )
+    if future_dates:
+        failed_gates.append("future_award_dates")
+    if not candidate.get("unique_award_id_count"):
+        failed_gates.append("usable_unique_award_ids_missing")
+    if inventory.get("revision_status") != "compared with a newer snapshot and reviewed":
+        failed_gates.append("correction_comparison_pending")
+    return {
+        "year": year,
+        "status": "available" if not failed_gates else "unavailable",
+        "failed_gates": failed_gates,
+        "month_counts": candidate.get("month_counts", {}),
+        "date_range": date_range,
+        "unique_award_id_count": candidate.get("unique_award_id_count", 0),
+        "invalid_award_date_count": invalid_dates,
+        "future_award_date_count": future_dates,
+        "candidate_series_coverage": candidate.get("candidate_series_coverage", {}),
+        "award_status_null_count": candidate.get("award_status_null_count", 0),
+        "source_system_null_count": candidate.get("source_system_null_count", 0),
+        "revision_status": inventory.get("revision_status", "unknown"),
+    }
+
+
+def procurement_status(inventory: dict, *, candidate_year: int = PANEL_END + 1) -> dict:
+    """Build the public status record without creating candidate chart rows."""
+    gate = assess_year_gate(inventory, candidate_year)
+    return {
+        "status": gate["status"],
+        "panel_start": PANEL_START,
+        "panel_end": PANEL_END,
+        "latest_complete_year": PANEL_END,
+        "candidate_year": candidate_year,
+        "failed_gates": gate["failed_gates"],
+        "snapshot_id": inventory.get("snapshot_id"),
+        "snapshot_identity": snapshot_identity(inventory),
+        "fetched_at": inventory.get("fetched_at"),
+        "revision_status": inventory.get("revision_status", "unknown"),
+        "evidence": {
+            key: gate[key]
+            for key in (
+                "date_range",
+                "month_counts",
+                "unique_award_id_count",
+                "invalid_award_date_count",
+                "future_award_date_count",
+                "candidate_series_coverage",
+                "award_status_null_count",
+                "source_system_null_count",
+            )
+        },
+    }
+
+
 def _chunk_path(i: int) -> Path:
     return CACHE_DIR / f"facts_awards_chunk_{i:02d}.parquet"
 
@@ -94,7 +175,7 @@ def build_snapshot_inventory(
     min_date = None
     max_date = None
     invalid_date_count = 0
-    out_of_panel_date_count = 0
+    future_award_date_count = 0
     for i in range(1, N_CHUNKS + 1):
         chunk = root / f"facts_awards_chunk_{i:02d}.parquet"
         if not chunk.exists():
@@ -128,9 +209,8 @@ def build_snapshot_inventory(
         chunk_max = observed_dates.max().date()
         min_date = chunk_min if min_date is None else min(min_date, chunk_min)
         max_date = chunk_max if max_date is None else max(max_date, chunk_max)
-        out_of_panel_date_count += int(
-            ((observed_dates.dt.year < PANEL_START) | (observed_dates.dt.year > PANEL_END)).sum()
-        )
+        fetched_date = pd.Timestamp(fetched_at or datetime.now(UTC).isoformat(), tz="UTC")
+        future_award_date_count += int((observed_dates > fetched_date).sum())
         chunks[f"chunk_{i:02d}"] = {
             "sha256": hashlib.sha256(chunk.read_bytes()).hexdigest(),
             "row_count": parquet.metadata.num_rows,
@@ -139,7 +219,7 @@ def build_snapshot_inventory(
         }
     chunk_digests = {name: item["sha256"] for name, item in chunks.items()}
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "upstream_identity": {
             "name": "csiiiv/philgeps-awards-dashboard mirror",
             "url": CHUNK_BASE,
@@ -151,13 +231,14 @@ def build_snapshot_inventory(
         "supported_date_range": {"start": min_date.isoformat(), "end": max_date.isoformat()},
         "anomalies": {
             "invalid_award_date_count": invalid_date_count,
-            "out_of_panel_date_count": out_of_panel_date_count,
+            "future_award_date_count": future_award_date_count,
             "duplicate_id_count": duplicate_id_count,
         },
         "schema_columns": schema_columns,
         "snapshot_id": hashlib.sha256(
             json.dumps(chunk_digests, sort_keys=True).encode()
         ).hexdigest(),
+        "usable_unique_award_id_count": len(snapshot_ids),
         "chunks": chunks,
     }
 

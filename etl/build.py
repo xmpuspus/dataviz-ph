@@ -384,6 +384,13 @@ def write_json(name: str, payload: object) -> None:
     print(f"wrote {out.relative_to(PUBLIC_DATA.parent.parent)}  ({out.stat().st_size:,} bytes)")
 
 
+def write_procurement_status() -> dict:
+    """Publish the reviewed candidate-year gate without candidate spend rows."""
+    status = philgeps.procurement_status(philgeps.load_reviewed_snapshot_inventory())
+    write_json("procurement_status.json", status)
+    return status
+
+
 def main(no_cache: bool = False) -> None:
     if no_cache:
         psa_openstat.clear_cache()
@@ -1148,6 +1155,7 @@ def main(no_cache: bool = False) -> None:
     print(f"  share/embed pages: {len(share_written)}")
 
     # Write manifest LAST so its sha256 covers every freshly-written file.
+    procurement_status = write_procurement_status()
     dpwh_total = compute_dpwh_attributed_total(dpwh_spend, pop_by_psgc)
 
     # Per-province attribution coverage for manifest
@@ -1166,6 +1174,7 @@ def main(no_cache: bool = False) -> None:
             ),
             "chunks": {},
         },
+        "philgeps_snapshot": procurement_status,
         "psgc": {
             "source": "https://psgc.gitlab.io/api/provinces.json",
             "note": "mutable community mirror. Cached copy sha256 recorded.",
@@ -1447,6 +1456,7 @@ def refresh_manifest() -> None:
     pair_headlines.json) so the recorded sha256 + row counts stop drifting from
     what actually ships. This is the cheap counterpart to a full `main()` build.
     """
+    procurement_status = write_procurement_status()
     files = sorted(p for p in PUBLIC_DATA.glob("*.json") if p.name != "manifest.json")
     row_counts = {}
     for f in files:
@@ -1473,6 +1483,7 @@ def refresh_manifest() -> None:
 
     existing = json.loads((PUBLIC_DATA / "manifest.json").read_text())
     inputs = existing.get("inputs", {})
+    inputs["philgeps_snapshot"] = procurement_status
     inputs.setdefault(
         "psgc",
         {

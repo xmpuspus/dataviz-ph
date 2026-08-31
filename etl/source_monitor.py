@@ -59,6 +59,10 @@ def assess_source_state(
             "age_days": age_days,
             "revision_status": snapshot_inventory.get("revision_status", "unknown"),
             "supported_date_range": snapshot_inventory.get("supported_date_range"),
+            "latest_complete_philgeps_year": philgeps.PANEL_END,
+            "candidate_year_status": philgeps.assess_year_gate(
+                snapshot_inventory, philgeps.PANEL_END + 1
+            ),
         }
     geography = {"status": "unknown"}
     if geography_version:

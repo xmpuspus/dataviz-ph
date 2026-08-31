@@ -137,6 +137,28 @@ def test_spend_and_population_nonnegative() -> None:
             assert r["value"] >= 0, f"{name}: negative value {r}"
 
 
+def test_procurement_2025_gate_publishes_unavailable_status() -> None:
+    status = _load("procurement_status.json")
+
+    assert status["panel_end"] == 2024
+    assert status["latest_complete_year"] == 2024
+    assert status["candidate_year"] == 2025
+    assert status["status"] == "unavailable"
+    assert status["failed_gates"] == [
+        "date_range_incomplete",
+        "invalid_award_dates",
+        "future_award_dates",
+        "correction_comparison_pending",
+    ]
+    assert status["evidence"]["unique_award_id_count"] == 506_831
+    assert status["evidence"]["candidate_series_coverage"] == {
+        "all_spend": 82,
+        "doh": 4,
+        "dpwh": 78,
+        "infrastructure": 81,
+    }
+
+
 def test_stories_findings_are_sane() -> None:
     """Every shipped finding must be statistically well-formed and not over-claim
     its unit count. Also guards that the dropped pearson field stays dropped."""

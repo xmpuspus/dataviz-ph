@@ -42,6 +42,42 @@ def test_monitor_flags_short_unit_coverage():
     assert report["sources"]["poverty"]["coverage_status"] == "short"
 
 
+def test_monitor_reports_philgeps_gate_and_snapshot_age():
+    report = assess_source_state(
+        contracts={},
+        shipped_years={},
+        expected_unit_count=82,
+        snapshot_inventory={
+            "fetched_at": "2026-05-26T13:17:16.561587Z",
+            "revision_status": "not compared to a newer snapshot",
+            "supported_date_range": {"start": "1920-01-08", "end": "2034-10-04"},
+            "year_candidates": {
+                "2025": {
+                    "unique_award_id_count": 506831,
+                    "date_range": {"start": "2025-01-01", "end": "2025-12-27"},
+                    "month_counts": {str(month): 1 for month in range(1, 13)},
+                    "invalid_award_date_count": 1,
+                    "future_award_date_count": 11,
+                    "candidate_series_coverage": {"all_spend": 82},
+                }
+            },
+        },
+        geography_version=None,
+        now="2026-08-31T00:00:00Z",
+    )
+
+    snapshot = report["snapshot"]
+    assert snapshot["age_days"] == 96
+    assert snapshot["latest_complete_philgeps_year"] == 2024
+    assert snapshot["candidate_year_status"]["status"] == "unavailable"
+    assert snapshot["candidate_year_status"]["failed_gates"] == [
+        "date_range_incomplete",
+        "invalid_award_dates",
+        "future_award_dates",
+        "correction_comparison_pending",
+    ]
+
+
 def test_live_monitor_normalizes_shipped_cpi_object_shape(monkeypatch):
     metadata = {
         "variables": [

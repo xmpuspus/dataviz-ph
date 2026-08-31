@@ -40,6 +40,7 @@ def test_snapshot_inventory_records_identity_policy_range_hashes_and_row_counts(
     assert inventory["correction_policy"]
     assert inventory["supported_date_range"] == {"start": "2024-01-01", "end": "2024-02-01"}
     assert inventory["anomalies"]["invalid_award_date_count"] == 0
+    assert inventory["usable_unique_award_id_count"] == 2
     assert (
         inventory["chunks"]["chunk_01"]["sha256"] == hashlib.sha256(chunk.read_bytes()).hexdigest()
     )
@@ -65,6 +66,46 @@ def test_snapshot_inventory_rejects_missing_production_columns(tmp_path, monkeyp
 
     with pytest.raises(ValueError, match="required columns"):
         philgeps.write_snapshot_inventory()
+
+
+def test_year_gate_fails_closed_when_reviewed_snapshot_is_incomplete_or_unreviewed():
+    inventory = {
+        "revision_status": "not compared to a newer snapshot",
+        "year_candidates": {
+            "2025": {
+                "unique_award_id_count": 2,
+                "date_range": {"start": "2025-01-01", "end": "2025-12-27"},
+                "month_counts": {str(month): 1 for month in range(1, 13)},
+                "invalid_award_date_count": 1,
+                "future_award_date_count": 11,
+                "candidate_series_coverage": {"all_spend": 82},
+            }
+        },
+    }
+
+    gate = philgeps.assess_year_gate(inventory, 2025)
+
+    assert gate["status"] == "unavailable"
+    assert gate["failed_gates"] == [
+        "date_range_incomplete",
+        "invalid_award_dates",
+        "future_award_dates",
+        "correction_comparison_pending",
+    ]
+    assert gate["month_counts"] == {str(month): 1 for month in range(1, 13)}
+
+
+def test_snapshot_inventory_identity_does_not_depend_on_the_chart_panel(monkeypatch, tmp_path):
+    inventory = {
+        "snapshot_id": "reviewed",
+        "supported_date_range": {"start": "2014-01-01", "end": "2034-01-01"},
+        "anomalies": {"invalid_award_date_count": 1, "future_award_date_count": 11},
+    }
+    monkeypatch.setattr(philgeps, "PANEL_END", 2024)
+    first = philgeps.snapshot_identity(inventory)
+    monkeypatch.setattr(philgeps, "PANEL_END", 2030)
+
+    assert philgeps.snapshot_identity(inventory) == first
 
 
 def test_processing_rejects_a_cache_that_differs_from_its_reviewed_inventory(tmp_path, monkeypatch):

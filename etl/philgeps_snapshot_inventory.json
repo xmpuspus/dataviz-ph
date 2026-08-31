@@ -1,8 +1,8 @@
 {
   "anomalies": {
     "duplicate_id_count": 0,
-    "invalid_award_date_count": 1,
-    "out_of_panel_date_count": 1044471
+    "future_award_date_count": 11,
+    "invalid_award_date_count": 1
   },
   "chunks": {
     "chunk_01": {
@@ -167,7 +167,7 @@
     "search_text",
     "source_system"
   ],
-  "schema_version": 1,
+  "schema_version": 2,
   "snapshot_id": "3ce90c99bc640cccc4ad73175aaf372201fd8ecc3f5081d0e207fee908830793",
   "supported_date_range": {
     "end": "2034-10-04",
@@ -177,5 +177,39 @@
     "chunk_count": 15,
     "name": "csiiiv/philgeps-awards-dashboard mirror",
     "url": "https://raw.githubusercontent.com/csiiiv/philgeps-awards-dashboard/main/backend/django/static_data/chunks"
+  },
+  "usable_unique_award_id_count": 5481161,
+  "year_candidates": {
+    "2025": {
+      "award_status_null_count": 506831,
+      "candidate_series_coverage": {
+        "all_spend": 82,
+        "doh": 4,
+        "dpwh": 78,
+        "infrastructure": 81
+      },
+      "date_range": {
+        "end": "2025-12-27",
+        "start": "2025-01-01"
+      },
+      "future_award_date_count": 11,
+      "invalid_award_date_count": 1,
+      "month_counts": {
+        "1": 49305,
+        "2": 63709,
+        "3": 79378,
+        "4": 45183,
+        "5": 65892,
+        "6": 53418,
+        "7": 46872,
+        "8": 36428,
+        "9": 20630,
+        "10": 16581,
+        "11": 17337,
+        "12": 12098
+      },
+      "source_system_null_count": 506831,
+      "unique_award_id_count": 506831
+    }
   }
 }
