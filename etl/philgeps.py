@@ -37,7 +37,18 @@ CACHE_DIR = Path(__file__).resolve().parent.parent / ".etl_cache" / "philgeps"
 INVENTORY_FILENAME = "snapshot_inventory.json"
 REVIEWED_INVENTORY_PATH = Path(__file__).with_name("philgeps_snapshot_inventory.json")
 REQUIRED_COLUMNS = frozenset(
-    {"id", "award_date", "contract_amount", "organization_name", "area_of_delivery"}
+    {
+        "id",
+        "award_date",
+        "contract_amount",
+        "organization_name",
+        "area_of_delivery",
+        "award_status",
+        "source_system",
+        "award_title",
+        "notice_title",
+        "business_category",
+    }
 )
 SNAPSHOT_CORRECTION_POLICY = (
     "Cached chunks are immutable inputs. Acquire a new snapshot explicitly, compare "
@@ -63,8 +74,7 @@ PANEL_END = 2024
 # area_of_delivery, contract tagged with a city that we can't map, etc.).
 # Treat it as missing data rather than publishing PHP 0.08 / cap.
 MIN_PESO_PER_CAPITA = 100.0
-REVIEWED_CORRECTION_STATUS = "compared with a newer snapshot and reviewed"
-_CANDIDATE_YEAR = PANEL_END + 1
+REVIEWED_CANDIDATE_YEARS = (2025,)
 
 
 def _parse_utc_timestamp(value: str | None) -> tuple[pd.Timestamp, str]:
@@ -84,7 +94,7 @@ def snapshot_identity(inventory: dict) -> str:
         "anomalies": inventory.get("anomalies"),
         "chunks": inventory.get("chunks"),
         "year_candidates": inventory.get("year_candidates"),
-        "revision_status": inventory.get("revision_status"),
+        "correction_attestation": inventory.get("correction_attestation"),
     }
     return hashlib.sha256(
         json.dumps(fields, sort_keys=True, separators=(",", ":")).encode()
@@ -105,15 +115,17 @@ def assess_year_gate(inventory: dict, year: int) -> dict:
         or any(not isinstance(count, int) or count <= 0 for count in month_counts.values())
     ):
         failed_gates.append("month_counts_incomplete")
-    invalid_dates = candidate.get("invalid_award_date_count")
+    anomalies = inventory.get("anomalies", {})
+    invalid_dates = anomalies.get("invalid_award_date_count")
+    future_dates = anomalies.get("future_award_date_count")
     if not isinstance(invalid_dates, int) or invalid_dates < 0:
-        failed_gates.append("invalid_award_date_count_missing")
+        failed_gates.append("snapshot_integrity_evidence_missing")
         invalid_dates = None
     elif invalid_dates:
         failed_gates.append("invalid_award_dates")
-    future_dates = candidate.get("future_award_date_count")
     if not isinstance(future_dates, int) or future_dates < 0:
-        failed_gates.append("future_award_date_count_missing")
+        if "snapshot_integrity_evidence_missing" not in failed_gates:
+            failed_gates.append("snapshot_integrity_evidence_missing")
         future_dates = None
     elif future_dates:
         failed_gates.append("future_award_dates")
@@ -122,13 +134,14 @@ def assess_year_gate(inventory: dict, year: int) -> dict:
         or candidate.get("unique_award_id_count", 0) <= 0
     ):
         failed_gates.append("usable_unique_award_ids_missing")
-    correction = candidate.get("correction_comparison")
-    if not isinstance(correction, dict) or "status" not in correction:
+    try:
+        correction_status = validate_correction_attestation(
+            inventory.get("correction_attestation"), inventory.get("snapshot_id")
+        )
+    except ValueError:
         failed_gates.append("correction_evidence_missing")
-    elif (
-        correction["status"] != "reviewed"
-        or inventory.get("revision_status") != REVIEWED_CORRECTION_STATUS
-    ):
+        correction_status = "invalid"
+    if correction_status == "pending":
         failed_gates.append("correction_comparison_pending")
     return {
         "year": year,
@@ -137,17 +150,22 @@ def assess_year_gate(inventory: dict, year: int) -> dict:
         "month_counts": month_counts or {},
         "date_range": date_range,
         "unique_award_id_count": candidate.get("unique_award_id_count", 0),
-        "invalid_award_date_count": invalid_dates,
-        "future_award_date_count": future_dates,
+        "snapshot_anomalies": {
+            "scope": "snapshot_wide",
+            "invalid_award_date_count": invalid_dates,
+            "future_award_date_count": future_dates,
+        },
         "candidate_series_coverage": candidate.get("candidate_series_coverage", {}),
         "award_status_null_count": candidate.get("award_status_null_count", 0),
         "source_system_null_count": candidate.get("source_system_null_count", 0),
-        "revision_status": inventory.get("revision_status", "unknown"),
+        "candidate_evidence": candidate,
+        "correction_status": correction_status,
     }
 
 
-def procurement_status(inventory: dict, *, candidate_year: int = PANEL_END + 1) -> dict:
+def procurement_status(inventory: dict, *, candidate_year: int | None = None) -> dict:
     """Build the public status record without creating candidate chart rows."""
+    candidate_year = candidate_year or max(REVIEWED_CANDIDATE_YEARS)
     gate = assess_year_gate(inventory, candidate_year)
     return {
         "status": gate["status"],
@@ -159,20 +177,19 @@ def procurement_status(inventory: dict, *, candidate_year: int = PANEL_END + 1) 
         "snapshot_id": inventory.get("snapshot_id"),
         "snapshot_identity": snapshot_identity(inventory),
         "fetched_at": inventory.get("fetched_at"),
-        "revision_status": inventory.get("revision_status", "unknown"),
+        "correction_attestation": inventory.get("correction_attestation"),
         "evidence": {
             key: gate[key]
             for key in (
                 "date_range",
                 "month_counts",
                 "unique_award_id_count",
-                "invalid_award_date_count",
-                "future_award_date_count",
                 "candidate_series_coverage",
                 "award_status_null_count",
                 "source_system_null_count",
             )
         },
+        "snapshot_anomalies": gate["snapshot_anomalies"],
     }
 
 
@@ -190,6 +207,41 @@ def _chunk_url(i: int) -> str:
 
 def _snapshot_inventory_path(cache_dir: Path) -> Path:
     return cache_dir / INVENTORY_FILENAME
+
+
+def validate_correction_attestation(attestation: object, snapshot_id: object) -> str:
+    if not isinstance(attestation, dict):
+        raise ValueError("PhilGEPS correction attestation is missing")
+    required = {"prior_snapshot_id", "current_snapshot_id", "reviewed_at", "status", "result"}
+    missing = required - attestation.keys()
+    if missing:
+        raise ValueError(f"PhilGEPS correction attestation missing fields: {sorted(missing)!r}")
+    if attestation["current_snapshot_id"] != snapshot_id:
+        raise ValueError("PhilGEPS correction attestation current snapshot does not match")
+    if attestation["status"] == "pending":
+        if (
+            attestation["prior_snapshot_id"] is not None
+            or attestation["reviewed_at"] is not None
+            or attestation["result"] != "not_compared"
+        ):
+            raise ValueError("PhilGEPS pending correction attestation is malformed")
+        return "pending"
+    if attestation["status"] != "reviewed":
+        raise ValueError("PhilGEPS correction attestation status is invalid")
+    if (
+        not isinstance(attestation["prior_snapshot_id"], str)
+        or not attestation["prior_snapshot_id"]
+        or attestation["prior_snapshot_id"] == snapshot_id
+    ):
+        raise ValueError("PhilGEPS correction attestation prior snapshot is invalid")
+    if attestation["result"] not in {"no_material_corrections", "corrections_applied"}:
+        raise ValueError("PhilGEPS correction attestation result is invalid")
+    if not isinstance(attestation["reviewed_at"], str):
+        raise ValueError("PhilGEPS correction attestation reviewed_at is missing")
+    _, reviewed_at = _parse_utc_timestamp(attestation["reviewed_at"])
+    if reviewed_at != attestation["reviewed_at"]:
+        raise ValueError("PhilGEPS correction attestation reviewed_at must be UTC")
+    return "reviewed"
 
 
 def _candidate_series_coverage(rows: pd.DataFrame) -> dict[str, int]:
@@ -227,7 +279,7 @@ def build_snapshot_inventory(
     max_date = None
     invalid_date_count = 0
     future_award_date_count = 0
-    candidate_rows: list[pd.DataFrame] = []
+    candidate_rows = {year: [] for year in REVIEWED_CANDIDATE_YEARS}
     fetched_timestamp, recorded_fetched_at = _parse_utc_timestamp(fetched_at)
     for i in range(1, N_CHUNKS + 1):
         chunk = root / f"facts_awards_chunk_{i:02d}.parquet"
@@ -263,7 +315,8 @@ def build_snapshot_inventory(
         min_date = chunk_min if min_date is None else min(min_date, chunk_min)
         max_date = chunk_max if max_date is None else max(max_date, chunk_max)
         future_award_date_count += int((observed_dates > fetched_timestamp).sum())
-        candidate_rows.append(values.loc[dates.dt.year.eq(_CANDIDATE_YEAR)].copy())
+        for year in REVIEWED_CANDIDATE_YEARS:
+            candidate_rows[year].append(values.loc[dates.dt.year.eq(year)].copy())
         chunks[f"chunk_{i:02d}"] = {
             "sha256": hashlib.sha256(chunk.read_bytes()).hexdigest(),
             "row_count": parquet.metadata.num_rows,
@@ -271,38 +324,34 @@ def build_snapshot_inventory(
             "observed_date_range": {"start": chunk_min.isoformat(), "end": chunk_max.isoformat()},
         }
     chunk_digests = {name: item["sha256"] for name, item in chunks.items()}
-    candidate_data = pd.concat(candidate_rows, ignore_index=True)
-    candidate_dates = pd.to_datetime(
-        candidate_data["award_date"], errors="coerce", format="mixed", utc=True
-    )
-    candidate_ids = candidate_data["id"].dropna().astype(str).str.strip()
-    candidate_ids = candidate_ids[candidate_ids.ne("")]
-    candidate = {
-        "date_range": (
-            {
-                "start": candidate_dates.min().date().isoformat(),
-                "end": candidate_dates.max().date().isoformat(),
-            }
-            if not candidate_dates.dropna().empty
-            else {}
-        ),
-        "month_counts": {
-            str(month): int((candidate_dates.dt.month == month).sum()) for month in range(1, 13)
-        },
-        "unique_award_id_count": len(set(candidate_ids)),
-        "invalid_award_date_count": invalid_date_count,
-        "future_award_date_count": future_award_date_count,
-        "award_status_null_count": int(
-            candidate_data.get("award_status", pd.Series(dtype="object")).isna().sum()
-        ),
-        "source_system_null_count": int(
-            candidate_data.get("source_system", pd.Series(dtype="object")).isna().sum()
-        ),
-        "candidate_series_coverage": _candidate_series_coverage(candidate_data),
-        "correction_comparison": {"status": "not_compared"},
-    }
+    year_candidates = {}
+    for year, rows in candidate_rows.items():
+        candidate_data = pd.concat(rows, ignore_index=True)
+        candidate_dates = pd.to_datetime(
+            candidate_data["award_date"], errors="coerce", format="mixed", utc=True
+        )
+        candidate_ids = candidate_data["id"].dropna().astype(str).str.strip()
+        candidate_ids = candidate_ids[candidate_ids.ne("")]
+        year_candidates[str(year)] = {
+            "date_range": (
+                {
+                    "start": candidate_dates.min().date().isoformat(),
+                    "end": candidate_dates.max().date().isoformat(),
+                }
+                if not candidate_dates.dropna().empty
+                else {}
+            ),
+            "month_counts": {
+                str(month): int((candidate_dates.dt.month == month).sum()) for month in range(1, 13)
+            },
+            "unique_award_id_count": len(set(candidate_ids)),
+            "award_status_null_count": int(candidate_data["award_status"].isna().sum()),
+            "source_system_null_count": int(candidate_data["source_system"].isna().sum()),
+            "candidate_series_coverage": _candidate_series_coverage(candidate_data),
+        }
+    snapshot_id = hashlib.sha256(json.dumps(chunk_digests, sort_keys=True).encode()).hexdigest()
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "upstream_identity": {
             "name": "csiiiv/philgeps-awards-dashboard mirror",
             "url": CHUNK_BASE,
@@ -310,7 +359,6 @@ def build_snapshot_inventory(
         },
         "fetched_at": recorded_fetched_at,
         "correction_policy": SNAPSHOT_CORRECTION_POLICY,
-        "revision_status": "not compared to a newer snapshot",
         "supported_date_range": {"start": min_date.isoformat(), "end": max_date.isoformat()},
         "anomalies": {
             "invalid_award_date_count": invalid_date_count,
@@ -318,12 +366,17 @@ def build_snapshot_inventory(
             "duplicate_id_count": duplicate_id_count,
         },
         "schema_columns": schema_columns,
-        "snapshot_id": hashlib.sha256(
-            json.dumps(chunk_digests, sort_keys=True).encode()
-        ).hexdigest(),
+        "snapshot_id": snapshot_id,
         "usable_unique_award_id_count": len(snapshot_ids),
         "chunks": chunks,
-        "year_candidates": {str(_CANDIDATE_YEAR): candidate},
+        "year_candidates": year_candidates,
+        "correction_attestation": {
+            "prior_snapshot_id": None,
+            "current_snapshot_id": snapshot_id,
+            "reviewed_at": None,
+            "status": "pending",
+            "result": "not_compared",
+        },
     }
 
 
@@ -361,7 +414,7 @@ def load_snapshot_inventory(*, required: bool = True) -> dict | None:
         "snapshot_id",
         "chunks",
         "year_candidates",
-        "revision_status",
+        "correction_attestation",
     }
     missing = required_keys - inventory.keys()
     if missing:
@@ -378,7 +431,7 @@ def load_reviewed_snapshot_inventory(*, required: bool = True) -> dict | None:
             raise FileNotFoundError("Reviewed PhilGEPS inventory is missing from the repository.")
         return None
     inventory = json.loads(REVIEWED_INVENTORY_PATH.read_text())
-    required_keys = {"year_candidates", "revision_status", "usable_unique_award_id_count"}
+    required_keys = {"year_candidates", "correction_attestation", "usable_unique_award_id_count"}
     missing = required_keys - inventory.keys()
     if missing:
         raise ValueError(
@@ -398,10 +451,10 @@ def verify_reviewed_snapshot() -> dict:
         "anomalies",
         "chunks",
         "year_candidates",
-        "revision_status",
     ):
         if observed.get(key) != reviewed.get(key):
             raise ValueError(f"PhilGEPS cache does not match reviewed inventory: {key} differs")
+    validate_correction_attestation(reviewed["correction_attestation"], observed["snapshot_id"])
     return reviewed
 
 

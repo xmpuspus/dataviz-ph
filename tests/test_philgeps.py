@@ -27,6 +27,11 @@ def test_snapshot_inventory_records_identity_policy_range_hashes_and_row_counts(
                 "contract_amount": [1.0, 2.0],
                 "organization_name": ["DPWH", "DPWH"],
                 "area_of_delivery": ["Cebu", "Cebu"],
+                "award_status": [None, None],
+                "source_system": [None, None],
+                "award_title": ["road", "road"],
+                "notice_title": ["road", "road"],
+                "business_category": ["construction", "construction"],
             }
         )
     )
@@ -68,18 +73,123 @@ def test_snapshot_inventory_rejects_missing_production_columns(tmp_path, monkeyp
         philgeps.write_snapshot_inventory()
 
 
+def test_snapshot_inventory_requires_candidate_evidence_columns(tmp_path, monkeypatch):
+    monkeypatch.setattr(philgeps, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(philgeps, "N_CHUNKS", 1)
+    pq.write_table(
+        pa.Table.from_pydict(
+            {
+                "id": [1],
+                "award_date": ["2025-01-01"],
+                "contract_amount": [10.0],
+                "organization_name": ["DPWH"],
+                "area_of_delivery": ["Cebu"],
+                "award_status": [None],
+                "award_title": ["road repair"],
+                "notice_title": ["road repair"],
+                "business_category": ["construction"],
+            }
+        ),
+        tmp_path / "facts_awards_chunk_01.parquet",
+    )
+
+    with pytest.raises(ValueError, match="source_system"):
+        philgeps.write_snapshot_inventory(fetched_at="2026-01-01T00:00:00Z")
+
+
+def test_reviewed_candidate_years_do_not_follow_chart_panel(tmp_path, monkeypatch):
+    monkeypatch.setattr(philgeps, "N_CHUNKS", 1)
+    table = pa.Table.from_pydict(
+        {
+            "id": [1],
+            "award_date": ["2025-01-01"],
+            "contract_amount": [10.0],
+            "organization_name": ["DPWH"],
+            "area_of_delivery": ["Cebu"],
+            "award_status": [None],
+            "source_system": [None],
+            "award_title": ["road repair"],
+            "notice_title": ["road repair"],
+            "business_category": ["construction"],
+        }
+    )
+    pq.write_table(table, tmp_path / "facts_awards_chunk_01.parquet")
+
+    first = philgeps.build_snapshot_inventory(tmp_path, fetched_at="2026-08-31T00:00:00Z")
+    monkeypatch.setattr(philgeps, "PANEL_END", 2030)
+    second = philgeps.build_snapshot_inventory(tmp_path, fetched_at="2026-08-31T00:00:00Z")
+
+    assert philgeps.REVIEWED_CANDIDATE_YEARS == (2025,)
+    assert first["anomalies"] == second["anomalies"]
+    assert first["year_candidates"] == second["year_candidates"]
+    assert philgeps.snapshot_identity(first) == philgeps.snapshot_identity(second)
+
+
+def test_correction_attestation_requires_bound_review_evidence():
+    attestation = {
+        "prior_snapshot_id": "prior",
+        "current_snapshot_id": "current",
+        "reviewed_at": "2026-08-31T00:00:00Z",
+        "status": "reviewed",
+        "result": "no_material_corrections",
+    }
+
+    assert philgeps.validate_correction_attestation(attestation, "current") == "reviewed"
+    attestation["current_snapshot_id"] = "other"
+    with pytest.raises(ValueError, match="current snapshot"):
+        philgeps.validate_correction_attestation(attestation, "current")
+
+
+def test_year_gate_labels_snapshot_wide_anomalies_separately_from_candidate_rows():
+    inventory = {
+        "snapshot_id": "current",
+        "anomalies": {"invalid_award_date_count": 1, "future_award_date_count": 11},
+        "correction_attestation": {
+            "prior_snapshot_id": None,
+            "current_snapshot_id": "current",
+            "reviewed_at": None,
+            "status": "pending",
+            "result": "not_compared",
+        },
+        "year_candidates": {
+            "2025": {
+                "unique_award_id_count": 12,
+                "date_range": {"start": "2025-01-01", "end": "2025-12-27"},
+                "month_counts": {str(month): 1 for month in range(1, 13)},
+            }
+        },
+    }
+
+    gate = philgeps.assess_year_gate(inventory, 2025)
+
+    assert "invalid_award_dates" in gate["failed_gates"]
+    assert "future_award_dates" in gate["failed_gates"]
+    assert gate["snapshot_anomalies"] == {
+        "scope": "snapshot_wide",
+        "invalid_award_date_count": 1,
+        "future_award_date_count": 11,
+    }
+    assert "invalid_award_date_count" not in gate["candidate_evidence"]
+
+
 def test_year_gate_fails_closed_when_reviewed_snapshot_is_incomplete_or_unreviewed():
     inventory = {
-        "revision_status": "not compared to a newer snapshot",
+        "snapshot_id": "current",
+        "revision_status": "compared with a newer snapshot and reviewed",
+        "anomalies": {"invalid_award_date_count": 1, "future_award_date_count": 11},
+        "correction_attestation": {
+            "prior_snapshot_id": None,
+            "current_snapshot_id": "current",
+            "reviewed_at": None,
+            "status": "pending",
+            "result": "not_compared",
+        },
         "year_candidates": {
             "2025": {
                 "unique_award_id_count": 2,
                 "date_range": {"start": "2025-01-01", "end": "2025-12-27"},
                 "month_counts": {str(month): 1 for month in range(1, 13)},
-                "invalid_award_date_count": 1,
-                "future_award_date_count": 11,
                 "candidate_series_coverage": {"all_spend": 82},
-                "correction_comparison": {"status": "not_compared"},
             }
         },
     }
@@ -99,7 +209,15 @@ def test_year_gate_fails_closed_when_reviewed_snapshot_is_incomplete_or_unreview
 def test_year_gate_rejects_missing_required_candidate_evidence():
     gate = philgeps.assess_year_gate(
         {
-            "revision_status": "compared with a newer snapshot and reviewed",
+            "snapshot_id": "current",
+            "anomalies": {"invalid_award_date_count": 0, "future_award_date_count": 0},
+            "correction_attestation": {
+                "prior_snapshot_id": "prior",
+                "current_snapshot_id": "current",
+                "reviewed_at": "2026-08-31T00:00:00Z",
+                "status": "reviewed",
+                "result": "no_material_corrections",
+            },
             "year_candidates": {"2025": {"date_range": {}}},
         },
         2025,
@@ -109,10 +227,7 @@ def test_year_gate_rejects_missing_required_candidate_evidence():
     assert gate["failed_gates"] == [
         "date_range_incomplete",
         "month_counts_incomplete",
-        "invalid_award_date_count_missing",
-        "future_award_date_count_missing",
         "usable_unique_award_ids_missing",
-        "correction_evidence_missing",
     ]
 
 
@@ -145,9 +260,9 @@ def test_snapshot_inventory_derives_candidate_evidence_with_one_utc_timestamp(
         str(month): 1 if month == 1 else 0 for month in range(1, 13)
     }
     assert candidate["unique_award_id_count"] == 1
-    assert candidate["invalid_award_date_count"] == 0
-    assert candidate["future_award_date_count"] == 1
-    assert candidate["correction_comparison"] == {"status": "not_compared"}
+    assert "invalid_award_date_count" not in candidate
+    assert "future_award_date_count" not in candidate
+    assert inventory["correction_attestation"]["status"] == "pending"
 
 
 def test_processing_rejects_hand_edited_candidate_evidence(tmp_path, monkeypatch):
@@ -178,6 +293,41 @@ def test_processing_rejects_hand_edited_candidate_evidence(tmp_path, monkeypatch
         philgeps.verify_reviewed_snapshot()
 
 
+def test_processing_accepts_a_bound_reviewed_correction_attestation(tmp_path, monkeypatch):
+    monkeypatch.setattr(philgeps, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(philgeps, "N_CHUNKS", 1)
+    reviewed = tmp_path / "reviewed.json"
+    monkeypatch.setattr(philgeps, "REVIEWED_INVENTORY_PATH", reviewed)
+    pq.write_table(
+        pa.Table.from_pydict(
+            {
+                "id": [1],
+                "award_date": ["2025-01-01"],
+                "contract_amount": [10.0],
+                "organization_name": ["DPWH"],
+                "area_of_delivery": ["Cebu"],
+                "award_status": [None],
+                "source_system": [None],
+                "award_title": ["road repair"],
+                "notice_title": ["road repair"],
+                "business_category": ["construction"],
+            }
+        ),
+        tmp_path / "facts_awards_chunk_01.parquet",
+    )
+    inventory = philgeps.build_snapshot_inventory(tmp_path, fetched_at="2026-08-31T00:00:00Z")
+    inventory["correction_attestation"] = {
+        "prior_snapshot_id": "prior-reviewed-snapshot",
+        "current_snapshot_id": inventory["snapshot_id"],
+        "reviewed_at": "2026-08-31T00:00:00Z",
+        "status": "reviewed",
+        "result": "no_material_corrections",
+    }
+    philgeps._write_inventory(reviewed, inventory)
+
+    assert philgeps.verify_reviewed_snapshot() == inventory
+
+
 def test_snapshot_inventory_identity_does_not_depend_on_the_chart_panel(monkeypatch, tmp_path):
     inventory = {
         "snapshot_id": "reviewed",
@@ -191,18 +341,24 @@ def test_snapshot_inventory_identity_does_not_depend_on_the_chart_panel(monkeypa
     assert philgeps.snapshot_identity(inventory) == first
 
 
-def test_snapshot_identity_changes_when_candidate_or_revision_evidence_changes():
+def test_snapshot_identity_changes_when_candidate_or_attestation_changes():
     inventory = {
         "snapshot_id": "reviewed",
         "supported_date_range": {"start": "2014-01-01", "end": "2034-01-01"},
         "anomalies": {"invalid_award_date_count": 1, "future_award_date_count": 11},
-        "revision_status": "not compared to a newer snapshot",
         "year_candidates": {"2025": {"unique_award_id_count": 1}},
+        "correction_attestation": {
+            "prior_snapshot_id": None,
+            "current_snapshot_id": "reviewed",
+            "reviewed_at": None,
+            "status": "pending",
+            "result": "not_compared",
+        },
     }
     first = philgeps.snapshot_identity(inventory)
     inventory["year_candidates"]["2025"]["unique_award_id_count"] = 2
     assert philgeps.snapshot_identity(inventory) != first
-    inventory["revision_status"] = "compared with a newer snapshot and reviewed"
+    inventory["correction_attestation"]["status"] = "reviewed"
     assert philgeps.snapshot_identity(inventory) != first
 
 
@@ -218,6 +374,11 @@ def test_processing_rejects_a_cache_that_differs_from_its_reviewed_inventory(tmp
             "contract_amount": [10.0],
             "organization_name": ["DPWH"],
             "area_of_delivery": ["Cebu"],
+            "award_status": [None],
+            "source_system": [None],
+            "award_title": ["road repair"],
+            "notice_title": ["road repair"],
+            "business_category": ["construction"],
         }
     )
     chunk = tmp_path / "facts_awards_chunk_01.parquet"
@@ -233,6 +394,11 @@ def test_processing_rejects_a_cache_that_differs_from_its_reviewed_inventory(tmp
                 "contract_amount": [10.0],
                 "organization_name": ["DPWH"],
                 "area_of_delivery": ["Cebu"],
+                "award_status": [None],
+                "source_system": [None],
+                "award_title": ["road repair"],
+                "notice_title": ["road repair"],
+                "business_category": ["construction"],
             }
         ),
         chunk,
@@ -291,6 +457,11 @@ def test_acquisition_rolls_back_if_promotion_fails(tmp_path, monkeypatch):
             "contract_amount": [1.0],
             "organization_name": ["DPWH"],
             "area_of_delivery": ["Cebu"],
+            "award_status": [None],
+            "source_system": [None],
+            "award_title": ["road"],
+            "notice_title": ["road"],
+            "business_category": ["construction"],
         }
     )
     old_bytes = []

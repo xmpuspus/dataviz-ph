@@ -143,7 +143,6 @@
   },
   "correction_policy": "Cached chunks are immutable inputs. Acquire a new snapshot explicitly, compare hashes and row counts, then review source corrections before rebuilding published data.",
   "fetched_at": "2026-05-26T13:17:16.561587Z",
-  "revision_status": "not compared to a newer snapshot",
   "schema_columns": [
     "area_of_delivery",
     "award_date",
@@ -167,8 +166,15 @@
     "search_text",
     "source_system"
   ],
-  "schema_version": 2,
+  "schema_version": 3,
   "snapshot_id": "3ce90c99bc640cccc4ad73175aaf372201fd8ecc3f5081d0e207fee908830793",
+  "correction_attestation": {
+    "current_snapshot_id": "3ce90c99bc640cccc4ad73175aaf372201fd8ecc3f5081d0e207fee908830793",
+    "prior_snapshot_id": null,
+    "result": "not_compared",
+    "reviewed_at": null,
+    "status": "pending"
+  },
   "supported_date_range": {
     "end": "2034-10-04",
     "start": "1920-01-08"
@@ -188,15 +194,10 @@
         "dpwh": 78,
         "infrastructure": 81
       },
-      "correction_comparison": {
-        "status": "not_compared"
-      },
       "date_range": {
         "end": "2025-12-27",
         "start": "2025-01-01"
       },
-      "future_award_date_count": 11,
-      "invalid_award_date_count": 1,
       "month_counts": {
         "1": 49305,
         "2": 63709,

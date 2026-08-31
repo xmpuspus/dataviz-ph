@@ -49,17 +49,22 @@ def test_monitor_reports_philgeps_gate_and_snapshot_age():
         expected_unit_count=82,
         snapshot_inventory={
             "fetched_at": "2026-05-26T13:17:16.561587Z",
-            "revision_status": "not compared to a newer snapshot",
+            "snapshot_id": "current",
             "supported_date_range": {"start": "1920-01-08", "end": "2034-10-04"},
+            "anomalies": {"invalid_award_date_count": 1, "future_award_date_count": 11},
+            "correction_attestation": {
+                "prior_snapshot_id": None,
+                "current_snapshot_id": "current",
+                "reviewed_at": None,
+                "status": "pending",
+                "result": "not_compared",
+            },
             "year_candidates": {
                 "2025": {
                     "unique_award_id_count": 506831,
                     "date_range": {"start": "2025-01-01", "end": "2025-12-27"},
                     "month_counts": {str(month): 1 for month in range(1, 13)},
-                    "invalid_award_date_count": 1,
-                    "future_award_date_count": 11,
                     "candidate_series_coverage": {"all_spend": 82},
-                    "correction_comparison": {"status": "not_compared"},
                 }
             },
         },

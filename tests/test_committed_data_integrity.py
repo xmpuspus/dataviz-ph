@@ -157,6 +157,11 @@ def test_procurement_2025_gate_publishes_unavailable_status() -> None:
         "dpwh": 78,
         "infrastructure": 81,
     }
+    assert status["snapshot_anomalies"] == {
+        "scope": "snapshot_wide",
+        "invalid_award_date_count": 1,
+        "future_award_date_count": 11,
+    }
 
 
 def test_stories_findings_are_sane() -> None:
