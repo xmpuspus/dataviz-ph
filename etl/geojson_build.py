@@ -23,6 +23,7 @@ from pathlib import Path
 from shapely.geometry import mapping, shape
 from shapely.ops import unary_union
 
+from etl.geography import ANALYSIS_GEOGRAPHY_VERSION, HISTORICAL_GEOMETRY_VERSION
 from etl.psgc import NCR_CODE, load_provinces, normalize_name
 
 PUBLIC_DATA = Path(__file__).resolve().parent.parent / "public" / "data"
@@ -59,7 +60,7 @@ def _fetch_region(region_code: str) -> dict:
 
 
 def _round_coords(obj):
-    if isinstance(obj, (int, float)):
+    if isinstance(obj, int | float):
         return round(obj, COORD_PRECISION)
     if isinstance(obj, list):
         return [_round_coords(x) for x in obj]
@@ -116,6 +117,8 @@ def build_province_geojson() -> dict:
         "features": features,
         "_meta": {
             "source": "faeldon/philippines-json-maps 2019 ADM2 lowres",
+            "historical_geometry_version": HISTORICAL_GEOMETRY_VERSION,
+            "analysis_geography_version": ANALYSIS_GEOGRAPHY_VERSION,
             "units": len(features),
             "dissolved": "NCR 4 districts -> 1; HUCs already in parent geometry",
             "missing_units": [f"{name} ({p})" for p, name in missing],

@@ -1,34 +1,33 @@
-# vendor/
+# Browser chart bundle
 
-- `echarts-custom-5.6.0-r2.min.js` — the build index.html loads. Tree-shaken
-  ECharts 5.6.0 (666 KB raw / 223 KB gzip vs 1,031 KB / 334 KB full): only the
-  modules app.js uses (scatter/line/bar/map charts; title, tooltip, grid,
-  visualMap, timeline, markArea, geo, axisPointer, dataZoom-inside components;
-  LabelLayout; Canvas + SVG renderers), re-exported as the `echarts` global.
-  r2 added SVGRenderer (SVG export button) and DataZoomInsideComponent (bubble
-  pinch/wheel zoom) over r1 for +13.3 KB gzip.
-Rollback: the full upstream `echarts-5.6.0.min.js` was removed (it was
-unreferenced but still shipped ~1 MB on every deploy). To roll back, re-fetch it
-from the ECharts 5.6.0 release
-(`https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js`), point the
-index.html script tag at it, and set its SRI to
-`sha384-Mx5lkUEQPM1pOJCwFtUICyX45KNojXbkWdYhkKUKsbv391mavbfoAmONbzkgYPzR`.
+`index.html` loads `echarts-custom-6.1.0-r1.min.js`. The build has the chart,
+component, feature, and renderer modules that `app.js` uses. It exports the
+modules through the `echarts` browser global.
 
-## Upgrade / rebuild recipe
+The build has scatter, line, bar, and map charts. It also has the title,
+tooltip, grid, visual map, timeline, mark area, geo, axis pointer, and inside
+data zoom components. It has label layout and the Canvas and SVG renderers.
 
-The build definition lives in `tmp/echarts-build/` (entry.js + build.md with
-the full module census and verification steps). Short version:
+The focused bundle is 707,051 bytes raw and 240,750 bytes compressed with gzip.
+The full ECharts 6.1.0 browser bundle is 1,121,883 bytes raw and 369,270 bytes
+compressed with gzip.
 
-```sh
-cd tmp/echarts-build
-npm install echarts@<version> esbuild
-npx esbuild entry.js --bundle --minify --format=iife --global-name=echarts \
-  --outfile=../../public/vendor/echarts-custom-<version>-<rev>.min.js
-openssl dgst -sha384 -binary ../../public/vendor/echarts-custom-<version>-<rev>.min.js | openssl base64 -A
+## Rebuild and upgrade
+
+The committed build definition lives in `vendor/echarts-build/`. Its package
+lock pins ECharts 6.1.0 and esbuild 0.28.2.
+
+```bash
+cd vendor/echarts-build
+npm ci
+npm audit --audit-level=moderate
+npm run build
+openssl dgst -sha384 -binary ../../public/vendor/echarts-custom-6.1.0-r1.min.js \
+  | openssl base64 -A
 ```
 
-Update the script tag src + `integrity="sha384-<hash>"` in `public/index.html`
-(keep defer/crossorigin/referrerpolicy), then `python3 -m pytest -q` — the
-browser tests exercise every chart type, the guided arc, and PNG export. If a
-new ECharts feature is used in app.js, add its module to entry.js first
-(census greps are in tmp/echarts-build/build.md).
+Copy the new SHA-384 value into the script integrity attribute in
+`public/index.html`. Keep the `defer`, `crossorigin`, and `referrerpolicy`
+attributes. Run the complete browser suite because it covers every chart type,
+the guided story, zoom, and PNG and SVG exports. Add any new ECharts module to
+the committed entry before the application uses it.

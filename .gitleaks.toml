@@ -1,0 +1,27 @@
+[extend]
+useDefault = true
+
+# The generated artifacts below record a SHA-256 for every shipped file, so the
+# default rules see one 64-character hex value per data file. The allowlist is
+# scoped to those four generated paths. An earlier version matched any key that
+# ended in .json anywhere in the tree, which would have hidden a real token
+# stored under a name such as "credentials.json".
+[[allowlists]]
+description = "SHA-256 digest fields inside the four generated provenance artifacts."
+paths = [
+  '''^public/data/manifest\.json$''',
+  '''^public/data/view_evidence\.json$''',
+  '''^public/data/procurement_status\.json$''',
+  '''^etl/philgeps_snapshot_inventory\.json$''',
+]
+regexTarget = "match"
+regexes = ['''"[0-9a-f]{64}"''']
+
+# Digest fields carry the same value shape outside those files, so they are named
+# one by one instead of by a wildcard.
+[[allowlists]]
+description = "Named snapshot and metadata digest fields."
+regexTarget = "match"
+regexes = [
+  '''(?:snapshot_id|snapshot_identity|current_snapshot_id|prior_snapshot_id|cached_sha256|metadata_sha256|official_fixture_sha256|build_id|chunk_[0-9]{2})"\s*:\s*"[0-9a-f]{64}''',
+]

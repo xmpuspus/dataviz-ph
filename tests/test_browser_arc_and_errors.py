@@ -1,11 +1,11 @@
 """Browser tests for arc replay, gesture abort, and error handling.
 
-Tests self-skip when Playwright or its Chromium build is absent, matching the
+These tests fail when Playwright or its Chromium build is absent, matching the
 pattern in test_render_blocks.py. Each test uses page.route() for network
 interception where needed.
 
 Coverage:
-  a. replay-during-autoplay: returning visitor clicks #replay-arc, arc advances.
+  a. replay: returning visitor clicks #replay-arc, arc advances.
   b. arc abort via tap vs scroll: tap aborts, scroll-like gesture does not.
   c. fetch-failure alert: poverty.json 500 -> role=alert error text renders.
   d. map geojson fallback: ph-provinces.geojson 500 -> chart falls back to bubbles.
@@ -20,8 +20,6 @@ import threading
 from pathlib import Path
 
 import pytest
-
-pytest.importorskip("playwright", reason="playwright not installed")
 from playwright.sync_api import Error as PlaywrightError  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
@@ -52,7 +50,7 @@ def browser():
         try:
             b = pw.chromium.launch()
         except PlaywrightError as e:
-            pytest.skip(f"Chromium unavailable: {e}")
+            pytest.fail(f"Chromium unavailable: {e}", pytrace=False)
         try:
             yield b
         finally:
@@ -65,12 +63,11 @@ def _wait_ready(page, base_url, hash_suffix=""):
     page.wait_for_selector("#story-finding:not([hidden])", timeout=15000)
 
 
-# ---- a. replay-during-autoplay -----------------------------------------------
+# ---- a. replay ----------------------------------------------------------------
 
 
 def test_replay_during_autoplay_advances_arc(browser, base_url):
-    """Returning visitor (arc_seen set) sees gentle autoplay. Clicking #replay-arc
-    starts the guided arc and the beat advances past 'hook' within a timeout."""
+    """A returning visitor stays static. Replay starts the guided arc."""
     pg = browser.new_page()
     # Pre-set arc_seen so the page treats this as a returning visit.
     pg.add_init_script("""
@@ -111,6 +108,7 @@ def test_arc_tap_aborts_but_scroll_does_not(browser, base_url):
     try:
         pg_scroll.goto(base_url, wait_until="networkidle")
         pg_scroll.wait_for_selector("#story-finding:not([hidden])", timeout=15000)
+        pg_scroll.get_by_role("button", name="Play the guided story").click()
         pg_scroll.wait_for_selector("#arc-skip:not([hidden])", timeout=8000)
         # Simulate a scroll gesture: pointerdown on the chart then move 80px.
         chart = pg_scroll.query_selector("#chart")
@@ -134,6 +132,7 @@ def test_arc_tap_aborts_but_scroll_does_not(browser, base_url):
     try:
         pg_tap.goto(base_url, wait_until="networkidle")
         pg_tap.wait_for_selector("#story-finding:not([hidden])", timeout=15000)
+        pg_tap.get_by_role("button", name="Play the guided story").click()
         pg_tap.wait_for_selector("#arc-skip:not([hidden])", timeout=8000)
         chart = pg_tap.query_selector("#chart")
         box = chart.bounding_box()

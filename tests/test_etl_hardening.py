@@ -117,12 +117,18 @@ def test_dedup_drops_duplicate_ids(tmp_path, monkeypatch):
 
     monkeypatch.setattr(philgeps, "CACHE_DIR", fake_cache)
     monkeypatch.setattr(philgeps, "N_CHUNKS", 1)
+    reviewed_inventory = tmp_path / "reviewed_inventory.json"
+    monkeypatch.setattr(philgeps, "REVIEWED_INVENTORY_PATH", reviewed_inventory)
+    philgeps._write_inventory(
+        reviewed_inventory, philgeps.build_snapshot_inventory(fetched_at="2026-08-31T00:00:00Z")
+    )
 
     provinces = {
         "072200000": {"name": "Cebu", "island_group": "visayas", "region_code": "070000000"}
     }
 
-    def _fake_normalize(raw, provs):
+    def _fake_normalize(raw, provs, *, series=None):
+        assert series == "procurement"
         if isinstance(raw, str) and raw.strip().lower() == "cebu":
             return "072200000"
         return None

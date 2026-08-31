@@ -1,13 +1,12 @@
 {
   "_description": "Headline + tagline per unordered indicator pair. Key is the two indicator IDs sorted alphabetically and joined with '|'. The 4 main preset pairs are included here too so picker-reconstructed views render the same way as preset clicks; the presets in stories.json still own the richer 'why' paragraph for tab views.",
-
   "all_spend_per_capita|poverty": {
     "headline": "All government spending. Does it reach the poor?",
     "tagline": "Every province-attributable PhilGEPS contract per capita against poverty incidence. 81 provinces and Metro Manila, 2014 to 2024."
   },
   "all_spend_per_capita|gdp_per_capita": {
     "headline": "Does spending follow wealth, or chase poverty?",
-    "tagline": "All PhilGEPS spend per capita against per capita GDP. Three years of provincial GDP data, 2022 to 2024."
+    "tagline": "All PhilGEPS spend per capita against per capita GDP. Shared years 2018 to 2024. The GDP source covers 2025."
   },
   "dpwh_spend_per_capita|poverty": {
     "headline": "Eleven years, five trillion in roads. Did poverty improve?",
@@ -15,9 +14,8 @@
   },
   "gdp_per_capita|poverty": {
     "headline": "Wealthier provinces, lower poverty?",
-    "tagline": "Per capita GDP (constant 2018 PHP) against poverty incidence. Three years of PSA province data, 2022 to 2024."
+    "tagline": "Per capita GDP (constant 2018 PHP) against poverty incidence. Shared years 2018 to 2024. The GDP source covers 2025."
   },
-
   "doh_spend_per_capita|poverty": {
     "headline": "Health spending and poverty. Where do they meet?",
     "tagline": "DOH spend per capita against poverty incidence. Does health money land where it is needed most?"
@@ -38,14 +36,13 @@
     "headline": "Started high, fell fast? Or started low and stalled?",
     "tagline": "Poverty incidence against the 2018-to-2023 change. Top-left is poor but improving. Bottom-right is well-off but slipping."
   },
-
   "all_spend_per_capita|dpwh_spend_per_capita": {
     "headline": "How much of every province's spending is roads?",
     "tagline": "DPWH spend per capita against all PhilGEPS spend per capita. The closer to the diagonal, the more DPWH dominates."
   },
   "dpwh_spend_per_capita|gdp_per_capita": {
     "headline": "Do rich provinces get more DPWH money, or less?",
-    "tagline": "DPWH spend per capita against per capita GDP. Three years of provincial GDP data, 2022 to 2024."
+    "tagline": "DPWH spend per capita against per capita GDP. Shared years 2018 to 2024. The GDP source covers 2025."
   },
   "doh_spend_per_capita|dpwh_spend_per_capita": {
     "headline": "Roads or hospitals? Which gets the bigger share?",
@@ -67,7 +64,6 @@
     "headline": "Did road-heavy provinces see poverty fall faster?",
     "tagline": "DPWH spend per capita against the 2018-to-2023 poverty change. Negative change means poverty fell."
   },
-
   "all_spend_per_capita|doh_spend_per_capita": {
     "headline": "Where total spend is high, is health spend high too?",
     "tagline": "All PhilGEPS spend per capita against DOH spend per capita."
@@ -88,7 +84,6 @@
     "headline": "Did high-spend provinces see poverty fall faster?",
     "tagline": "All PhilGEPS spend per capita against the 2018-to-2023 poverty change."
   },
-
   "doh_spend_per_capita|gdp_per_capita": {
     "headline": "Do richer provinces get more health spending, or less?",
     "tagline": "Per capita GDP against DOH spend per capita."
@@ -109,7 +104,6 @@
     "headline": "Did wealthier provinces see poverty fall faster?",
     "tagline": "Per capita GDP against the 2018-to-2023 poverty change."
   },
-
   "doh_spend_per_capita|infra_spend_per_capita": {
     "headline": "Health spending and infrastructure spending. Same provinces?",
     "tagline": "DOH spend per capita against infrastructure spend per capita."
@@ -126,7 +120,6 @@
     "headline": "Did high health-spend provinces see poverty fall?",
     "tagline": "DOH spend per capita against the 2018-to-2023 poverty change."
   },
-
   "dpwh_share_pct|infra_spend_per_capita": {
     "headline": "All infrastructure spending vs DPWH's slice.",
     "tagline": "Infrastructure spend per capita against DPWH's share of all provincial spend."
@@ -139,7 +132,6 @@
     "headline": "Did infra-heavy provinces see poverty fall?",
     "tagline": "Infrastructure spend per capita against the 2018-to-2023 poverty change."
   },
-
   "dpwh_share_pct|population": {
     "headline": "DPWH-dominant provinces. Big or small?",
     "tagline": "DPWH's share of total spend against population."
@@ -148,12 +140,10 @@
     "headline": "Did DPWH-heavy provinces see poverty fall faster?",
     "tagline": "DPWH's share of total spend against the 2018-to-2023 poverty change."
   },
-
   "population|poverty_change_pp": {
     "headline": "Did poverty fall faster in big provinces or small ones?",
     "tagline": "Population against the 2018-to-2023 poverty change."
   },
-
   "poverty|subsistence_incidence": {
     "headline": "Poor, or going hungry? The two poverty lines.",
     "tagline": "Poverty incidence against subsistence incidence. Subsistence counts families below the food threshold, so it always sits lower."
@@ -168,6 +158,6 @@
   },
   "gdp_per_capita|subsistence_incidence": {
     "headline": "Do richer provinces still have families going hungry?",
-    "tagline": "Per capita GDP against subsistence incidence. Three years of provincial GDP data, 2022 to 2024."
+    "tagline": "Per capita GDP against subsistence incidence. Shared years 2018 to 2024. The GDP source covers 2025."
   }
 }

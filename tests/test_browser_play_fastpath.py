@@ -8,8 +8,9 @@ split: across 3+ autoplay ticks the year label advances through the panel in
 order, the bubbles series stays in lockstep with the prebuilt step option for
 the displayed year, and the finding box keeps tracking the displayed year.
 
-Self-skips when Playwright or its Chromium build is absent, matching
-test_render_blocks.py, so CI (which installs only .[dev]) stays green.
+These tests fail when Playwright or its Chromium build is absent, matching
+test_render_blocks.py. A missing browser is a broken gate, not a pass, so CI
+installs Chromium and runs them for real.
 """
 
 from __future__ import annotations
@@ -21,8 +22,6 @@ import threading
 from pathlib import Path
 
 import pytest
-
-pytest.importorskip("playwright", reason="playwright not installed")
 from playwright.sync_api import Error as PlaywrightError  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
@@ -53,7 +52,7 @@ def browser():
         try:
             b = pw.chromium.launch()
         except PlaywrightError as e:
-            pytest.skip(f"Chromium unavailable: {e}")
+            pytest.fail(f"Chromium unavailable: {e}", pytrace=False)
         try:
             yield b
         finally:

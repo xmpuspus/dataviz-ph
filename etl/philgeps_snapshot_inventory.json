@@ -1,0 +1,219 @@
+{
+  "anomalies": {
+    "duplicate_id_count": 0,
+    "future_award_date_count": 11,
+    "invalid_award_date_count": 1
+  },
+  "chunks": {
+    "chunk_01": {
+      "observed_date_range": {
+        "end": "2034-10-04",
+        "start": "2025-03-04"
+      },
+      "row_count": 387573,
+      "sha256": "d3b672bf1f65ae6b1af8881ba2812d5b1be2dc78395831e19973b0d93cd4570e",
+      "usable_id_count": 387573
+    },
+    "chunk_02": {
+      "observed_date_range": {
+        "end": "2025-03-04",
+        "start": "2024-08-07"
+      },
+      "row_count": 387573,
+      "sha256": "74e87fd0f63d7855bb1f867dd80b17c8db7fc4f27b924cba9aed3b5a86f42d75",
+      "usable_id_count": 387573
+    },
+    "chunk_03": {
+      "observed_date_range": {
+        "end": "2024-08-07",
+        "start": "2023-12-28"
+      },
+      "row_count": 387573,
+      "sha256": "5803a64ffc92b1dafd64db119f41d338ed94b83c5b8fa346ad22332b84bc1c34",
+      "usable_id_count": 387573
+    },
+    "chunk_04": {
+      "observed_date_range": {
+        "end": "2023-12-28",
+        "start": "2023-05-12"
+      },
+      "row_count": 387573,
+      "sha256": "1288e7993043e22036fa9d743235ebe11f3e4756d2e5bd13019ccb2f4f99b526",
+      "usable_id_count": 387573
+    },
+    "chunk_05": {
+      "observed_date_range": {
+        "end": "2023-05-12",
+        "start": "2022-09-12"
+      },
+      "row_count": 387573,
+      "sha256": "c2bde866515a6cf8390dbed2b781bdbbf22708cd9c2b5c857bc3f8005bbe8eb3",
+      "usable_id_count": 387573
+    },
+    "chunk_06": {
+      "observed_date_range": {
+        "end": "2022-09-12",
+        "start": "2021-12-14"
+      },
+      "row_count": 387573,
+      "sha256": "4dc56c07f7cd1d15fd9930c5b4183d895c79a8f3ba8de135892707f7072eeb57",
+      "usable_id_count": 387573
+    },
+    "chunk_07": {
+      "observed_date_range": {
+        "end": "2021-12-14",
+        "start": "2021-03-10"
+      },
+      "row_count": 387573,
+      "sha256": "131da0f54851a6b5e119ca12d3a625596378eb857765e6fae36a44f96254901f",
+      "usable_id_count": 387573
+    },
+    "chunk_08": {
+      "observed_date_range": {
+        "end": "2021-03-10",
+        "start": "2019-12-06"
+      },
+      "row_count": 387573,
+      "sha256": "c7e4527af9451f7a7282744d4f8de13bf7e15d79513ebe6728907b7a1e02e2d7",
+      "usable_id_count": 387573
+    },
+    "chunk_09": {
+      "observed_date_range": {
+        "end": "2019-12-06",
+        "start": "2018-12-28"
+      },
+      "row_count": 387573,
+      "sha256": "f5359d073070859cc4229450aa3cf6817437e8ebb754604a6ee03efdca3d0fa8",
+      "usable_id_count": 387573
+    },
+    "chunk_10": {
+      "observed_date_range": {
+        "end": "2018-12-28",
+        "start": "2018-01-29"
+      },
+      "row_count": 387573,
+      "sha256": "1ce2f335c49e302cb950ce4b1c773c52623ddf0748a7484dc4d1d265a8463eec",
+      "usable_id_count": 387573
+    },
+    "chunk_11": {
+      "observed_date_range": {
+        "end": "2018-01-29",
+        "start": "2016-11-15"
+      },
+      "row_count": 387573,
+      "sha256": "6034800cdf7f40d7b88677ba0f828ae33cfd418d5f4f07e3aaeb92740c432b70",
+      "usable_id_count": 387573
+    },
+    "chunk_12": {
+      "observed_date_range": {
+        "end": "2016-11-15",
+        "start": "2015-05-28"
+      },
+      "row_count": 387573,
+      "sha256": "ef8df7381f721f85cf765f92251555bdff39422432a6fd3e611ae4d1e73459d7",
+      "usable_id_count": 387573
+    },
+    "chunk_13": {
+      "observed_date_range": {
+        "end": "2015-05-28",
+        "start": "2013-07-22"
+      },
+      "row_count": 387573,
+      "sha256": "9b6ece67df82f8d4e27cca349bb04acb8ab4b39355622bf7618058b6e27ce0d9",
+      "usable_id_count": 387573
+    },
+    "chunk_14": {
+      "observed_date_range": {
+        "end": "2013-07-22",
+        "start": "2008-10-08"
+      },
+      "row_count": 387573,
+      "sha256": "22b37869a02fb16fd70dbe282001a8c4b086dd9474c648d94c0a59dcd1b38049",
+      "usable_id_count": 387573
+    },
+    "chunk_15": {
+      "observed_date_range": {
+        "end": "2008-10-08",
+        "start": "1920-01-08"
+      },
+      "row_count": 55139,
+      "sha256": "bb6dad163879f8e39e78ef6415dc1f49fcc16258a107616252c310c241da1e5b",
+      "usable_id_count": 55139
+    }
+  },
+  "correction_policy": "Cached chunks are immutable inputs. Acquire a new snapshot explicitly, compare hashes and row counts, then review source corrections before rebuilding published data.",
+  "fetched_at": "2026-05-26T13:17:16.561587Z",
+  "schema_columns": [
+    "area_of_delivery",
+    "award_date",
+    "award_status",
+    "award_title",
+    "awardee_name",
+    "business_category",
+    "closing_date",
+    "contract_amount",
+    "contract_number",
+    "contractor_address",
+    "data_source",
+    "funding_source",
+    "id",
+    "line_item_number",
+    "notice_title",
+    "organization_name",
+    "procurement_mode",
+    "project_location",
+    "published_date",
+    "search_text",
+    "source_system"
+  ],
+  "schema_version": 3,
+  "snapshot_id": "3ce90c99bc640cccc4ad73175aaf372201fd8ecc3f5081d0e207fee908830793",
+  "correction_attestation": {
+    "current_snapshot_id": "3ce90c99bc640cccc4ad73175aaf372201fd8ecc3f5081d0e207fee908830793",
+    "prior_snapshot_id": "not-yet-compared",
+    "result": "not_compared",
+    "reviewed_at": null,
+    "status": "pending"
+  },
+  "supported_date_range": {
+    "end": "2034-10-04",
+    "start": "1920-01-08"
+  },
+  "upstream_identity": {
+    "chunk_count": 15,
+    "name": "csiiiv/philgeps-awards-dashboard mirror",
+    "url": "https://raw.githubusercontent.com/csiiiv/philgeps-awards-dashboard/main/backend/django/static_data/chunks"
+  },
+  "usable_unique_award_id_count": 5481161,
+  "year_candidates": {
+    "2025": {
+      "award_status_null_count": 506831,
+      "candidate_series_coverage": {
+        "all_spend": 82,
+        "doh": 44,
+        "dpwh": 78,
+        "infrastructure": 82
+      },
+      "date_range": {
+        "end": "2025-12-27",
+        "start": "2025-01-01"
+      },
+      "month_counts": {
+        "1": 49305,
+        "2": 63709,
+        "3": 79378,
+        "4": 45183,
+        "5": 65892,
+        "6": 53418,
+        "7": 46872,
+        "8": 36428,
+        "9": 20630,
+        "10": 16581,
+        "11": 17337,
+        "12": 12098
+      },
+      "source_system_null_count": 506831,
+      "unique_award_id_count": 506831
+    }
+  }
+}

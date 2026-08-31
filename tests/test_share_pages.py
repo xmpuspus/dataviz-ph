@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -62,6 +63,31 @@ def test_every_story_has_an_og_card_image() -> None:
         assert img.stat().st_size > 5000, f"OG card {s['id']}.png is suspiciously small"
 
 
+def test_og_card_axis_labels_come_from_indicator_metadata() -> None:
+    """Cards must describe the selected indicators, not a hard-coded poverty plot."""
+    script = PUBLIC.parent / "docs" / "build_og_cards.js"
+    probe = """
+const cards = require(process.argv[1]);
+console.log(JSON.stringify({
+  poverty: cards.axisLabel('poverty'),
+  gdp: cards.axisLabel('gdp_per_capita'),
+  spend: cards.axisLabel('all_spend_per_capita'),
+}));
+"""
+    result = subprocess.run(
+        ["node", "-e", probe, str(script)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    labels = json.loads(result.stdout)
+    assert labels == {
+        "poverty": "Poverty incidence among families",
+        "gdp": "Per capita GDP",
+        "spend": "All PhilGEPS spend per capita",
+    }
+
+
 def test_embed_kit_has_a_snippet_per_preset() -> None:
     kit = PUBLIC / "embed-kit" / "index.html"
     assert kit.exists(), "missing public/embed-kit/index.html"
@@ -70,6 +96,7 @@ def test_embed_kit_has_a_snippet_per_preset() -> None:
         assert f"story={s['id']}&amp;embed=1" in html, f"embed kit missing snippet for {s['id']}"
     assert html.count('class="copy"') == len(STORIES), "one copy button per preset expected"
     assert (PUBLIC / "embed-kit.js").exists(), "missing public/embed-kit.js"
+    assert "The embed keeps the active view state" in html
 
 
 def test_share_pages_match_generator() -> None:

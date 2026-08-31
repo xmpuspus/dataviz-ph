@@ -23,12 +23,15 @@ function loadPlaywright() {
   }
   throw new Error('playwright not found; run `npx playwright` once or `npm i -g playwright`');
 }
-const PW = loadPlaywright();
 const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const STORIES = JSON.parse(fs.readFileSync(path.join(ROOT, 'public/data/stories.json'), 'utf8'));
+const INDICATORS = new Map(
+  JSON.parse(fs.readFileSync(path.join(ROOT, 'public/data/indicators.json'), 'utf8'))
+    .map((indicator) => [indicator.id, indicator])
+);
 const OUT = path.join(ROOT, 'public/og');
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -40,11 +43,17 @@ function firstClaim(s) {
   return head;
 }
 
+function axisLabel(indicatorId) {
+  return INDICATORS.get(indicatorId)?.name || String(indicatorId).replace(/_/g, ' ');
+}
+
 function cardHtml(story) {
   const headline = story.headline || 'dataviz.ph';
   const finding = story.finding || {};
   const answer = firstClaim(finding.sentence) || story.tagline || '';
   const year = story.default_year || 2023;
+  const yLabel = axisLabel(story.y);
+  const xLabel = `${axisLabel(story.x)}${story.default_log_x ? ' (log scale)' : ''}`;
   const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   return `<!doctype html><html><head><meta charset="utf-8"><style>
   :root{--ink:#111;--muted:#595959;--rule:#e6e6e6;--brand:#0e7c86;
@@ -80,10 +89,10 @@ function cardHtml(story) {
       <div class="foot">Sources: PSA OpenStat &middot; PhilGEPS &middot; PSA 2020 Census<br>Correlation, not causation &middot; dataviz.ph</div>
     </div>
     <div class="right">
-      <div class="yaxis">poverty %</div>
+      <div class="yaxis">${esc(yLabel)}</div>
       <div class="year">${esc(year)}</div>
       <div class="plot" id="plot"></div>
-      <div class="xcap">value per capita (log)</div>
+      <div class="xcap">${esc(xLabel)}</div>
       <div class="legend">
         <span><i style="background:var(--luzon)"></i>Luzon</span>
         <span><i style="background:var(--visayas)"></i>Visayas</span>
@@ -113,8 +122,10 @@ function drawScatter() {
   }
 }
 
-(async () => {
-  const browser = await PW.chromium.launch();
+async function main() {
+  // Loaded here, not at module scope: axisLabel and cardHtml are pure, and a
+  // caller that only wants a label must not need a browser automation package.
+  const browser = await loadPlaywright().chromium.launch();
   for (const story of STORIES) {
     // Fresh page per card so layout is clean before the scatter is drawn.
     const page = await browser.newPage({ viewport: { width: 1200, height: 630 }, deviceScaleFactor: 1 });
@@ -127,4 +138,10 @@ function drawScatter() {
     await page.close();
   }
   await browser.close();
-})();
+}
+
+module.exports = { axisLabel, cardHtml };
+
+if (require.main === module) {
+  main();
+}

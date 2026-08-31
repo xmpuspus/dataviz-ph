@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from etl import geojson_build
+
 PUBLIC_DATA = Path(__file__).resolve().parent.parent / "public" / "data"
 
 
@@ -44,6 +46,7 @@ def test_ncr_dissolved_and_maguindanao_unified() -> None:
     # NCR appears exactly once (not 4 districts)
     ncr = [f for f in geo["features"] if f["properties"]["psgc"] == "130000000"]
     assert len(ncr) == 1
+    assert geo["_meta"]["historical_geometry_version"] == "2019-adm2-pre-2022-maguindanao"
 
 
 def test_geometry_is_valid_polygonal() -> None:
@@ -52,3 +55,18 @@ def test_geometry_is_valid_polygonal() -> None:
         gtype = f["geometry"]["type"]
         assert gtype in ("Polygon", "MultiPolygon"), f"{f['properties']['name']}: {gtype}"
         assert f["geometry"]["coordinates"], f"{f['properties']['name']} has empty geometry"
+
+
+def test_geojson_builder_declares_the_shared_historical_geometry_contract(monkeypatch) -> None:
+    monkeypatch.setattr(
+        geojson_build,
+        "load_provinces",
+        lambda: {
+            "130000000": {"name": "Metro Manila", "island_group": "ncr"},
+        },
+    )
+    monkeypatch.setattr(geojson_build, "_fetch_region", lambda _region: {"features": []})
+
+    built = geojson_build.build_province_geojson()
+
+    assert built["_meta"]["historical_geometry_version"] == "2019-adm2-pre-2022-maguindanao"

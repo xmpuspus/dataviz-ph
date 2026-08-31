@@ -1,0 +1,93 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "41 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      # The published action ignores GITLEAKS_CONFIG, so it scanned with its own
+      # default rules and reported the SHA-256 digest that every generated
+      # provenance file records. Running the pinned binary directly is the same
+      # command a maintainer runs locally, and it reads .gitleaks.toml.
+      - name: Install the pinned gitleaks binary
+        env:
+          GITLEAKS_VERSION: 8.30.0
+          GITLEAKS_SHA256: 79a3ab579b53f71efd634f3aaf7e04a0fa0cf206b7ed434638d1547a2470a66e
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o "$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          echo "${GITLEAKS_SHA256}  ${archive}" | sha256sum --check --strict
+          tar -xzf "$archive" gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Scan Git history for secrets
+        run: gitleaks git --config .gitleaks.toml --redact --no-banner .
+
+      - name: Scan the working tree for secrets
+        run: gitleaks dir --config .gitleaks.toml --redact --no-banner .
+
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: "0.9.8"
+
+      # pip-audit resolves a requirements file inside a throwaway venv, and
+      # ensurepip is missing from the uv-managed interpreter on the runner. So the
+      # lock is installed once and the resulting environment is audited instead.
+      - name: Install the locked Python environment
+        run: |
+          uv venv --python 3.12.4 /tmp/audit-env
+          uv pip install --python /tmp/audit-env/bin/python --requirement requirements.lock
+
+      - name: Audit the locked Python environment
+        run: |
+          uvx --python 3.12.4 pip-audit==2.10.1 --strict --progress-spinner off \
+            --path /tmp/audit-env/lib/python3.12/site-packages
+
+  browser-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24.20.0"
+          cache: npm
+          cache-dependency-path: vendor/echarts-build/package-lock.json
+
+      - name: Install the locked browser build tools
+        working-directory: vendor/echarts-build
+        run: npm ci
+
+      - name: Audit the browser dependency tree
+        working-directory: vendor/echarts-build
+        run: npm audit --audit-level=moderate
+
+      - name: Rebuild the ECharts bundle
+        working-directory: vendor/echarts-build
+        run: npm run build
+
+      - name: Check that the committed browser bundle is reproducible
+        run: git diff --exit-code -- public/vendor/echarts-custom-6.1.0-r1.min.js

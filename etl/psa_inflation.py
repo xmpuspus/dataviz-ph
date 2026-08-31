@@ -23,8 +23,6 @@ from datetime import UTC, datetime
 
 from etl.psa_openstat import (
     API_BASE,
-    CPI_PATH,
-    POVERTY_PATH,
     _clean_geo_text,
     _fetch_incidence_with_precision,
     _fetch_or_cache,
@@ -96,6 +94,12 @@ def region_id_for(label: str) -> str | None:
     return None
 
 
+def _normalize_region_name(clean: str, _units: dict, *, series: str | None = None) -> str | None:
+    """Adapt region matching to the shared series-aware normalizer contract."""
+    del series
+    return region_id_for(clean)
+
+
 def fetch_regional_poverty() -> list[dict]:
     """Poverty incidence among families (%) + precision for the 18 regions.
 
@@ -107,14 +111,17 @@ def fetch_regional_poverty() -> list[dict]:
     [{psgc: region_id, year, value, cv, se, ci_lo, ci_hi}] for 2018/2021/2023.
     """
     regions = load_regions()
+    from etl.psa_openstat import discover_table
+
+    path, _ = discover_table("poverty")
     return _fetch_incidence_with_precision(
-        f"{API_BASE}/{POVERTY_PATH}",
+        f"{API_BASE}/{path}",
         "poverty_full.json",  # same cache files as the provincial pull: one query, two cuts
         "poverty_full_data.json",
         lambda t: "poverty incidence" in t and "famil" in t,
         "PSA table 1a (regional rows)",
         regions,
-        lambda clean, _units: region_id_for(clean),
+        _normalize_region_name,
     )
 
 
@@ -125,7 +132,10 @@ def fetch_regional_cpi() -> dict[str, dict[int, float]]:
     in-progress calendar year is dropped by compute_regional_cpi_yoy (a partial
     -year "annual average" is not comparable to full-year averages).
     """
-    url = f"{API_BASE}/{CPI_PATH}"
+    from etl.psa_openstat import discover_table
+
+    path, _ = discover_table("cpi")
+    url = f"{API_BASE}/{path}"
     meta = _fetch_or_cache("cpi_meta.json", lambda: _get_json(url))
 
     geo_var = next(v for v in meta["variables"] if v.get("code") == "Geolocation")

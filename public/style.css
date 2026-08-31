@@ -298,6 +298,56 @@ main {
   cursor: pointer;
 }
 
+#story-start {
+  margin: 0;
+  padding: 0.8rem 0.85rem;
+  background: #e9f5f6;
+  border-bottom: 1px solid #b8dfe2;
+}
+
+#story-start[hidden] { display: none; }
+
+#story-start h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+#story-start p {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.story-start-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+}
+
+.story-start-actions button {
+  min-height: 44px;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--brand);
+  border-radius: 6px;
+  background: var(--brand);
+  color: #fff;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.story-start-actions #explore-data {
+  background: #fff;
+  color: var(--brand-hot);
+}
+
+.story-start-actions button:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+}
+
 #chart-howto-dismiss:hover { color: var(--ink); background: var(--soft2); }
 #chart-howto-dismiss:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 
@@ -461,6 +511,8 @@ main {
   border-left: 1px solid var(--rule);
 }
 
+#mobile-control-shell { display: none; }
+
 @media (max-width: 1099px) {
   #controls { border-left: 0; border-top: 1px solid var(--rule); }
 }
@@ -587,6 +639,53 @@ select:focus-visible {
 }
 
 .chip button:hover { background: rgba(255, 255, 255, 0.5); }
+
+#sr-data {
+  margin: 0.75rem 1.25rem;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
+#chart-data-table summary {
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+#chart-sr-table { overflow-x: auto; }
+
+#chart-sr-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+#chart-sr-table caption {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  color: var(--muted);
+}
+
+#chart-sr-table th,
+#chart-sr-table td {
+  padding: 0.4rem 0.55rem;
+  border-top: 1px solid var(--rule);
+  text-align: left;
+  vertical-align: top;
+}
+
+#chart-sr-table tbody th { font-weight: 600; }
+
+#chart-sr-table button {
+  min-height: 32px;
+  padding: 0.25rem 0.45rem;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  color: var(--brand-hot);
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
+}
 
 .legend-list {
   list-style: none;
@@ -779,6 +878,33 @@ select:focus-visible {
 #controls .block:has(#csv) > button { flex: 1 1 auto; min-width: 0; text-align: center; }
 #controls .block:has(#csv) > .hint { flex: 1 0 100%; }
 
+#view-evidence-panel {
+  margin: 0.75rem 1.25rem;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  min-width: 0;
+}
+
+#view-trust summary { cursor: pointer; font-weight: 700; }
+#view-trust-content { margin: 0.7rem 0; color: var(--muted); overflow-wrap: anywhere; }
+#view-trust-content p { margin: 0.35rem 0; }
+#view-trust-content section { margin: 0.6rem 0; padding: 0.5rem; border-left: 3px solid var(--brand); background: var(--soft); }
+#view-trust-content dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.2rem 0.5rem; margin: 0; }
+#view-trust-content dt { font-weight: 700; }
+#view-trust-content dd { margin: 0; }
+#curated-view-links { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.7rem; }
+#curated-view-links a { font-size: 0.8rem; color: var(--brand-hot); }
+
+@media (max-width: 520px) {
+  #view-trust-content dl { display: block; }
+  #view-trust-content dt { margin-top: 0.45rem; }
+  #view-trust-content dd { margin-top: 0.1rem; }
+  #view-trust-content details > p { overflow-wrap: anywhere; }
+}
+#view-coverage { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.85rem; }
+#view-coverage th, #view-coverage td { padding: 0.3rem; border-top: 1px solid var(--rule); overflow-wrap: anywhere; text-align: left; }
+
 /* --- Axis pickers overlay (Gapminder pattern) -------------------------- */
 
 #axis-info-layer {
@@ -887,6 +1013,15 @@ select:focus-visible {
   pointer-events: auto;
 }
 
+@media (max-width: 1099px) {
+  #search-results li {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  .indicator-panel { width: min(320px, calc(100% - 24px)); }
+}
+
 .ipanel-head {
   display: flex;
   align-items: center;
@@ -951,8 +1086,9 @@ select:focus-visible {
 .ipanel-item:hover { background: var(--soft); }
 .ipanel-item.active { background: var(--brand); color: #fff; }
 .ipanel-item.active .ipanel-meta { color: rgba(255, 255, 255, 0.75); }
-.ipanel-item.disabled { color: #b4b4b4; cursor: not-allowed; background: #fafafa; }
+.ipanel-item.disabled { color: #595959; cursor: not-allowed; background: #fafafa; }
 .ipanel-item.disabled:hover { background: #fafafa; }
+.ipanel-item.active-option { outline: 2px solid var(--ink); outline-offset: -2px; }
 
 .ipanel-name { font-size: 0.9rem; font-weight: 600; }
 .ipanel-meta { font-size: 0.76rem; color: var(--muted); }
@@ -993,8 +1129,8 @@ select:focus-visible {
 
 #big-play {
   position: absolute;
-  left: 14px;
-  bottom: 14px;
+  left: max(14px, env(safe-area-inset-left));
+  bottom: max(14px, env(safe-area-inset-bottom));
   width: 52px;
   height: 52px;
   padding: 0;
@@ -1025,8 +1161,8 @@ select:focus-visible {
 /* Playback-speed pill beside the play button. Cycles 1x -> 2x -> 0.5x. */
 #play-speed {
   position: absolute;
-  left: 74px;
-  bottom: 24px;
+  left: max(74px, calc(env(safe-area-inset-left) + 60px));
+  bottom: max(24px, env(safe-area-inset-bottom));
   z-index: 6;
   font: inherit;
   font-size: 0.74rem;
@@ -1223,12 +1359,79 @@ footer .disclaimer {
 /* --- Responsive ------------------------------------------------------- */
 
 @media (max-width: 1099px) {
-  #topbar { padding: 0.55rem 1rem; }
+  #topbar {
+    padding: max(0.55rem, env(safe-area-inset-top))
+      max(1rem, env(safe-area-inset-right)) 0.55rem
+      max(1rem, env(safe-area-inset-left));
+  }
   #title-strip { padding: 0.7rem 1rem 0.4rem; }
   #story-headline { font-size: 1.35rem; }
   #title-strip .tagline { font-size: 0.78rem; }
   #chart { height: 540px; }
-  #controls { padding: 0.8rem 1rem 1rem; }
+  #mobile-control-shell {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.5rem;
+    align-items: center;
+    margin: 0.75rem 1rem;
+    padding: 0.65rem max(0.75rem, env(safe-area-inset-right))
+      0.65rem max(0.75rem, env(safe-area-inset-left));
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: var(--soft);
+  }
+  #mobile-control-shell[hidden] { display: none; }
+  #mobile-controls-toggle,
+  #mobile-trust-link,
+  #mobile-selected-summary {
+    min-height: 44px;
+    font: inherit;
+  }
+  #mobile-controls-toggle,
+  #mobile-trust-link {
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+  }
+  #mobile-selected-summary {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--muted);
+    overflow-wrap: anywhere;
+  }
+  /* The 44px minimum above is a touch-target rule, and this line is a live
+     region rather than a control. With nothing chosen it left an empty band
+     between the two buttons. It keeps its place in the accessibility tree. */
+  #mobile-selected-summary:empty {
+    min-height: 0;
+  }
+  #controls {
+    display: none;
+    padding: 0.8rem max(1rem, env(safe-area-inset-right))
+      calc(1rem + env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  }
+  #controls.mobile-controls-open { display: block; }
+
+  #play-speed {
+    width: 44px;
+    height: 44px;
+  }
+
+  button,
+  a[href],
+  input:not([type="hidden"]),
+  select,
+  summary {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  a[href],
+  summary {
+    align-items: center;
+  }
+  a[href] { display: inline-flex; }
   .story-why { margin: 0.4rem 1rem 0.6rem; }
 
   /* WCAG 2.5.5: every touch target reaches 44px on small screens. */
@@ -1249,7 +1452,8 @@ footer .disclaimer {
 }
 
 @media (max-width: 520px) {
-  #topbar { gap: 0.6rem; }
+  #topbar { gap: 0.3rem; }
+  .topbar-right { gap: 0.45rem; font-size: 0.78rem; }
   #story-switcher {
     width: 100%;
     order: 3;
@@ -1261,9 +1465,15 @@ footer .disclaimer {
   }
   #story-switcher::-webkit-scrollbar { display: none; }
   .story-btn { white-space: nowrap; flex-shrink: 0; }
-  #title-strip { flex-direction: column; align-items: stretch; gap: 0.5rem; }
-  /* Four chart-type buttons as a tidy 2x2 block instead of a lopsided wrap. */
-  #chart-type-strip { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; }
+  #title-strip { flex-direction: column; align-items: stretch; gap: 0.3rem; }
+  #title-strip,
+  #chart-type-strip,
+  .title-text,
+  #story-headline { min-width: 0; max-width: 100%; }
+  #story-headline { overflow-wrap: anywhere; }
+  #title-strip .tagline { display: none; }
+  #chart-type-strip { display: flex; overflow-x: auto; }
+  .chart-type-btn { flex: 0 0 auto; }
   .chart-type-btn { justify-content: center; }
   .chart-type-btn .ct-label { display: inline; }
   #chart { height: 460px; }
@@ -1273,8 +1483,16 @@ footer .disclaimer {
   /* Bar view ranks province names down the left, where the play button sits.
      Move it to the right edge AND lift it above the x-axis value row so it stops
      covering both the bottom labels and the axis numbers. */
-  #chart-wrap[data-ct="bar"] #big-play { left: auto; right: 14px; bottom: 44px; }
-  #chart-wrap[data-ct="bar"] #play-speed { left: auto; right: 74px; bottom: 54px; }
+  #chart-wrap[data-ct="bar"] #big-play {
+    left: auto;
+    right: max(14px, env(safe-area-inset-right));
+    bottom: max(44px, calc(env(safe-area-inset-bottom) + 30px));
+  }
+  #chart-wrap[data-ct="bar"] #play-speed {
+    left: auto;
+    right: max(74px, calc(env(safe-area-inset-right) + 60px));
+    bottom: max(54px, calc(env(safe-area-inset-bottom) + 40px));
+  }
 
   /* On a phone the absolute bottom-right pills sit on top of the timeline year
      labels (bubbles) and the southern provinces (map). Drop them into the flow
@@ -1286,6 +1504,8 @@ footer .disclaimer {
     width: max-content;
     margin: 0.45rem auto 0.6rem;
   }
+
+  #chart-howto { display: none; }
 }
 
 /* Landscape phones: a 460-540px chart overflows a ~375px-tall viewport and pushes
@@ -1297,6 +1517,15 @@ footer .disclaimer {
   #story-headline { font-size: 1.1rem; }
   #title-strip .tagline { display: none; }
   #topbar { padding-top: 0.35rem; padding-bottom: 0.35rem; }
+  #story-switcher {
+    order: 3;
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+  #story-start { padding: 0.45rem 0.85rem; }
+  #story-start p { display: none; }
+  .story-start-actions { margin-top: 0.35rem; }
   #chart-howto { display: none; }
 }
 
@@ -1307,13 +1536,32 @@ footer .disclaimer {
    can still flip views. A small fixed chip credits dataviz.ph and links out. */
 body.embed-mode #topbar,
 body.embed-mode #controls,
+body.embed-mode #mobile-control-shell,
 body.embed-mode footer,
 body.embed-mode #chart-howto,
 body.embed-mode #mobile-detail-slot,
 body.embed-mode #title-strip .title-text,
 body.embed-mode #replay-arc,
-body.embed-mode #arc-skip {
+body.embed-mode #arc-skip,
+/* The trust panel sits below the chart and pushed an 800x560 iframe to 700px,
+   so the supplied snippet scrolled and clipped the chart. The attribution chip
+   links out to the full view, which carries the same evidence. */
+body.embed-mode #view-evidence-panel {
   display: none !important;
+}
+
+/* The data table stays for screen readers, but it must take no layout space
+   inside the iframe. Visually hidden, not removed. */
+body.embed-mode #sr-data {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 body.embed-mode #title-strip {
@@ -1336,8 +1584,8 @@ body.embed-mode #chart {
 
 #embed-chip {
   position: fixed;
-  right: 10px;
-  bottom: 10px;
+  right: max(10px, env(safe-area-inset-right));
+  bottom: max(10px, env(safe-area-inset-bottom));
   z-index: 50;
   font-size: 0.72rem;
   font-weight: 700;

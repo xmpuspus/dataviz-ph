@@ -67,8 +67,8 @@ def test_spend_stories_carry_awards_caveat():
 
 def test_snapshot_and_coverage_flags_present():
     ind = _indicators()
-    assert ind["population"].get("static_snapshot") is True
-    assert ind["population"].get("snapshot_label")
+    assert ind["population"].get("static_snapshot") is False
+    assert "2024" in ind["population"].get("snapshot_label", "")
     assert ind["poverty_change_pp"].get("static_snapshot") is True
     assert ind["poverty_change_pp"].get("snapshot_label")
     assert ind["gdp_per_capita"].get("coverage_label")

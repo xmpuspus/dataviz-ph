@@ -85,6 +85,36 @@ def test_partial_coverage_is_internally_consistent() -> None:
         assert len(counts) == 1, f"{name}: inconsistent unit count per year {per_year}"
 
 
+def test_refreshed_population_and_gdp_contracts_keep_reviewed_totals() -> None:
+    provinces = _load("provinces.json")
+    assert len(provinces) == N_PROVINCE_UNITS
+    assert provinces["072200000"]["population_2024"] == 5_228_149
+    assert provinces["126300000"]["population_2024"] == 1_732_068
+    assert provinces["150700000"]["population_2024"] == 693_244
+
+    gdp = _load("gdp_per_capita.json")
+    assert len(gdp) == 656
+    assert {(row["psgc"], row["year"]) for row in gdp} == {
+        (psgc, year) for psgc in provinces for year in range(2018, 2026)
+    }
+
+
+def test_poverty_depth_rows_keep_published_precision_and_coverage_reasons() -> None:
+    rows = _load("poverty_depth.json")
+    assert all("se" in row and "ci_lo" in row and "ci_hi" in row for row in rows)
+    assert all(row["ci_lo"] <= row["ci_hi"] for row in rows)
+    coverage = _load("poverty_depth_coverage.json")
+    assert all("missing_reasons" in row for row in coverage)
+    partial = [row for row in coverage if row["status"] == "partial"]
+    assert partial
+    assert {reason for row in partial for reason in row["missing_reasons"].values()} == {
+        "source_marker_dash"
+    }
+    assert any(row["source_warnings"] for row in partial)
+    assert any(row.get("source_revision_markers") for row in rows)
+    assert any(row.get("source_small_sample_warning") for row in rows)
+
+
 def test_rate_files_within_0_100() -> None:
     for name in ("poverty.json", "subsistence.json", "region_poverty.json"):
         for r in _load(name):
@@ -105,6 +135,33 @@ def test_spend_and_population_nonnegative() -> None:
     ):
         for r in _load(name):
             assert r["value"] >= 0, f"{name}: negative value {r}"
+
+
+def test_procurement_2025_gate_publishes_unavailable_status() -> None:
+    status = _load("procurement_status.json")
+
+    assert status["panel_end"] == 2024
+    assert status["latest_complete_year"] == 2024
+    assert status["candidate_year"] == 2025
+    assert status["status"] == "unavailable"
+    assert status["failed_gates"] == [
+        "date_range_incomplete",
+        "invalid_award_dates",
+        "future_award_dates",
+        "correction_comparison_pending",
+    ]
+    assert status["evidence"]["unique_award_id_count"] == 506_831
+    assert status["evidence"]["candidate_series_coverage"] == {
+        "all_spend": 82,
+        "doh": 44,
+        "dpwh": 78,
+        "infrastructure": 82,
+    }
+    assert status["snapshot_anomalies"] == {
+        "scope": "snapshot_wide",
+        "invalid_award_date_count": 1,
+        "future_award_date_count": 11,
+    }
 
 
 def test_stories_findings_are_sane() -> None:

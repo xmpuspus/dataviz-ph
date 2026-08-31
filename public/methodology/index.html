@@ -3,226 +3,71 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Sources, compute, and honesty notes for dataviz.ph: how Philippine government spending and poverty figures are sourced, attributed, and shown.">
-  <title>Methodology: dataviz.ph</title>
-
+  <meta name="description" content="Sources, geography, coverage, and limits for dataviz.ph.">
+  <title>Data method | dataviz.ph</title>
   <link rel="canonical" href="https://dataviz.ph/methodology">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'&gt;&lt;circle cx='32' cy='32' r='28' fill='%232b6cb0'/&gt;&lt;circle cx='20' cy='22' r='8' fill='%23d97706' opacity='0.85'/&gt;&lt;circle cx='42' cy='38' r='10' fill='%2338a169' opacity='0.85'/&gt;&lt;circle cx='30' cy='46' r='6' fill='%23c53030' opacity='0.85'/&gt;&lt;/svg&gt;">
-
-  <meta property="og:type" content="article">
-  <meta property="og:url" content="https://dataviz.ph/methodology">
-  <meta property="og:title" content="Methodology: dataviz.ph">
-  <meta property="og:description" content="Sources, compute, and honesty notes: how the spending and poverty figures are sourced, attributed, and shown.">
-  <meta property="og:site_name" content="dataviz.ph">
-  <meta property="og:image" content="https://dataviz.ph/og.png">
-
   <link rel="stylesheet" href="/style.css">
-  <!-- Vercel Web Analytics: same-origin, cookieless, allowed by the strict CSP. -->
   <script defer src="/_vercel/insights/script.js"></script>
+  <script defer src="/methodology.js"></script>
 </head>
 <body>
-  <!-- Slim top bar: brand on the left, a route back to the chart on the right. -->
   <header id="topbar">
     <a class="brand" href="/">dataviz.<span class="brand-tld">ph</span></a>
     <div class="topbar-spacer"></div>
-    <div class="topbar-right">
-      <a class="topbar-link" href="/">&larr; Back to the chart</a>
-    </div>
+    <div class="topbar-right"><a class="topbar-link" href="/">&larr; Back to the chart</a></div>
   </header>
 
-  <section id="methodology" aria-label="methodology">
-    <h2>Methodology</h2>
-    <p>
-      <strong>Sources.</strong>
-      DPWH spend: PhilGEPS awards data 2013 to 2025, filtered to contracts where the
-      implementing agency name contains "PUBLIC WORKS AND HIGHWAYS". Mirrored at
-      <a href="https://github.com/csiiiv/philgeps-awards-dashboard" rel="noopener">csiiiv/philgeps-awards-dashboard</a>
-      (MIT license).
-      Poverty: PSA OpenStat 1E/FY Table 1a (Annual Per Capita Poverty Threshold and
-      Poverty Incidence Among Families with Measures of Precision); anchors at 2018,
-      2021, 2023.
-      Per capita GDP: PSA OpenStat 2A/PPA/2025 Table 9 at constant 2018 prices, 2022 to 2024.
-      Consumer Price Index: PSA OpenStat 2M/PI/CPI/2018NEW, all items, PHILIPPINES
-      annual average; used to deflate DPWH spend to PHP 2018-real.
-      Population: PSA 2020 Census of Population and Housing, with Highly Urbanized
-      Cities summed back into their parent provinces so per-capita ratios reflect the
-      whole geographic province.
-    </p>
-    <p>
-      <strong>Awards, not disbursement.</strong>
-      Every spend figure here is PhilGEPS <em>contract awards</em> (the peso value of
-      contracts awarded), not disbursement (cash actually paid out). The two are not
-      the same: a contract can be awarded and then run for years, get re-scoped, or go
-      partly unspent. Government reports its money in three stages, appropriation
-      (budgeted), obligation (committed), then disbursement (paid), and disbursement
-      routinely lags obligation by a wide margin within a year. Actual disbursement
-      <em>by province of delivery</em> is not published anywhere machine-readable for
-      2014 to 2024: COA's annual reports (coa.gov.ph) are PDF-only and tag the
-      disbursing agency office, not where the project was built; DPWH's project portal
-      carries awards, not cash. So awards are the closest public proxy. The "five
-      trillion in roads" headline is the total contract value attributed to provinces,
-      money committed, not money proven spent.
-    </p>
+  <section id="methodology" aria-label="Methodology">
+    <h1>The explorer shows source limits with each view</h1>
+    <p>The first chart stays static. Select Play the guided story for the explanation. Select Explore the data for direct control.</p>
+
+    <h2>The 82-area contract keeps historical comparisons stable</h2>
+    <p>The analysis layer has 81 provinces and virtual NCR. The versioned crosswalk keeps source-native identifiers and records each change.</p>
+    <p>Population and award totals sum additive values for a Highly Urbanized City into its matching historical analysis area. Cotabato City remains unattributed. Poverty, FIES, and GDP rates are never averaged. The build recomputes them from additive numerators and denominators or leaves them unavailable.</p>
+    <p>Population uses the 2020 and 2024 anchors. Years 2014 through 2019 use the 2020 Census value. The build estimates 2021 through 2023 and uses the official 2024 value. It sums eligible city populations, excludes Cotabato City, and uses the published NCR regional total.</p>
+    <p>The crosswalk records historical Maguindanao, the Negros Island Region change, and the Sulu transfer.</p>
+
+    <h2>Shipped data follows fixed coverage dates</h2>
+    <p>GDP covers 2018 through 2025. Poverty-depth data ends in 2023. PSA poverty-depth tables use 1F/FY. The chart marks partial coverage and unavailable indicators.</p>
+    <p><strong>Contract awards differ from disbursement.</strong> PhilGEPS figures show committed contract value. They do not show cash paid to a project.</p>
+    <p>Correlation describes association. It does not prove causation.</p>
+
     <p id="methodology-scale" hidden>
-      <strong>Scale and trend.</strong>
-      Province-attributed DPWH contract awards total
+      <strong>Scale and trend.</strong> Province-attributed DPWH contract awards total
       <span data-ctx="total"></span> across 2014 to 2024. The yearly figure rose
       from about <span data-ctx="early"></span> a year in 2014 to 2016 to a peak of
-      <span data-ctx="peak"></span> in <span data-ctx="peakyr"></span>; the 2022 to
-      2024 average ran about <span data-ctx="ratio"></span> the 2014 to 2016 average.
-      As with every figure here, these are
-      awards (money committed), not verified disbursement; the figures are computed
-      live from the same per-province data the chart plots.
+      <span data-ctx="peak"></span> in <span data-ctx="peakyr"></span>. The 2022 to
+      2024 average was about <span data-ctx="ratio"></span> the 2014 to 2016 average.
+      These figures are computed from the same province data as the chart.
     </p>
-    <p>
-      <strong>Compute.</strong>
-      For each province and year, DPWH per capita is the sum of DPWH-tagged contract
-      award values divided by 2020 Census population. Poverty for non-anchor years is
-      linearly interpolated between the nearest PSA anchors; years before 2018 and
-      after 2023 are held constant at the nearest anchor (rendered with a colored
-      border so the held-constant treatment is visible). DPWH PHP 2018-real values
-      are nominal divided by (annual CPI / 100). The per-story "What the data shows"
-      line is a Spearman rank correlation computed across all provinces at the story's
-      reference year; it describes association only, never causation.
-    </p>
-    <p>
-      <strong>Cumulative spend preset.</strong>
-      The "Spend vs poverty change" preset sums each province's nominal DPWH awards
-      per capita over 2014 to 2023 and plots the total against the change in poverty
-      incidence from 2018 to 2023. The sum stays nominal: the CPI series is 2018-based,
-      so deflating 2014 to 2017 would mean backcasting the index, and the chart never
-      fabricates values it cannot compute. The window ends at 2023 to match the last
-      PSA poverty anchor, so the spend total covers the decade leading into the
-      measured poverty change. On the Y axis, negative means poverty fell; a
-      downward-sloping cloud would mean provinces with more cumulative spend saw
-      larger poverty drops. As everywhere else here, spend is contract awards, not
-      disbursement, and the correlation is association, not causation.
-    </p>
-    <p>
-      <strong>Regional inflation story.</strong>
-      The "Inflation vs poverty" preset runs at a coarser grain than the rest of
-      the site: PSA publishes the Consumer Price Index by region, not by
-      province, so that story uses the 18 official regions instead of the 82
-      provincial units. Inflation per region is the year-on-year change in the
-      all-items annual-average CPI (2018=100) from PSA OpenStat
-      2M/PI/CPI/2018NEW; the series starts in 2019 because the 2018-based index
-      needs a year prior, and the in-progress calendar year is excluded because
-      its running average is not a full-year print. Poverty is PSA's own
-      regional estimate read directly off the regional rows of Table 1a, with
-      its published 95% CI and CV, never an average of the provincial rows
-      (PSA's regional estimate uses the full survey design). The chart shows
-      the two PSA survey years that have an inflation print, 2021 and 2023.
-      Regions carry no population bubble size (the regional census total is not
-      pulled), so every bubble draws at the same size, and the map view is off
-      at this grain.
-    </p>
-    <p>
-      <strong>Significance.</strong>
-      Every preset's finding line carries a permutation p-value: the observed
-      Spearman rho is compared against 10,000 random shuffles of the Y values
-      (seeded, computed at build time in <code>etl/build.py</code>), and p is the
-      share of shuffles whose |rho| is at least as large as the observed one. Pick
-      a custom indicator pair and the page computes the same thing live with 1,000
-      shuffles at the displayed year. Read p as the probability of seeing a rank
-      correlation this strong if the two indicators were unrelated; it says nothing
-      about causation or the size of any effect. Because Spearman works on ranks,
-      it is unchanged by the log-axis toggle: log is monotone and preserves ranks.
-    </p>
-    <p>
-      <strong>Uncertainty.</strong>
-      Poverty and subsistence incidence are survey estimates, not censuses, so PSA
-      publishes a 95% confidence interval and a coefficient of variation (CV) for each
-      province-year. The chart carries those: hover any poverty or subsistence bubble
-      to see its CI, select a province to draw its CI as a whisker, and provinces whose
-      CV exceeds 30% (PSA's threshold for an imprecise estimate, typically the
-      low-poverty provinces where a small sample yields a wide margin) are drawn dimmed
-      with a dashed amber ring. Only the survey years (2018, 2021, 2023) carry a CI;
-      interpolated and held-constant years are model estimates and deliberately show
-      none.
-    </p>
-    <p>
-      <strong>COVID years.</strong>
-      PSA's poverty anchors are 2018, 2021, and 2023, so the 2019 and 2020 values
-      are linear interpolations across a period that was anything but linear. The
-      pandemic's poverty spike and recovery are invisible to a straight line drawn
-      between 2018 and 2021, and the tooltips for those two years say so.
-    </p>
-    <p>
-      <strong>Honesty notes.</strong>
-      About 20 percent of DPWH award value cannot be attributed to a single province
-      (null area_of_delivery, multi-province contracts, "Independent City" bucket)
-      and is excluded. Seven province-years with per-capita under PHP 100 are
-      dropped as likely coverage gaps. Maguindanao is shown as the pre-2022-split
-      unit because PSA's poverty table still reports the rolled-up Maguindanao;
-      Maguindanao del Norte / del Sur 2023 rows are intentionally not used. NCR
-      is the regional aggregate (16 cities) treated as a single bubble.
-    </p>
-    <p>
-      <strong>Attribution coverage.</strong>
-      The build records each province's share of the attributed DPWH total in
-      <code>manifest.json</code> (<code>derived.dpwh_attribution_share_by_psgc</code>).
-      The roughly 20 percent of award value that cannot be attributed is not spread
-      evenly: BARMM provinces sit near zero on that table because their
-      area_of_delivery strings rarely resolve to a single PSGC code. Per-province
-      spend figures there are a conservative lower bound, so cross-province spend
-      comparisons understate BARMM.
-    </p>
-    <p>
-      <strong>Input provenance.</strong>
-      <code>manifest.json</code> carries an <code>inputs</code> block recording what
-      each build consumed: a sha256 for each of the 15 PhilGEPS parquet chunks (the
-      mirror's raw URLs are mutable, so the local hash is the pin), the sha256 of
-      the cached PSGC reference, and, for the live PSA OpenStat API where pinning
-      is impossible, the fetch date and per-table row counts. A rebuild against a
-      silently changed upstream shows up as a hash or row-count diff.
-    </p>
-    <p>
-      <strong>Fixed denominator.</strong>
-      Every per-capita figure across 2014 to 2024 divides by the same 2020 Census
-      population, because that is the only complete province-level census in the
-      window. Provinces grew over the decade, so early-year per-capita spend is
-      modestly overstated and late-year modestly understated relative to a true
-      same-year population. The effect is small next to the year-to-year swings in
-      contract awards, but it is real and worth knowing.
-    </p>
-    <p>
-      <strong>Single-snapshot indicators.</strong>
-      Population is the 2020 Census, and "poverty change 2018 to 2023" is one number
-      per province. Both are repeated across the panel only so they can pair with
-      year-varying indicators in the picker; they do not actually vary by year, so the
-      animation holds them still and the chart labels them "does not vary by year."
-      Hitting play never implies motion these series do not have.
-    </p>
-    <p>
-      <strong>Limits.</strong>
-      Poverty rates are PSA's "province-without-HUC" measure published in Table 1a.
-      Per-capita DPWH spend uses whole-province population including HUCs. Per
-      capita GDP uses PSA's "province-only" measure (HUCs are published separately
-      and are NOT rolled in here), and PSA publishes provincial GDP only from 2022,
-      so that panel is three years. Bubble size is the 2020 Census and does not
-      animate. Every province carries all three published PSA anchors (2018, 2021,
-      2023); for example Sulu fell from 75.3% in 2018 to 41.5% in 2021 to 13.0% in
-      2023. Years before 2018 and after 2023 are held constant at the nearest
-      anchor and drawn with a colored border so the held-constant treatment is
-      visible.
-    </p>
-    <p class="methodology-back"><a href="/">&larr; Back to the chart</a></p>
+
+    <h2>Data limits state what the figures omit</h2>
+    <p>About one fifth of DPWH award value cannot be assigned to one province and is excluded. BARMM attribution is especially limited, so its province figures are lower bounds.</p>
+    <p>Poverty rates are survey estimates. Interpolated years and held values are labelled, and the product keeps published confidence and precision fields where available.</p>
+
+    <h2>The 2025 workbooks need source gates before publication</h2>
+    <p>The official 2025 poverty and FIES workbooks do not ship. They need source, precision, crosswalk, weight, and revision gates before publication.</p>
+    <p>If a workbook passes, the explorer labels its figures preliminary. The view then states the source date, precision, and revision policy.</p>
+    <p>PhilGEPS 2025 is unavailable. The reviewed snapshot fails incomplete-date, invalid-date, future-date, and correction-comparison gates.</p>
+    <p>DBM COMPASS and CBMS are adoption-gated. They need access, grain, coverage, and suppression contracts before the product can use them.</p>
+
+    <h2>The trust panel gives the evidence for the active view</h2>
+    <p>View evidence, shown as Why trust this view, lists source, update, grain, transforms, status, coverage, warnings, and archive information. The coverage table lists full, partial, and unavailable years.</p>
+    <p>Each view can download CSV data, metadata JSON, and citation text. The metadata JSON includes the view URL, method URL, source and build identifiers, warnings, and coverage.</p>
+    <p>Named views and stateful links preserve the active view. Embed attribution links back to the full explorer with the same state.</p>
+
+    <h2>The build refreshes PSA data but not protected sources</h2>
+    <p><code>--no-cache</code> refreshes PSA data. The build reads the committed geography contract.</p>
+    <p>The build does not get PhilGEPS snapshots or protected 2025 workbooks. A maintainer must review and commit a source artifact before a build can use it.</p>
+
+    <h2>The source ledger states what the product ships</h2>
+    <p>Read the dated source status ledger in <code>docs/roadmap.md</code> for shipped, unavailable, and adoption-gated sources.</p>
   </section>
 
   <footer>
-    <p>
-      Sources: PSA OpenStat, PhilGEPS, PSA 2020 Census &middot;
-      <a href="https://github.com/xmpuspus" rel="noopener">Built by Xavier Puspus</a> &middot;
-      MIT license
-    </p>
+    <p>Sources include PSA OpenStat, PhilGEPS, and PSA Census.</p>
     <p id="data-freshness" class="freshness"></p>
-    <p class="disclaimer">
-      All data sourced from public records (PSA OpenStat, PhilGEPS, PSA Census).
-      This tool visualizes statistical indicators only. Specific allegations, if
-      any, require independent investigation and corroboration.
-    </p>
+    <p class="disclaimer">This explorer visualizes public statistical indicators. Any specific allegation needs independent evidence.</p>
   </footer>
-
-  <script type="module" src="/methodology.js"></script>
 </body>
 </html>

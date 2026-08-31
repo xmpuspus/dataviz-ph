@@ -1,0 +1,57 @@
+{
+  "fixture": "official-refresh-representative.json",
+  "gdp_industry": {
+    "metadata_sha256": "306ae4217ea402feafa9e0bfacb1eb024a276283428fc57e98a44a0c660fa2fc",
+    "path": "2A/PPA/0022A5FPPA1.px",
+    "representative_metadata_sha256": "e6cf2936a0570eab4c3efe032ff5a0c0a9b8f619936656fcca6c1fe3482f5337"
+  },
+  "gdp_per_capita": {
+    "metadata_sha256": "e686614d450aff9077d602ce1500d1cf2658164291be966ab80dd5dab249d7e9",
+    "path": "2A/PPA/0092A5FPPA8.px",
+    "payload_sha256": "d34e4bf84947ae69205692b9a1bf0cee5274c03d4e164f8ca78edec491030ef7",
+    "representative_metadata_sha256": "055ea56cad0d539d448c8ca880af22eb88c56860c2b2872cce46c2d558b8d6d3",
+    "representative_payload_sha256": "e615a429652a3a5241920ff51f9cddd0bd4e2d1822000f4db73377a262fa1c83"
+  },
+  "gdp_total": {
+    "metadata_sha256": "a6d7f914e922a77420fd62cd0bc8b1d4bf31f3c55e14749041f4108c49dcf0bd",
+    "path": "2A/PPA/0012A5FPPA0.px",
+    "payload_sha256": "8024be8e10abe01d45ca2ed420c96c75636877567365d5d8daf35b85377838b8",
+    "representative_metadata_sha256": "21100c3345870f04e9ffbca284a7fb1323d2ef8fecf052798651944610f4ce20",
+    "representative_payload_sha256": "ec8c1a2f177cc4ad1ea5256d46d4a47b186148b4e65fa3668fd6668d7cb14fba"
+  },
+  "population_2024": {
+    "metadata_sha256": "1b7fb845b9014890873df870a8e780ede9007d66ed5e38bda269e3279a57df1f",
+    "path": "1A/PO_2024/0191A6DTHP8.px",
+    "payload_sha256": "8801726bc63ca368a7a01080d8ae25bb00cfc62be12c324b4a6889e71cab36b5",
+    "representative_metadata_sha256": "c5f8e86c3b470b3925b8f13c17e3229195cd8820ad31f6cdac901296883e2a25",
+    "representative_payload_sha256": "c5652706bab5d9022244765e479d67626772cf80bd973538ffb50c0f3c3ae00d"
+  },
+  "poverty_income_gap": {
+    "metadata_sha256": "519d49e96610b624f8d491197c109fe510cc4f3d6bd445075b0beac4c6a8c861",
+    "path": "1F/FY/0191F3DF10A.px",
+    "payload_sha256": "a97fb8d8406f5ef3cfd9a9b0d5b05d37c53fc31276d09924f79a2d0fb5be58f3",
+    "representative_metadata_sha256": "410e1cc7e5eb80cfb7b9f3484244368ccb6364a743fd905dc85f561439e9cad9",
+    "representative_payload_sha256": "ab39892390a690fdcb1a4ee3b5dba55a7258e599c5d9a565b6c4ca591e679d63"
+  },
+  "poverty_poor_families": {
+    "metadata_sha256": "12d6a50806493ab5ef5c097963c56892c475c16995f2feb2dd8842bb49f2bfba",
+    "path": "1F/FY/0101F3DF05A.px",
+    "payload_sha256": "3b4d32838e064eceacedd8a02f7acba11b40cce4f40af702d27c8f1667758b67",
+    "representative_metadata_sha256": "bf160536d5812e2767384a45ad437862b27feb35c01460f2310796c85d98d349",
+    "representative_payload_sha256": "e62033eb40870dad98df118b6e074cf999ec6b3e57841ad5203e1eab84701d33"
+  },
+  "poverty_poverty_gap": {
+    "metadata_sha256": "f8fb483919266355292d7a8cf29eff3bbd3833d87e90bc2036fb04ca3f5da9aa",
+    "path": "1F/FY/0211F3DF11A.px",
+    "payload_sha256": "b7464d418ff3493ed409f60a9ccbb0f8e1a59940c5b399a42534760cf6fbd125",
+    "representative_metadata_sha256": "5446aef28c71937af47202ff89f501f43d81ed1f5a261bea9efc7ddcf43da11d",
+    "representative_payload_sha256": "3a8a6d676a3eda5700f37fd286dcadbb2e9545f0b65f1bed68d41d862eefa9de"
+  },
+  "poverty_severity": {
+    "metadata_sha256": "028bf67440b0391041c6143d478cb46a262918070d4bb9719cedbf75ab60fb97",
+    "path": "1F/FY/0231F3DF12A.px",
+    "payload_sha256": "9da8b169d20688d8501be2a04a5f04aafece02a404d3909a9a60fa467a04095f",
+    "representative_metadata_sha256": "90390e1897060f8f3618205dece7fb3aff0fcba94d47cc34a8e0869f44d021db",
+    "representative_payload_sha256": "a0f5e1472427c1e74f0127de5d880a047b9916b8d934f8ea618096fe5614313d"
+  }
+}

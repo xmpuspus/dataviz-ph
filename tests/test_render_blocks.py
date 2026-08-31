@@ -11,9 +11,9 @@ when the reader switches stories:
   - #data-freshness  the "Built ..." footer with the poverty-anchor vintage
   - .disclaimer      the public-data disclaimer
 
-They self-skip when Playwright or its Chromium build is absent (the CI deploy
-runner installs only ".[dev]", which omits both), so `pytest -q` stays green
-everywhere and runs the real checks wherever a browser is present.
+They fail when Playwright or its Chromium build is absent. A missing browser
+hides a broken render layer, so CI installs Chromium and runs these checks for
+real instead of reporting a green skip.
 """
 
 from __future__ import annotations
@@ -26,8 +26,6 @@ import threading
 from pathlib import Path
 
 import pytest
-
-pytest.importorskip("playwright", reason="playwright not installed")
 from playwright.sync_api import Error as PlaywrightError  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
@@ -58,7 +56,7 @@ def browser():
         try:
             b = pw.chromium.launch()
         except PlaywrightError as e:  # browser binary not downloaded on this host
-            pytest.skip(f"Chromium unavailable: {e}")
+            pytest.fail(f"Chromium unavailable: {e}", pytrace=False)
         try:
             yield b
         finally:
@@ -200,9 +198,8 @@ def test_howto_scaffold_hidden_outside_bubble_mode(page, base_url):
 # ---- Guided narrative arc (first-visit Rosling-style story) -------------------
 
 
-def test_guided_arc_runs_then_yields_to_explorer(browser, base_url):
-    """First visit (motion on, no hash) plays the guided arc; the first user
-    gesture hands control back to the explorer, which then behaves normally."""
+def test_guided_arc_runs_after_the_reader_chooses_play(browser, base_url):
+    """A first visit stays static until the reader asks for the guided story."""
     errors: list[str] = []
     pg = browser.new_page()  # motion on, fresh context => fresh localStorage
     _stub_insights(pg)
@@ -211,7 +208,9 @@ def test_guided_arc_runs_then_yields_to_explorer(browser, base_url):
     try:
         pg.goto(base_url, wait_until="networkidle")
         pg.wait_for_selector("#story-finding:not([hidden])", timeout=15000)
-        # The arc announces itself: the Skip control is visible while it runs.
+        pg.wait_for_selector("#story-start:not([hidden])", timeout=5000)
+        pg.get_by_role("button", name="Play the guided story").click()
+        # The arc announces itself: the Skip control is visible after Play.
         pg.wait_for_selector("#arc-skip:not([hidden])", timeout=5000)
         # The opening beats sit on spend-vs-poverty (an award-based indicator).
         assert "Awards, not disbursement" in pg.inner_text("#story-caveat")
@@ -277,8 +276,8 @@ def test_methodology_page_renders_with_live_scale(browser, base_url):
         # Directory index: serves methodology/index.html both locally and on Vercel.
         pg.goto(base_url + "methodology/", wait_until="networkidle")
         body = pg.inner_text("body")
-        assert "Awards, not disbursement" in body
-        assert "Honesty notes" in body
+        assert "Contract awards differ from disbursement" in body
+        assert "Data limits" in body
         # The "Scale and trend" line is computed by methodology.js and unhides once
         # the data loads; its figures must be peso-scaled, not raw or blank.
         pg.wait_for_selector("#methodology-scale:not([hidden])", timeout=15000)

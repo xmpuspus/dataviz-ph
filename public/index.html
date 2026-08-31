@@ -32,8 +32,8 @@
   <link rel="preload" as="fetch" crossorigin href="data/gdp_per_capita.json">
   <link rel="preload" as="fetch" crossorigin href="data/indicators.json">
   <link rel="preload" as="fetch" crossorigin href="data/stories.json">
-  <script src="vendor/echarts-custom-5.6.0-r2.min.js"
-          integrity="sha384-UvTOMv7fL+FD4zOYzFOEeOuw0wP2GOG4Jf+j8sAlaRxa6+iue6HD/gTWzNVvn+hI"
+  <script src="vendor/echarts-custom-6.1.0-r1.min.js"
+          integrity="sha384-EqTZtP0MUiwdLIP4/bYi7GwrNpQeh+aHzjQK/mGh1gz7AG5L4PV2QyqjchP4XHpR"
           crossorigin="anonymous"
           referrerpolicy="no-referrer"
           defer></script>
@@ -104,17 +104,25 @@
         <span id="chart-notice-text"></span>
         <button type="button" id="chart-notice-dismiss" aria-label="dismiss notice">&times;</button>
       </p>
+      <section id="story-start" aria-labelledby="story-start-title" hidden>
+        <h2 id="story-start-title" data-i18n="controls.story_start_title">Choose how to begin</h2>
+        <p data-i18n="controls.story_start_text">Watch the guided story, or explore the current data at your own pace.</p>
+        <div class="story-start-actions">
+          <button id="play-guided-story" type="button" data-i18n="controls.play_guided_story">Play the guided story</button>
+          <button id="explore-data" type="button" data-i18n="controls.explore_data">Explore the data</button>
+        </div>
+      </section>
       <div
         id="chart"
         role="group"
         aria-roledescription="interactive chart"
         aria-labelledby="story-headline"
-        aria-describedby="chart-instructions chart-sr-table"
+        aria-describedby="chart-instructions sr-summary"
         tabindex="0"
       >
         <div id="loading" role="status">Loading data and chart...</div>
       </div>
-      <p id="chart-instructions" class="sr-only">
+      <p id="chart-instructions" class="sr-only" data-i18n="controls.chart_instructions">
         Animated bubble chart. Each bubble is one Philippine province. Use Left and
         Right arrow keys to scrub years; Home and End jump to the first and last
         year. Tab through the controls below the chart to change story, step year,
@@ -135,8 +143,8 @@
         aria-label="play timeline"
         aria-pressed="false"
       >
-        <span class="bp-icon bp-play" aria-hidden="true">▶</span>
-        <span class="bp-icon bp-pause" aria-hidden="true">❚❚</span>
+        <span class="bp-icon bp-play" aria-hidden="true">&#9654;</span>
+        <span class="bp-icon bp-pause" aria-hidden="true">&#10074;&#10074;</span>
       </button>
       <!-- Playback speed: cycles 1x -> 2x -> 0.5x. Sits beside the play button. -->
       <button id="play-speed" type="button" aria-label="playback speed: 1x">1x</button>
@@ -144,7 +152,7 @@
            once it ends or after a returning visit. JS toggles their hidden attr. -->
       <button id="arc-skip" type="button" hidden>Skip the story ›</button>
       <button id="replay-arc" type="button" hidden>
-        <span aria-hidden="true">↻</span> Play the guided story
+        <span aria-hidden="true">↻</span> <span data-i18n="controls.replay_guided_story">Play the guided story</span>
       </button>
     </section>
 
@@ -152,6 +160,12 @@
          so the chart lands at the fold instead of being pushed a screen down.
          Empty and display:none on desktop, where they stay in the title strip. -->
     <div id="mobile-detail-slot"></div>
+
+    <section id="mobile-control-shell" aria-label="mobile controls">
+      <button id="mobile-controls-toggle" type="button" aria-controls="controls" aria-expanded="false" data-i18n="controls.mobile_controls">Show controls</button>
+      <p id="mobile-selected-summary" aria-live="polite"></p>
+      <button id="mobile-trust-link" type="button" data-i18n="controls.mobile_trust">Why trust this view?</button>
+    </section>
 
     <aside id="controls" aria-label="controls">
       <!-- Sidebar pickers retained for keyboard / screen-reader fallback,
@@ -165,14 +179,17 @@
       </div>
 
       <div class="block">
-        <h2 data-i18n="controls.find">Find a province</h2>
+        <h2 id="search-heading" data-i18n="controls.find">Find a province</h2>
         <input
           id="search"
           type="search"
           placeholder="Type to search"
           data-i18n-ph="controls.search_placeholder"
           autocomplete="off"
-          aria-label="search provinces"
+          role="combobox"
+          aria-labelledby="search-heading"
+          aria-controls="search-results"
+          aria-expanded="false"
         >
         <ul id="search-results" role="listbox"></ul>
       </div>
@@ -262,6 +279,8 @@
         <h2 data-i18n="controls.download">Download</h2>
         <button id="csv" type="button">CSV</button>
         <button id="csv-all" type="button" data-i18n="controls.csv_all">CSV (all years)</button>
+        <button id="metadata-json" type="button" data-i18n="controls.metadata_json">Metadata JSON</button>
+        <button id="citation-text" type="button" data-i18n="controls.citation_text">Citation text</button>
         <button id="png" type="button">PNG</button>
         <button id="svg" type="button">SVG</button>
         <button id="share" type="button" data-i18n="controls.link">Link</button>
@@ -271,13 +290,21 @@
     </aside>
   </main>
 
+  <section id="view-evidence-panel" aria-label="view evidence">
+    <details id="view-trust">
+      <summary data-i18n="trust.summary">Why trust this view?</summary>
+      <div id="view-trust-content"></div>
+      <details id="view-coverage-details"><summary data-i18n="trust.coverage_by_year">Coverage by year</summary><table id="view-coverage"><caption data-i18n="trust.coverage_caption">Coverage for the active indicators</caption><thead><tr><th scope="col" data-i18n="trust.indicator">Indicator</th><th scope="col" data-i18n="trust.year">Year</th><th scope="col" data-i18n="trust.coverage">Coverage</th></tr></thead><tbody></tbody></table></details>
+      <nav id="curated-view-links" aria-label="curated views"></nav>
+    </details>
+  </section>
+
   <section id="sr-data" aria-label="text version of current chart">
-    <h2 class="sr-only">Text version of current chart</h2>
-    <!-- Only this one-line summary is announced on year change; the full table
-         below is the static text alternative (announcing 82 rows per scrub
-         floods screen readers). -->
     <p id="sr-summary" class="sr-only" role="status" aria-live="polite"></p>
-    <div id="chart-sr-table" class="sr-only"></div>
+    <details id="chart-data-table">
+      <summary data-i18n="controls.view_data_table">View data table</summary>
+      <div id="chart-sr-table"></div>
+    </details>
   </section>
 
   <footer>

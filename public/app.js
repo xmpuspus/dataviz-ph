@@ -233,9 +233,9 @@ async function loadData() {
   // the page can say so (a silently absent population.json would otherwise just
   // strip the size encoding with no signal to the reader).
   const optionalFailures = [];
-  const optJson = (path, fallback) =>
+  const optJson = (path, fallback, indicatorIds = []) =>
     fetchJson(path).catch(() => {
-      optionalFailures.push(path);
+      optionalFailures.push({ path, indicatorIds: Array.isArray(indicatorIds) ? indicatorIds : [indicatorIds] });
       return fallback;
     });
   const [
@@ -259,27 +259,29 @@ async function loadData() {
     stories,
     pairHeadlines,
     manifest,
+    viewEvidence,
   ] = await Promise.all([
     fetchJson("data/provinces.json"),
-    optJson("data/regions.json", {}),
+    optJson("data/regions.json", {}, ["region_poverty", "region_cpi_yoy_pct"]),
     fetchJson("data/poverty.json"),
-    optJson("data/subsistence.json", []),
+    optJson("data/subsistence.json", [], "subsistence_incidence"),
     fetchJson("data/dpwh_spend_per_capita.json"),
     fetchJson("data/all_spend_per_capita.json"),
-    optJson("data/doh_spend_per_capita.json", []),
-    optJson("data/infra_spend_per_capita.json", []),
+    optJson("data/doh_spend_per_capita.json", [], "doh_spend_per_capita"),
+    optJson("data/infra_spend_per_capita.json", [], "infra_spend_per_capita"),
     fetchJson("data/gdp_per_capita.json"),
-    optJson("data/dpwh_share_pct.json", []),
-    optJson("data/cpi_yoy_pct.json", []),
-    optJson("data/poverty_change_pp.json", []),
-    optJson("data/dpwh_spend_per_capita_cum.json", []),
-    optJson("data/population.json", []),
-    optJson("data/region_poverty.json", []),
-    optJson("data/region_cpi_yoy_pct.json", []),
+    optJson("data/dpwh_share_pct.json", [], "dpwh_share_pct"),
+    optJson("data/cpi_yoy_pct.json", [], "cpi_yoy_pct"),
+    optJson("data/poverty_change_pp.json", [], "poverty_change_pp"),
+    optJson("data/dpwh_spend_per_capita_cum.json", [], "dpwh_spend_per_capita_cum"),
+    optJson("data/population.json", [], "population"),
+    optJson("data/region_poverty.json", [], "region_poverty"),
+    optJson("data/region_cpi_yoy_pct.json", [], "region_cpi_yoy_pct"),
     fetchJson("data/indicators.json"),
     fetchJson("data/stories.json"),
     optJson("data/pair_headlines.json", {}),
-    fetchJson("data/manifest.json").catch(() => null),
+    fetchJson("data/manifest.json"),
+    fetchJson("data/view_evidence.json"),
   ]);
   return {
     optionalFailures,
@@ -305,7 +307,65 @@ async function loadData() {
     stories,
     pairHeadlines,
     manifest,
+    viewEvidence,
   };
+}
+
+function failedIndicator(data, indicatorId) {
+  return data.optionalFailures.some((failure) => failure.indicatorIds.includes(indicatorId));
+}
+
+function runtimeEvidence(data, indicatorId) {
+  const item = data.viewEvidence.indicators[indicatorId];
+  const failure = data.optionalFailures.find((item) => item.indicatorIds.includes(indicatorId));
+  if (!item || !failure) return item;
+  return {
+    ...item,
+    warnings: [...item.warnings, tFill(t("trust.file_unavailable", "Unavailable because {path} did not load."), { path: failure.path })],
+    coverage: item.coverage.map((row) => ({ ...row, status: "unavailable" })),
+    runtime_status: "unavailable",
+  };
+}
+
+function anomalyScopeLabel(scope) {
+  return String(scope || "unknown").replace(/_/g, " ");
+}
+
+function coverageLabel(row, failed = false) {
+  if (failed) return t("trust.unavailable_load", "unavailable, data did not load");
+  if (!row) return t("trust.unavailable", "unavailable");
+  const basis = Object.entries(row.basis_counts || {})
+    .filter(([, count]) => count > 0)
+    .map(([kind, count]) => `${t(`trust.basis_${kind}`, kind)} ${count}`)
+    .join(", ");
+  return tFill(t("trust.coverage_value", "{status}: {available} of {target} available; basis: {basis}"), {
+    status: t(`trust.status_${row.status}`, row.status),
+    available: row.available_units ?? row.source_units,
+    target: row.target_units,
+    basis: basis || t("trust.basis_unknown", "unknown"),
+  });
+}
+
+function canonicalParams(state, view) {
+  const params = new URLSearchParams();
+  params.set("story", state.story.id);
+  if (view && view.isCustom) {
+    params.set("x", view.x);
+    params.set("y", view.y);
+  }
+  if (state.chartType !== "bubbles") params.set("ct", state.chartType);
+  if (state.extrapolate) params.set("extrap", "on");
+  params.set("year", state.year);
+  params.set("log", state.logX ? "x" : "none");
+  params.set("deflate", state.deflate ? "real" : "nominal");
+  if (state.compareYear) params.set("cmp", state.compareYear);
+  if (state.sel.size) params.set("sel", [...state.sel].sort().join(","));
+  if (state.grp.size) params.set("grp", [...state.grp].sort().join(","));
+  if (state.speed !== 1) params.set("spd", String(state.speed));
+  if (state.colorBy === "yq") params.set("col", "yq");
+  if (state.sizeBy === "eq") params.set("size", "eq");
+  if (state.embed) params.set("embed", "1");
+  return params;
 }
 
 // Look up a per-pair headline + tagline by sorted indicator IDs.
@@ -1854,6 +1914,13 @@ function buildBubbleOption(story, data, state) {
         right: 28,
         symbol: "none",
         lineStyle: { color: "#ccc" },
+        // Stated, not inherited: ECharts changed its own progress default from a
+        // strong blue (5.x) to a pale lavender (6.x) that reads the same as the
+        // unplayed #ccc track, so the years already played stopped being visible.
+        progress: {
+          lineStyle: { color: "#0e7c86", width: 2 },
+          itemStyle: { color: "#0e7c86" },
+        },
         checkpointStyle: { color: "#111", borderColor: "#fff", borderWidth: 2 },
         controlStyle: {
           show: false,
@@ -2385,29 +2452,7 @@ function writeHash(state, view) {
   // and pins/unpins provinces transiently; persisting those mid-show would leave a
   // misleading shareable link. The first post-arc render writes a clean hash.
   if (state.arc) return;
-  const params = new URLSearchParams();
-  params.set("story", state.story.id);
-  // Round-trip custom indicator picks only when they diverge from the preset.
-  if (view && view.isCustom) {
-    params.set("x", view.x);
-    params.set("y", view.y);
-  }
-  if (state.chartType && state.chartType !== "bubbles") {
-    params.set("ct", state.chartType);
-  }
-  if (state.extrapolate) {
-    params.set("extrap", "on");
-  }
-  params.set("year", state.year);
-  params.set("log", state.logX ? "x" : "none");
-  params.set("deflate", state.deflate ? "real" : "nominal");
-  if (state.compareYear) params.set("cmp", state.compareYear);
-  if (state.sel.size) params.set("sel", [...state.sel].join(","));
-  if (state.grp && state.grp.size) params.set("grp", [...state.grp].join(","));
-  if (state.speed && state.speed !== 1) params.set("spd", String(state.speed));
-  if (state.colorBy === "yq") params.set("col", "yq");
-  if (state.sizeBy === "eq") params.set("size", "eq");
-  if (state.embed) params.set("embed", "1");
+  const params = canonicalParams(state, view);
   window.history.replaceState(null, "", "#" + params.toString());
   // The embed attribution chip links to the full explorer view: the same state
   // minus the embed flag. Kept in sync here so the link always mirrors the chart.
@@ -2417,6 +2462,83 @@ function writeHash(state, view) {
       params.delete("embed");
       chip.href = `${window.location.origin}${window.location.pathname}#${params.toString()}`;
     }
+  }
+}
+
+function renderViewEvidence(view, data, state) {
+  const evidence = data.viewEvidence;
+  const content = document.getElementById("view-trust-content");
+  const body = document.querySelector("#view-coverage tbody");
+  if (!evidence || !content || !body) return;
+  const active = [view.x, view.y].map((id) => ({ id, item: runtimeEvidence(data, id) })).filter(({ item }) => item);
+  content.replaceChildren();
+  body.replaceChildren();
+  for (const { id, item } of active) {
+    const year = item.coverage.find((row) => row.year === state.year);
+    const p = document.createElement("section");
+    const failed = failedIndicator(data, id);
+    const heading = document.createElement("strong");
+    heading.textContent = data.indicators[id]?.name || id;
+    const fields = document.createElement("dl");
+    const add = (label, value) => {
+      const dt = document.createElement("dt");
+      dt.textContent = label;
+      const dd = document.createElement("dd");
+      dd.textContent = value;
+      fields.append(dt, dd);
+    };
+    add(t("trust.source", "Source"), item.source);
+    add(t("trust.release", "Release"), item.release_status);
+    add(t("trust.source_id", "Source ID"), item.snapshot_or_fetch_id);
+    add(t("trust.expected_update", "Expected update"), item.expected_update);
+    add(t("trust.grain", "Grain"), item.natural_grain);
+    add(t("trust.current_coverage", "Current coverage"), coverageLabel(year, failed));
+    const archive = document.createElement("a");
+    archive.href = item.archive_url;
+    archive.rel = "noopener";
+    archive.textContent = t("trust.open_archive", "Open source archive");
+    const archiveDt = document.createElement("dt");
+    archiveDt.textContent = t("trust.archive", "Archive");
+    const archiveDd = document.createElement("dd");
+    archiveDd.appendChild(archive);
+    fields.append(archiveDt, archiveDd);
+    const transforms = document.createElement("details");
+    const transformsSummary = document.createElement("summary");
+    transformsSummary.textContent = t("trust.transform", "Transform");
+    const transformsText = document.createElement("p");
+    transformsText.textContent = item.transforms;
+    transforms.append(transformsSummary, transformsText);
+    p.append(heading, fields, transforms);
+    content.appendChild(p);
+    if (item.warnings.length) {
+      const warning = document.createElement("p");
+      warning.textContent = `${t("trust.warning", "Warning")}: ${item.warnings.join(" ")}`;
+      content.appendChild(warning);
+    }
+    for (const row of item.coverage) {
+      const tr = document.createElement("tr");
+      for (const value of [data.indicators[id]?.name || id, row.year, coverageLabel(row, failed)]) {
+        const td = document.createElement("td");
+        td.textContent = String(value);
+        tr.appendChild(td);
+      }
+      body.appendChild(tr);
+    }
+  }
+  const procurement = evidence.procurement_status;
+  if (procurement) {
+    const p = document.createElement("p");
+    p.textContent = tFill(t("trust.procurement", "Status: {warning} {year} is {status}. Failed gates: {gates}. The {invalid} invalid and {future} future award dates are {scope}. Snapshot: {snapshot}."), {
+      warning: evidence.procurement_warning,
+      year: procurement.candidate_year,
+      status: t(`trust.status_${procurement.status}`, procurement.status),
+      gates: procurement.failed_gates.join(", "),
+      invalid: procurement.snapshot_anomalies.invalid_award_date_count,
+      future: procurement.snapshot_anomalies.future_award_date_count,
+      scope: anomalyScopeLabel(procurement.snapshot_anomalies.scope),
+      snapshot: procurement.snapshot_identity,
+    });
+    content.appendChild(p);
   }
 }
 
@@ -2455,6 +2577,7 @@ function wireSearch(input, data, state, render) {
   const closeList = () => {
     list.replaceChildren();
     setActive(-1);
+    input.setAttribute("aria-expanded", "false");
   };
 
   const updateList = () => {
@@ -2467,25 +2590,20 @@ function wireSearch(input, data, state, render) {
       li.textContent = m.name + (selected ? "  ✓" : "");
       li.dataset.psgc = m.psgc;
       li.id = `search-opt-${m.psgc}`;
-      li.tabIndex = 0;
+      li.tabIndex = -1;
       li.setAttribute("role", "option");
       li.setAttribute("aria-selected", selected ? "true" : "false");
       const choose = () => {
-        toggleSel(m.psgc, state, render);
+        chooseArea(m.psgc, state, render);
         input.value = "";
         closeList();
         input.focus();
       };
       li.addEventListener("click", choose);
-      li.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          choose();
-        }
-      });
       list.appendChild(li);
     }
     setActive(-1);
+    input.setAttribute("aria-expanded", ms.length ? "true" : "false");
   };
 
   input.addEventListener("input", updateList);
@@ -2501,26 +2619,28 @@ function wireSearch(input, data, state, render) {
       const pick =
         activeIdx >= 0 && items[activeIdx] ? items[activeIdx].dataset.psgc : null;
       if (pick) {
-        toggleSel(pick, state, render);
+        chooseArea(pick, state, render);
         input.value = "";
         closeList();
+        input.focus();
         return;
       }
       const ms = matches(input.value);
       if (ms.length) {
-        toggleSel(ms[0].psgc, state, render);
+        chooseArea(ms[0].psgc, state, render);
         input.value = "";
         closeList();
+        input.focus();
       }
     } else if (e.key === "Escape") {
+      e.stopPropagation();
       input.value = "";
       closeList();
-      input.blur();
     }
   });
 }
 
-function toggleSel(psgc, state, render) {
+function chooseArea(psgc, state, render) {
   if (state.sel.has(psgc)) state.sel.delete(psgc);
   else state.sel.add(psgc);
   render();
@@ -2546,6 +2666,25 @@ function syncDetailPlacement() {
   }
 }
 
+function syncMobileControlShell(state, data) {
+  const narrow = window.matchMedia("(max-width: 1099px)").matches;
+  const controls = document.getElementById("controls");
+  const shell = document.getElementById("mobile-control-shell");
+  const toggle = document.getElementById("mobile-controls-toggle");
+  const summary = document.getElementById("mobile-selected-summary");
+  if (!controls || !shell || !toggle || !summary) return;
+  const visible = narrow && !state.embed;
+  shell.hidden = !visible;
+  controls.classList.toggle("mobile-controls-open", visible && state.mobileControlsOpen);
+  toggle.setAttribute("aria-expanded", visible && state.mobileControlsOpen ? "true" : "false");
+  toggle.textContent = visible && state.mobileControlsOpen
+    ? t("controls.mobile_controls_hide", "Hide controls")
+    : t("controls.mobile_controls", "Show controls");
+  const units = unitsOf(state.view || state.story, data);
+  const selected = [...state.sel].map((id) => units[id]).filter(Boolean);
+  summary.textContent = selected.map((area) => area.name).join(", ");
+}
+
 function renderSelChips(state, data, render) {
   const root = document.getElementById("selected-chips");
   const hint = document.getElementById("selected-hint");
@@ -2563,12 +2702,22 @@ function renderSelChips(state, data, render) {
     chip.style.color = ink;
     chip.appendChild(document.createTextNode(info.name + " "));
     const btn = document.createElement("button");
-    btn.setAttribute("aria-label", `remove ${info.name}`);
+    btn.id = `chip-remove-${psgc}`;
+    btn.setAttribute("aria-label", tFill(t("controls.remove_area", "Remove {name}"), { name: info.name }));
     btn.style.color = ink;
     btn.textContent = "×";
     btn.addEventListener("click", () => {
+      const ids = [...state.sel];
+      const index = ids.indexOf(psgc);
+      const next = ids[index + 1] || ids[index - 1] || null;
       state.sel.delete(psgc);
       render();
+      queueMicrotask(() => {
+        const target = next
+          ? document.getElementById(`chip-remove-${next}`)
+          : document.getElementById("search");
+        if (target) target.focus();
+      });
     });
     chip.appendChild(btn);
     root.appendChild(chip);
@@ -2675,22 +2824,36 @@ function activeCaveats(view, data, state) {
 
 // ---------- story switcher UI ----------
 
-function renderStorySwitcher(stories, state, view, render) {
+function renderStorySwitcher(stories, state, view, data, render) {
   const nav = document.getElementById("story-switcher");
+  const curated = document.getElementById("curated-view-links");
+  const focusedStoryId = nav.contains(document.activeElement)
+    ? document.activeElement.dataset.storyId
+    : null;
   nav.replaceChildren();
+  if (curated) curated.replaceChildren();
+  if (curated) curated.setAttribute("aria-label", t("trust.curated_views", "curated views"));
   // A preset tab counts as active only when the user has not deviated from
   // its X/Y picks (i.e. view is not custom AND its story id matches).
   const activeId = view.isCustom ? null : state.story.id;
   for (const s of stories) {
     const btn = document.createElement("button");
     btn.type = "button";
+    btn.dataset.storyId = s.id;
     btn.setAttribute("aria-pressed", s.id === activeId ? "true" : "false");
     btn.className = "story-btn" + (s.id === activeId ? " active" : "");
-    btn.textContent = t(
+    const unavailable = failedIndicator(data, s.x) || failedIndicator(data, s.y);
+    if (unavailable) {
+      btn.setAttribute("aria-disabled", "true");
+      btn.disabled = true;
+    }
+    const label = t(
       `stories.${s.id}.tab_label`,
       s.tab_label || s.headline.split(".")[0],
     );
+    btn.textContent = unavailable ? `${label} (${t("trust.unavailable", "unavailable")})` : label;
     btn.addEventListener("click", () => {
+      if (unavailable) return;
       track("story", { id: s.id });
       state.story = s;
       state.xIndicator = s.x;
@@ -2700,6 +2863,18 @@ function renderStorySwitcher(stories, state, view, render) {
       render();
     });
     nav.appendChild(btn);
+    if (curated) {
+      const link = document.createElement("a");
+      link.dataset.storyId = s.id;
+      link.href = `#story=${encodeURIComponent(s.id)}&year=${s.default_year}`;
+      link.textContent = label;
+      if (unavailable) {
+        link.removeAttribute("href");
+        link.setAttribute("aria-disabled", "true");
+        link.textContent = `${label} (${t("trust.unavailable", "unavailable")})`;
+      }
+      curated.appendChild(link);
+    }
   }
   // Append a "Custom" pill when the user has gone off-preset.
   if (view.isCustom) {
@@ -2708,6 +2883,10 @@ function renderStorySwitcher(stories, state, view, render) {
     tag.textContent = "Custom";
     tag.setAttribute("aria-label", "Custom indicator selection");
     nav.appendChild(tag);
+  }
+  if (focusedStoryId) {
+    const next = nav.querySelector(`[data-story-id="${focusedStoryId}"]`);
+    if (next && !next.disabled) next.focus();
   }
 }
 
@@ -2741,7 +2920,7 @@ function renderIndicatorPickers(state, view, data, render) {
       };
     }
     for (const opt of select.options) {
-      opt.disabled = opt.value === otherId;
+      opt.disabled = opt.value === otherId || failedIndicator(data, opt.value);
     }
     select.value = currentId;
   };
@@ -2757,7 +2936,7 @@ function renderIndicatorPickers(state, view, data, render) {
 
 // ---------- sr-only data table ----------
 
-function renderSrTable(story, data, state) {
+function renderSrTable(story, data, state, render) {
   const root = document.getElementById("chart-sr-table");
   const regionMode = isRegionView(story, data);
   const rows = [];
@@ -2774,32 +2953,54 @@ function renderSrTable(story, data, state) {
   // when the loop stops (stopPlay calls render with the flag cleared).
   const summary = document.getElementById("sr-summary");
   if (summary && !IS_AUTOPLAYING) {
-    const yName = data.indicators[story.y] ? data.indicators[story.y].name : story.y;
+    const yName = indicatorName(story.y, data);
     if (rows.length) {
       const byY = [...rows].sort((a, b) => b.y - a.y);
       const hi = byY[0];
       const lo = byY[byY.length - 1];
-      summary.textContent =
-        `${state.year}: ${yName}, ${rows.length} areas. ` +
-        `Highest ${hi.name} ${formatValue(hi.y, story.y)}, ` +
-        `lowest ${lo.name} ${formatValue(lo.y, story.y)}.`;
+      summary.textContent = tFill(
+        t(
+          "controls.chart_summary",
+          "{year}: {indicator}, {count} areas. Highest {highest} {highest_value}, lowest {lowest} {lowest_value}.",
+        ),
+        {
+          year: state.year,
+          indicator: yName,
+          count: rows.length,
+          highest: hi.name,
+          highest_value: formatValue(hi.y, story.y),
+          lowest: lo.name,
+          lowest_value: formatValue(lo.y, story.y),
+        },
+      );
     } else {
-      summary.textContent = `${state.year}: no data for this combination.`;
+      summary.textContent = tFill(
+        t("controls.chart_no_data", "{year}: no data for this combination."),
+        { year: state.year },
+      );
     }
   }
 
   const tbl = document.createElement("table");
   const cap = document.createElement("caption");
-  cap.textContent = `${story.headline} Year ${state.year}, ${rows.length} areas.`;
+  cap.textContent = tFill(
+    t("controls.table_caption", "{headline} Year {year}, {count} areas."),
+    {
+      headline: t(`stories.${story.id}.headline`, story.headline),
+      year: state.year,
+      count: rows.length,
+    },
+  );
   tbl.appendChild(cap);
   const thead = document.createElement("thead");
   const trh = document.createElement("tr");
   for (const h of [
-    regionMode ? "Region" : "Province",
-    "Island group",
-    shortAxisName(story.x, state),
-    shortAxisName(story.y, state),
-    "Population (2020)",
+    regionMode ? t("controls.table_region", "Region") : t("controls.table_province", "Province"),
+    t("controls.table_island", "Island group"),
+    indicatorName(story.x, data),
+    indicatorName(story.y, data),
+    t("controls.table_population", "Population (2020)"),
+    t("controls.select_area", "Select area"),
   ]) {
     const th = document.createElement("th");
     th.scope = "col";
@@ -2812,17 +3013,40 @@ function renderSrTable(story, data, state) {
   const tbody = document.createElement("tbody");
   for (const r of rows) {
     const tr = document.createElement("tr");
+    const name = document.createElement("th");
+    name.scope = "row";
+    name.textContent = r.name;
+    tr.appendChild(name);
     for (const cell of [
-      r.name,
       ISLAND_LABEL[r.island] || r.island,
       formatValue(r.x, story.x),
       formatValue(r.y, story.y),
-      r.pop ? COUNT.format(r.pop) : "not shown at this grain",
+      r.pop ? COUNT.format(r.pop) : t("controls.population_unavailable", "not shown at this grain"),
     ]) {
       const td = document.createElement("td");
       td.textContent = cell;
       tr.appendChild(td);
     }
+    const action = document.createElement("td");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.areaId = r.psgc;
+    // chooseArea toggles, so a button that always reads "Select area" states the
+    // opposite of what it does once the area is chosen.
+    const chosen = state.sel.has(r.psgc);
+    button.setAttribute("aria-pressed", chosen ? "true" : "false");
+    button.textContent = chosen
+      ? t("controls.remove_area_short", "Remove area")
+      : t("controls.select_area", "Select area");
+    button.setAttribute(
+      "aria-label",
+      chosen
+        ? tFill(t("controls.remove_area", "Remove {name}"), { name: r.name })
+        : tFill(t("controls.select_area_named", "Select {name}"), { name: r.name }),
+    );
+    button.addEventListener("click", () => chooseArea(r.psgc, state, render));
+    action.appendChild(button);
+    tr.appendChild(action);
     tbody.appendChild(tr);
   }
   tbl.appendChild(tbody);
@@ -2925,10 +3149,20 @@ function attachAxisInfoButtons(chart, view, data, chartType) {
     pick.type = "button";
     pick.id = `axis-pick-${kind}`;
     pick.className = "axis-pick-btn";
-    pick.setAttribute("aria-haspopup", "listbox");
-    pick.setAttribute("aria-label", `${kind === "x" ? "X" : "Y"} axis indicator: ${info.name}. Click to change.`);
+    const axisLabel = kind === "x" ? t("controls.axis_x", "X axis") : t("controls.axis_y", "Y axis");
+    const label = indicatorName(indicatorId, data);
+    pick.setAttribute("aria-haspopup", "dialog");
+    pick.setAttribute("aria-expanded", "false");
+    pick.setAttribute("aria-controls", "indicator-panel");
+    pick.setAttribute(
+      "aria-label",
+      tFill(t("controls.axis_picker", "{axis} indicator: {name}. Choose an indicator."), {
+        axis: axisLabel,
+        name: label,
+      }),
+    );
     pick.innerHTML = `<span class="axis-pick-name"></span><span class="axis-pick-caret">▾</span>`;
-    pick.querySelector(".axis-pick-name").textContent = info.name;
+    pick.querySelector(".axis-pick-name").textContent = label;
     pick.addEventListener("click", (e) => {
       e.stopPropagation();
       showIndicatorPanel(pick, kind, indicatorId, otherId, data);
@@ -2986,59 +3220,80 @@ function showIndicatorPanel(anchorBtn, kind, currentId, otherId, data) {
   panel.id = "indicator-panel";
   panel.className = `indicator-panel indicator-panel-${kind}`;
   panel.setAttribute("role", "dialog");
-  panel.setAttribute("aria-label", `${kind === "x" ? "X" : "Y"} axis indicator picker`);
+  panel.setAttribute("aria-modal", "false");
+  panel.setAttribute("aria-labelledby", "indicator-panel-title");
+  anchorBtn.setAttribute("aria-expanded", "true");
 
   const header = document.createElement("div");
   header.className = "ipanel-head";
   const title = document.createElement("strong");
-  title.textContent = kind === "x" ? "X axis" : "Y axis";
+  title.id = "indicator-panel-title";
+  title.textContent = kind === "x" ? t("controls.axis_x", "X axis") : t("controls.axis_y", "Y axis");
   header.appendChild(title);
   const close = document.createElement("button");
   close.type = "button";
   close.className = "ipanel-close";
-  close.setAttribute("aria-label", "close");
+  close.setAttribute("aria-label", t("controls.close", "Close"));
   close.textContent = "×";
   close.addEventListener("click", closeIndicatorPanel);
   header.appendChild(close);
   panel.appendChild(header);
 
-  const search = document.createElement("input");
-  search.type = "search";
-  search.className = "ipanel-search";
-  search.placeholder = "Filter indicators";
-  search.setAttribute("aria-label", "filter indicators by name");
-  panel.appendChild(search);
-
   const list = document.createElement("ul");
   list.className = "ipanel-list";
   list.setAttribute("role", "listbox");
+  list.setAttribute("tabindex", "0");
+  list.setAttribute("aria-label", t("controls.axis_picker_list", "Indicators"));
   panel.appendChild(list);
 
   const allIndicators = Object.values(data.indicators);
   // Offer only indicators from the same unit set as the current pick: regional
   // and provincial indicators share no rows, so cross-set pairs plot nothing.
   const panelUnitSet = ((data.indicators || {})[currentId] || {}).unit_set || "provinces";
-  function renderList(filter = "") {
+  let activeIndex = 0;
+  let choices = [];
+  function setActive(index) {
+    if (!choices.length) return;
+    activeIndex = (index + choices.length) % choices.length;
+    const active = choices[activeIndex];
+    list.setAttribute("aria-activedescendant", active.id);
+    for (const option of choices) option.classList.toggle("active-option", option === active);
+    active.scrollIntoView({ block: "nearest" });
+  }
+  function chooseActive() {
+    const active = choices[activeIndex];
+    if (!active) return;
+    const id = active.dataset.indicator;
+    _indicatorPickHandler(kind, id);
+    closeIndicatorPanel(`axis-pick-${kind}`);
+  }
+  function renderList() {
     list.replaceChildren();
-    const q = filter.trim().toLowerCase();
     const filtered = allIndicators.filter(
       (i) =>
         !i.national_only &&
-        (i.unit_set || "provinces") === panelUnitSet &&
-        (!q || i.name.toLowerCase().includes(q) || (i.unit || "").toLowerCase().includes(q)),
+        (i.unit_set || "provinces") === panelUnitSet,
     );
+    choices = [];
     for (const ind of filtered) {
       const li = document.createElement("li");
       li.className = "ipanel-item";
       li.setAttribute("role", "option");
-      const sameAsOther = ind.id === otherId;
+      const sameAsOther = ind.id === otherId || failedIndicator(data, ind.id);
       const isCurrent = ind.id === currentId;
-      if (isCurrent) li.classList.add("active");
-      if (sameAsOther) li.classList.add("disabled");
-      li.setAttribute("aria-selected", isCurrent ? "true" : "false");
       const name = document.createElement("div");
       name.className = "ipanel-name";
-      name.textContent = ind.name;
+      name.textContent = indicatorName(ind.id, data);
+      if (isCurrent) li.classList.add("active");
+      if (sameAsOther) li.classList.add("disabled");
+      if (sameAsOther) li.setAttribute("aria-disabled", "true");
+      if (failedIndicator(data, ind.id)) {
+        li.setAttribute("aria-disabled", "true");
+        name.textContent = `${indicatorName(ind.id, data)} (${t("trust.unavailable", "unavailable")})`;
+      }
+      li.dataset.indicator = ind.id;
+      li.id = `axis-option-${kind}-${ind.id}`;
+      li.setAttribute("aria-selected", isCurrent ? "true" : "false");
       const meta = document.createElement("div");
       meta.className = "ipanel-meta";
       const unit = ind.unit ? ind.unit : "";
@@ -3047,24 +3302,36 @@ function showIndicatorPanel(anchorBtn, kind, currentId, otherId, data) {
       li.appendChild(name);
       if (unit || flag) li.appendChild(meta);
       if (!sameAsOther) {
-        li.tabIndex = 0;
+        li.tabIndex = -1;
+        choices.push(li);
         li.addEventListener("click", () => {
           _indicatorPickHandler(kind, ind.id);
-          closeIndicatorPanel();
-        });
-        li.addEventListener("keydown", (e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            _indicatorPickHandler(kind, ind.id);
-            closeIndicatorPanel();
-          }
+          closeIndicatorPanel(`axis-pick-${kind}`);
         });
       }
       list.appendChild(li);
     }
+    setActive(Math.max(0, choices.findIndex((option) => option.dataset.indicator === currentId)));
   }
   renderList();
-  search.addEventListener("input", () => renderList(search.value));
+  list.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActive(activeIndex + 1);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive(activeIndex - 1);
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      setActive(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      setActive(choices.length - 1);
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      chooseActive();
+    }
+  });
 
   // Position the panel near the anchor, clamped to chart bounds.
   const aRect = anchorBtn.getBoundingClientRect();
@@ -3082,7 +3349,7 @@ function showIndicatorPanel(anchorBtn, kind, currentId, otherId, data) {
   panel.style.maxHeight = `${Math.min(rRect.height - 24, 520)}px`;
 
   root.appendChild(panel);
-  setTimeout(() => search.focus(), 0);
+  setTimeout(() => list.focus(), 0);
   setTimeout(() => {
     document.addEventListener("click", _outsideIndicatorClick, { capture: true });
     document.addEventListener("keydown", _escIndicatorClose);
@@ -3095,10 +3362,13 @@ function _outsideIndicatorClick(e) {
 }
 
 function _escIndicatorClose(e) {
-  if (e.key === "Escape") closeIndicatorPanel();
+  if (e.key === "Escape") {
+    e.stopPropagation();
+    closeIndicatorPanel();
+  }
 }
 
-function closeIndicatorPanel() {
+function closeIndicatorPanel(restoreId = null) {
   const panel = document.getElementById("indicator-panel");
   if (panel) panel.remove();
   _indicatorPanelOpenFor = null;
@@ -3106,8 +3376,12 @@ function closeIndicatorPanel() {
   document.removeEventListener("keydown", _escIndicatorClose);
   // Restore focus to the picker pill that opened the panel (WCAG 2.4.3).
   // No-op if it was detached by a re-render after a selection.
-  if (_indicatorPanelTrigger && document.contains(_indicatorPanelTrigger)) {
-    _indicatorPanelTrigger.focus();
+  const trigger = restoreId
+    ? document.getElementById(restoreId)
+    : _indicatorPanelTrigger;
+  if (trigger && document.contains(trigger)) {
+    trigger.setAttribute("aria-expanded", "false");
+    trigger.focus();
   }
   _indicatorPanelTrigger = null;
 }
@@ -3128,6 +3402,10 @@ function showAxisPopover(anchorBtn, info) {
   pop.setAttribute("role", "dialog");
   pop.setAttribute("aria-modal", "false");
   const title = document.createElement("h3");
+  // A role=dialog with no name is announced as an unnamed dialog, so the heading
+  // that already carries the indicator name becomes that name.
+  title.id = "axis-popover-title";
+  pop.setAttribute("aria-labelledby", title.id);
   title.textContent = info.name;
   pop.appendChild(title);
   const body = document.createElement("p");
@@ -3286,6 +3564,7 @@ async function main() {
     sizeBy: initial.sizeBy,
     view: null,
     howtoDismissed: readHowtoDismissed(),
+    mobileControlsOpen: false,
     // Guided-narrative arc state (Rosling hook->reveal->twist->release). null when
     // the reader is in free explore; an object {beat, annotation, dim, quadrant}
     // while the arc is running. render() reads it to overlay on-chart narration.
@@ -3342,6 +3621,11 @@ async function main() {
     const findingEl = document.getElementById("story-finding");
     if (!findingEl) return;
     const prefix = t("finding.prefix", "What the data shows.");
+    if (failedIndicator(data, view.x) || failedIndicator(data, view.y)) {
+      findingEl.textContent = "This finding is unavailable because supporting data did not load. Refresh to retry.";
+      findingEl.hidden = false;
+      return;
+    }
     const f = !view.isCustom ? view.finding : null;
     if (view.isCustom) {
       const lf = computeLiveFinding(view, data, state);
@@ -3488,6 +3772,7 @@ async function main() {
       // Computed finding: the data-grounded answer to the story's question.
       // (Year-dependent, so the autoplay fast path renderFrame() calls it too.)
       updateFindingBox(view);
+      renderViewEvidence(view, data, state);
       // Axis caveats: awards-not-disbursement, single-snapshot, short-panel.
       const caveatEl = document.getElementById("story-caveat");
       if (caveatEl) {
@@ -3542,7 +3827,7 @@ async function main() {
       // Indicator pickers (X + Y dropdowns)
       renderIndicatorPickers(state, view, data, render);
       // Story tabs (mark active when view matches preset exactly)
-      renderStorySwitcher(data.stories, state, view, render);
+      renderStorySwitcher(data.stories, state, view, data, render);
       // Year stepper + compare year selector
       renderYearControls(state, view, render);
       // Chart-type strip active state. The Panels tab (the side-by-side
@@ -3637,6 +3922,15 @@ async function main() {
           ? t("controls.find_region", "Find a region")
           : t("controls.find", findHead.dataset.i18nEn || "Find a province");
       }
+      const search = document.getElementById("search");
+      if (search) {
+        search.setAttribute(
+          "aria-label",
+          regionMode
+            ? t("controls.find_region", "Find a region")
+            : t("controls.find", "Find a province"),
+        );
+      }
       const selHint = document.getElementById("selected-hint");
       if (selHint) {
         // On touch, the first tap on a bubble shows the tooltip and the second
@@ -3694,8 +3988,9 @@ async function main() {
       attachAxisInfoButtons(chart, view, data, state.chartType);
       // Selection chips
       renderSelChips(state, data, render);
+      syncMobileControlShell(state, data);
       // SR mirror
-      renderSrTable(view, data, state);
+      renderSrTable(view, data, state, render);
       // URL hash
       writeHash(state, view);
       // Keep the finding/caveat on the correct side of the chart for this width.
@@ -3748,11 +4043,12 @@ async function main() {
     // a "chart is showing YEAR" note), and the URL hash.
     renderYearControls(state, view, render);
     updateFindingBox(view);
+    renderViewEvidence(view, data, state);
     writeHash(state, view);
     const now = Date.now();
     if (now - srTableLastAt >= SR_TABLE_PLAY_THROTTLE_MS) {
       srTableLastAt = now;
-      renderSrTable(view, data, state);
+      renderSrTable(view, data, state, render);
     }
   }
 
@@ -3761,7 +4057,7 @@ async function main() {
     const panel = (state.view && state.view.panel_years) || state.story.panel_years;
     state.year = panel[e.currentIndex];
     writeHash(state, state.view);
-    if (state.view) renderSrTable(state.view, data, state);
+    if (state.view) renderSrTable(state.view, data, state, render);
   });
 
   let lastTapPsgc = null;
@@ -3771,7 +4067,7 @@ async function main() {
     // Map mode: click a province to pin/unpin it (round-trips with bubble select).
     if (params.seriesId === "map") {
       const mpsgc = params.data && params.data.psgc;
-      if (mpsgc) toggleSel(mpsgc, state, render);
+      if (mpsgc) chooseArea(mpsgc, state, render);
       return;
     }
     if (params.seriesId !== "bubbles") return;
@@ -3787,12 +4083,12 @@ async function main() {
       lastTapPsgc = psgc;
       lastTapAt = now;
       if (isRepeat) {
-        toggleSel(psgc, state, render);
+        chooseArea(psgc, state, render);
         lastTapPsgc = null;
       }
       return;
     }
-    toggleSel(psgc, state, render);
+    chooseArea(psgc, state, render);
   });
 
   document.getElementById("log-toggle").addEventListener("click", () => {
@@ -3823,12 +4119,18 @@ async function main() {
   // Optional indicator files that failed to fetch degraded to empty series
   // (population also drives bubble size). Tell the reader once, quietly.
   if (data.optionalFailures && data.optionalFailures.length) {
-    console.warn("optional data files failed to load:", data.optionalFailures);
+    console.warn("optional data files failed to load:", data.optionalFailures.map((f) => f.path));
     const optNotice = document.getElementById("optional-load-notice");
-    if (optNotice) optNotice.hidden = false;
+    if (optNotice) {
+      optNotice.hidden = false;
+      const populationFailed = failedIndicator(data, "population");
+      optNotice.textContent = populationFailed
+        ? t("trust.population_fallback", "Population data did not load. The plot uses equal-size bubbles. Refresh to retry.")
+        : t("trust.optional_failure", "Some optional indicators are unavailable because their data did not load. Refresh to retry.");
+    }
     // Without a signal, a corrupt or missing optional file degrades every
     // visitor's chart for weeks before anyone notices.
-    track("soft_fail", { files: data.optionalFailures.join(",").slice(0, 200) });
+    track("soft_fail", { files: data.optionalFailures.map((failure) => failure.path).join(",").slice(0, 200) });
   }
 
   document.getElementById("csv").addEventListener("click", () => {
@@ -3839,6 +4141,59 @@ async function main() {
   document.getElementById("csv-all").addEventListener("click", () => {
     track("export", { fmt: "csv", scope: "all" });
     downloadCsv(state.view || state.story, data, state, true);
+  });
+
+  function downloadText(text, filename, type) {
+    const url = URL.createObjectURL(new Blob([text], { type }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  function viewBundle() {
+    const view = state.view || state.story;
+    const params = canonicalParams(state, view);
+    params.delete("embed");
+    const viewUrl = `${window.location.origin}${window.location.pathname}#${params.toString()}`;
+    const sourceIds = Object.fromEntries(
+      [view.x, view.y].map((id) => [id, data.viewEvidence.indicators[id]?.source_ids || []]),
+    );
+    const artifactIds = Object.fromEntries(
+      [view.x, view.y].map((id) => [
+        id,
+        data.manifest?.sha256_per_file?.[data.viewEvidence.indicators[id]?.source_id] || null,
+      ]),
+    );
+    const pairName = view.isCustom ? `${view.x}-vs-${view.y}` : view.id;
+    const citation = `dataviz.ph. ${view.headline}. ${viewUrl}. Build timestamp: ${data.manifest?.built_at || "unknown"}.`;
+    return {
+      canonical_state: { ...Object.fromEntries(params), year: state.year },
+      csv_field_contract: ["psgc", "province", "island_group", "year", "x_indicator", "x_value", "x_unit", "y_indicator", "y_value", "y_unit", "population_2020", "interpolated", "extrapolated"],
+      citation,
+      method_url: `${window.location.origin}/methodology`,
+      view_url: viewUrl,
+      source_ids: sourceIds,
+      artifact_ids: artifactIds,
+      build_timestamp: data.manifest?.built_at || "unknown",
+      build_id: data.manifest?.sha256_per_file?.["view_evidence.json"] || "unknown",
+      snapshot_ids: { philgeps: data.viewEvidence.procurement_status?.snapshot_identity || null },
+      warnings: Object.fromEntries([view.x, view.y].map((id) => [id, runtimeEvidence(data, id)?.warnings || []])),
+      coverage: Object.fromEntries([view.x, view.y].map((id) => [id, runtimeEvidence(data, id)?.coverage || []])),
+    };
+  }
+
+  document.getElementById("metadata-json").addEventListener("click", () => {
+    const view = state.view || state.story;
+    const pairName = view.isCustom ? `${view.x}-vs-${view.y}` : view.id;
+    downloadText(JSON.stringify(viewBundle(), null, 2) + "\n", `dataviz-ph-${pairName}-${state.year}-metadata.json`, "application/json");
+  });
+
+  document.getElementById("citation-text").addEventListener("click", () => {
+    const view = state.view || state.story;
+    const pairName = view.isCustom ? `${view.x}-vs-${view.y}` : view.id;
+    downloadText(viewBundle().citation + "\n", `dataviz-ph-${pairName}-${state.year}-citation.txt`, "text/plain;charset=utf-8");
   });
 
   // Island-group focus filter: each legend row toggles its group in/out of the
@@ -3946,6 +4301,7 @@ async function main() {
   // perf script and browser tests time the full render vs the play-tick frame
   // path directly instead of guessing from wall-clock playback.
   window.__datavizph_render = render;
+  window.__datavizph_chooseArea = (psgc) => chooseArea(psgc, state, render);
   window.__datavizph_playTick = playTick;
   // Read-only: true while the autoplay interval is armed. Lets the visibility
   // pause/resume test assert timer state without racing wall-clock year advance.
@@ -4017,11 +4373,23 @@ async function main() {
 
   const replayBtn = document.getElementById("replay-arc");
   const skipBtn = document.getElementById("arc-skip");
+  const startChoice = document.getElementById("story-start");
+  const playGuidedBtn = document.getElementById("play-guided-story");
+  const exploreBtn = document.getElementById("explore-data");
   const showReplay = (show) => {
     if (replayBtn) replayBtn.hidden = !show;
   };
   const showSkip = (show) => {
     if (skipBtn) skipBtn.hidden = !show;
+  };
+  const showStartChoice = (show) => {
+    if (startChoice) startChoice.hidden = !show;
+  };
+  // The first-use choice removes itself from the page, so the button that was
+  // pressed disappears and focus falls to the body unless it is moved here.
+  const focusChart = () => {
+    const chartEl = document.getElementById("chart");
+    if (chartEl) queueMicrotask(() => chartEl.focus());
   };
   function pulseControls() {
     if (bigPlay) {
@@ -4118,6 +4486,35 @@ async function main() {
     // Never narrate inside an iframe: an embed is someone else's page, and the
     // chrome the arc relies on (skip/replay, finding box) is hidden there.
     if (state.embed) return;
+    if (REDUCE_MOTION) {
+      // Reduced motion drops the animation, not the story. Land straight on the
+      // beat the animation exists to reach: the spend story at its last year,
+      // the median-split quadrant, and the non-result stated on the chart. No
+      // timers, no autoplay, no cross-fade.
+      stopPlay();
+      writeArcSeen();
+      showStartChoice(false);
+      showSkip(false);
+      arcSetStory(spendStory);
+      state.sel = new Set();
+      // The year stays where the reader left it. spendRho is the finding for the
+      // displayed year, so moving the year would print one year's rho over
+      // another year's cloud.
+      setArc({
+        beat: "reveal-end",
+        dim: false,
+        quadrant: true,
+        annotation: {
+          pos: "lowerLeft",
+          color: "#111",
+          text: `No link. ρ = ${fmtRho(spendRho)}.`,
+          sub: "Across the provinces and Metro Manila, higher road spending did not track lower poverty.",
+        },
+      });
+      showReplay(true);
+      focusChart();
+      return;
+    }
     // Stop any live autoplay loop so startPlay() in beat REVEAL doesn't early-return.
     stopPlay();
     arcRunning = true;
@@ -4310,6 +4707,22 @@ async function main() {
       runArc();
     });
   }
+  if (playGuidedBtn) {
+    playGuidedBtn.addEventListener("click", () => {
+      showStartChoice(false);
+      runArc();
+    });
+  }
+  if (exploreBtn) {
+    exploreBtn.addEventListener("click", () => {
+      writeArcSeen();
+      showStartChoice(false);
+      showReplay(true);
+      // The button the reader just pressed leaves the page, so send focus to the
+      // chart instead of dropping it back on the document body (WCAG 2.4.3).
+      focusChart();
+    });
+  }
   window.__datavizph_runArc = runArc;
   // Read-only accessor for the current arc beat (null in free explore). Lets tests
   // and the screenshot harness sync to a beat deterministically instead of racing
@@ -4466,6 +4879,12 @@ async function main() {
       applyStaticLocale();
       syncLangButton();
       render();
+      const optNotice = document.getElementById("optional-load-notice");
+      if (optNotice && data.optionalFailures.length) {
+        optNotice.textContent = failedIndicator(data, "population")
+          ? t("trust.population_fallback", "Population data did not load. The plot uses equal-size bubbles. Refresh to retry.")
+          : t("trust.optional_failure", "Some optional indicators are unavailable because their data did not load. Refresh to retry.");
+      }
       // Be honest that the Tagalog layer is partial: the first-read surface and
       // controls are translated, but the methodology, footer, and the public-data
       // disclaimer stay in English. Saying "beta" reads as in-progress, not broken.
@@ -4479,6 +4898,24 @@ async function main() {
 
   document.getElementById("year-prev").addEventListener("click", () => {
     stepYear(state, -1, render);
+  });
+
+  const mobileControlsToggle = document.getElementById("mobile-controls-toggle");
+  mobileControlsToggle.addEventListener("click", () => {
+    state.mobileControlsOpen = !state.mobileControlsOpen;
+    render();
+    if (state.mobileControlsOpen) {
+      queueMicrotask(() => document.getElementById("search")?.focus());
+    }
+  });
+
+  document.getElementById("mobile-trust-link").addEventListener("click", () => {
+    const trust = document.getElementById("view-trust");
+    const summary = trust?.querySelector(":scope > summary");
+    if (!trust || !summary) return;
+    trust.open = true;
+    summary.scrollIntoView({ block: "start" });
+    summary.focus();
   });
   document.getElementById("year-next").addEventListener("click", () => {
     stepYear(state, +1, render);
@@ -4536,25 +4973,52 @@ async function main() {
 
   wireSearch(document.getElementById("search"), data, state, render);
 
-  // Keyboard year scrubbing (arrow keys when nothing else has focus).
+  let lastControlFocusId = null;
+  document.addEventListener("focusin", (e) => {
+    if (e.target.closest?.("#controls")) lastControlFocusId = e.target.id;
+  });
+
+  // Keyboard year scrubbing works only from a non-interactive chart surface.
   window.addEventListener("keydown", (e) => {
-    const tag = (e.target.tagName || "").toLowerCase();
-    if (tag === "input" || tag === "textarea" || tag === "select") return;
+    if (e.key === "Escape" && state.mobileControlsOpen) {
+      state.mobileControlsOpen = false;
+      render();
+      queueMicrotask(() => mobileControlsToggle.focus());
+      return;
+    }
+    const target = e.target;
+    if (
+      target &&
+      target.closest &&
+      target.closest(
+        "a[href], button, input, textarea, select, summary, [contenteditable]:not([contenteditable='false']), [role=button], [role=combobox], [role=link], [role=listbox], [role=menuitem], [role=option]",
+      )
+    ) {
+      return;
+    }
     const panel = (state.view && state.view.panel_years) || state.story.panel_years;
     if (e.key === "ArrowRight") {
       stepYear(state, +1, render);
     } else if (e.key === "ArrowLeft") {
       stepYear(state, -1, render);
-    } else if (e.key === "Home") {
-      state.year = panel[0];
-      render();
-    } else if (e.key === "End") {
-      state.year = panel[panel.length - 1];
+    } else if (e.key === "Home" || e.key === "End") {
+      // Home and End belong to the page. Scrub only while the chart holds focus,
+      // otherwise one press both scrolled the document and jumped the year.
+      const chartEl = document.getElementById("chart");
+      if (!chartEl || !chartEl.contains(document.activeElement)) return;
+      e.preventDefault();
+      state.year = e.key === "Home" ? panel[0] : panel[panel.length - 1];
       render();
     }
   });
 
-  window.addEventListener("resize", () => chart.resize());
+  window.addEventListener("resize", () => {
+    const activeId = document.activeElement?.id || lastControlFocusId;
+    chart.resize();
+    syncMobileControlShell(state, data);
+    const active = activeId && document.getElementById(activeId);
+    if (active && active.offsetParent) active.focus();
+  });
   // Re-place the finding/caveat when crossing the mobile breakpoint (rotate/resize).
   window.matchMedia("(max-width: 1099px)").addEventListener("change", syncDetailPlacement);
   window.addEventListener("hashchange", () => {
@@ -4572,6 +5036,7 @@ async function main() {
     state.logX = next.logX;
     state.sel = next.sel;
     state.deflate = next.deflate;
+    state.extrapolate = next.extrapolate;
     state.grp = next.grp;
     state.speed = next.speed;
     state.colorBy = next.colorBy;
@@ -4607,21 +5072,10 @@ async function main() {
     state.year = panel.includes(safeFirstYear) ? safeFirstYear : panel[0];
     render();
 
-    if (REDUCE_MOTION) {
-      // No auto-run under reduced motion. Offer the narrated story on demand; the
-      // default annotated view + finding box already make the point statically.
-      showReplay(true);
-    } else if (!readArcSeen()) {
-      // First visit: the full guided arc (hook -> reveal -> twist -> release).
-      runArc();
-    } else {
-      // Returning visitor: the familiar gentle autoplay, plus a button to replay
-      // the guided story for anyone who wants the narration again.
-      setTimeout(() => {
-        if (!arcRunning) startPlay();
-      }, 500);
-      showReplay(true);
-    }
+    // Keep every first and returning view static. Readers choose whether to run
+    // the guided narrative, including when reduced motion is active.
+    if (readArcSeen()) showReplay(true);
+    else showStartChoice(true);
   }
 }
 
@@ -4649,7 +5103,7 @@ main().catch((e) => {
   root.appendChild(msg);
   // Without data every control is dead weight; hide the shell so the page does
   // not look interactive when nothing behind it works.
-  for (const id of ["controls", "chart-type-strip", "big-play"]) {
+  for (const id of ["controls", "chart-type-strip", "big-play", "view-evidence-panel"]) {
     const el = document.getElementById(id);
     if (el) el.hidden = true;
   }

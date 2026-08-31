@@ -16,7 +16,9 @@ PhilGEPS contract awards, GDP, poverty) as a static site built from open records
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+python -m pip install --requirement requirements.lock
+python -m pip install --no-deps -e "."
+python -m pip check
 python -m etl.build        # regenerates public/data/*.json from the sources
 ```
 

@@ -9,6 +9,7 @@ Covers:
 - Unknown / regional aggregate names return None instead of false-positive
 """
 
+from etl.geography import build_geography_crosswalk
 from etl.psgc import (
     ALIASES,
     HUC_TO_PARENT,
@@ -123,3 +124,36 @@ def test_aliases_keys_are_lowercased():
     """ALIASES keys must be lower-case since normalize_name lower-cases input."""
     for key in ALIASES:
         assert key == key.lower(), f"{key!r} must be lowercase in ALIASES"
+
+
+def test_current_split_maguindanao_names_map_to_declared_historical_analysis_unit():
+    """Current PSA identities do not create new historical analysis rows."""
+    provs = _fake_provinces()
+    provs["153800000"] = {
+        "name": "Maguindanao",
+        "island_group": "barmm",
+        "region_code": "1900000000",
+    }
+
+    assert normalize_name("Maguindanao del Norte", provs, series="population") == "153800000"
+    assert normalize_name("Maguindanao del Sur", provs, series="procurement") == "153800000"
+    assert normalize_name("Maguindanao del Norte", provs) is None
+    maguindanao = [
+        item
+        for item in build_geography_crosswalk()["mappings"]
+        if item["analysis_psgc"] == "153800000"
+    ]
+    assert {item["source_psgc"] for item in maguindanao} == {"1908700000", "1908800000"}
+
+
+def test_load_provinces_uses_stable_crosswalk_instead_of_the_mutable_mirror(monkeypatch):
+    monkeypatch.setattr(
+        "etl.psgc._fetch_provinces_raw",
+        lambda: (_ for _ in ()).throw(AssertionError("legacy mirror must not define identities")),
+    )
+
+    provinces = __import__("etl.psgc", fromlist=["load_provinces"]).load_provinces()
+
+    assert len(provinces) == 82
+    assert provinces["153800000"]["source_psgcs"] == ["1908700000", "1908800000"]
+    assert provinces[NCR_CODE]["geography_role"] == "virtual_ncr"
