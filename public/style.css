@@ -779,6 +779,20 @@ select:focus-visible {
 #controls .block:has(#csv) > button { flex: 1 1 auto; min-width: 0; text-align: center; }
 #controls .block:has(#csv) > .hint { flex: 1 0 100%; }
 
+#view-evidence-panel {
+  margin: 0.75rem 1.25rem;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  min-width: 0;
+}
+
+#view-trust summary { cursor: pointer; font-weight: 700; }
+#view-trust-content { margin: 0.7rem 0; color: var(--muted); overflow-wrap: anywhere; }
+#view-trust-content p { margin: 0.35rem 0; }
+#view-coverage { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.85rem; }
+#view-coverage th, #view-coverage td { padding: 0.3rem; border-top: 1px solid var(--rule); overflow-wrap: anywhere; text-align: left; }
+
 /* --- Axis pickers overlay (Gapminder pattern) -------------------------- */
 
 #axis-info-layer {

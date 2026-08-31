@@ -104,6 +104,8 @@
     "extrap_hint": "Linear na pinapalawig ang kahirapan lampas sa huling PSA survey year.",
     "download": "I-download",
     "csv_all": "CSV (lahat ng taon)",
+    "metadata_json": "Metadata JSON",
+    "citation_text": "Teksto ng citation",
     "link": "Link",
     "howto": "Bawat bula ay isang lalawigan o Metro Manila. Laki = populasyon. Pindutin ang play para panoorin ang {span}.",
     "hint_tap_map": "I-tap ang isang lalawigan para manatili ang pangalan nito.",

@@ -233,9 +233,9 @@ async function loadData() {
   // the page can say so (a silently absent population.json would otherwise just
   // strip the size encoding with no signal to the reader).
   const optionalFailures = [];
-  const optJson = (path, fallback) =>
+  const optJson = (path, fallback, indicatorId) =>
     fetchJson(path).catch(() => {
-      optionalFailures.push(path);
+      optionalFailures.push({ path, indicatorId });
       return fallback;
     });
   const [
@@ -259,27 +259,29 @@ async function loadData() {
     stories,
     pairHeadlines,
     manifest,
+    viewEvidence,
   ] = await Promise.all([
     fetchJson("data/provinces.json"),
     optJson("data/regions.json", {}),
     fetchJson("data/poverty.json"),
-    optJson("data/subsistence.json", []),
+    optJson("data/subsistence.json", [], "subsistence_incidence"),
     fetchJson("data/dpwh_spend_per_capita.json"),
     fetchJson("data/all_spend_per_capita.json"),
-    optJson("data/doh_spend_per_capita.json", []),
-    optJson("data/infra_spend_per_capita.json", []),
+    optJson("data/doh_spend_per_capita.json", [], "doh_spend_per_capita"),
+    optJson("data/infra_spend_per_capita.json", [], "infra_spend_per_capita"),
     fetchJson("data/gdp_per_capita.json"),
-    optJson("data/dpwh_share_pct.json", []),
-    optJson("data/cpi_yoy_pct.json", []),
-    optJson("data/poverty_change_pp.json", []),
-    optJson("data/dpwh_spend_per_capita_cum.json", []),
-    optJson("data/population.json", []),
-    optJson("data/region_poverty.json", []),
-    optJson("data/region_cpi_yoy_pct.json", []),
+    optJson("data/dpwh_share_pct.json", [], "dpwh_share_pct"),
+    optJson("data/cpi_yoy_pct.json", [], "cpi_yoy_pct"),
+    optJson("data/poverty_change_pp.json", [], "poverty_change_pp"),
+    optJson("data/dpwh_spend_per_capita_cum.json", [], "dpwh_spend_per_capita_cum"),
+    optJson("data/population.json", [], "population"),
+    optJson("data/region_poverty.json", [], "region_poverty"),
+    optJson("data/region_cpi_yoy_pct.json", [], "region_cpi_yoy_pct"),
     fetchJson("data/indicators.json"),
     fetchJson("data/stories.json"),
     optJson("data/pair_headlines.json", {}),
     fetchJson("data/manifest.json").catch(() => null),
+    fetchJson("data/view_evidence.json"),
   ]);
   return {
     optionalFailures,
@@ -305,7 +307,34 @@ async function loadData() {
     stories,
     pairHeadlines,
     manifest,
+    viewEvidence,
   };
+}
+
+function failedIndicator(data, indicatorId) {
+  return data.optionalFailures.some((failure) => failure.indicatorId === indicatorId);
+}
+
+function canonicalParams(state, view) {
+  const params = new URLSearchParams();
+  params.set("story", state.story.id);
+  if (view && view.isCustom) {
+    params.set("x", view.x);
+    params.set("y", view.y);
+  }
+  if (state.chartType !== "bubbles") params.set("ct", state.chartType);
+  if (state.extrapolate) params.set("extrap", "on");
+  params.set("year", state.year);
+  params.set("log", state.logX ? "x" : "none");
+  params.set("deflate", state.deflate ? "real" : "nominal");
+  if (state.compareYear) params.set("cmp", state.compareYear);
+  if (state.sel.size) params.set("sel", [...state.sel].sort().join(","));
+  if (state.grp.size) params.set("grp", [...state.grp].sort().join(","));
+  if (state.speed !== 1) params.set("spd", String(state.speed));
+  if (state.colorBy === "yq") params.set("col", "yq");
+  if (state.sizeBy === "eq") params.set("size", "eq");
+  if (state.embed) params.set("embed", "1");
+  return params;
 }
 
 // Look up a per-pair headline + tagline by sorted indicator IDs.
@@ -2385,29 +2414,7 @@ function writeHash(state, view) {
   // and pins/unpins provinces transiently; persisting those mid-show would leave a
   // misleading shareable link. The first post-arc render writes a clean hash.
   if (state.arc) return;
-  const params = new URLSearchParams();
-  params.set("story", state.story.id);
-  // Round-trip custom indicator picks only when they diverge from the preset.
-  if (view && view.isCustom) {
-    params.set("x", view.x);
-    params.set("y", view.y);
-  }
-  if (state.chartType && state.chartType !== "bubbles") {
-    params.set("ct", state.chartType);
-  }
-  if (state.extrapolate) {
-    params.set("extrap", "on");
-  }
-  params.set("year", state.year);
-  params.set("log", state.logX ? "x" : "none");
-  params.set("deflate", state.deflate ? "real" : "nominal");
-  if (state.compareYear) params.set("cmp", state.compareYear);
-  if (state.sel.size) params.set("sel", [...state.sel].join(","));
-  if (state.grp && state.grp.size) params.set("grp", [...state.grp].join(","));
-  if (state.speed && state.speed !== 1) params.set("spd", String(state.speed));
-  if (state.colorBy === "yq") params.set("col", "yq");
-  if (state.sizeBy === "eq") params.set("size", "eq");
-  if (state.embed) params.set("embed", "1");
+  const params = canonicalParams(state, view);
   window.history.replaceState(null, "", "#" + params.toString());
   // The embed attribution chip links to the full explorer view: the same state
   // minus the embed flag. Kept in sync here so the link always mirrors the chart.
@@ -2417,6 +2424,37 @@ function writeHash(state, view) {
       params.delete("embed");
       chip.href = `${window.location.origin}${window.location.pathname}#${params.toString()}`;
     }
+  }
+}
+
+function renderViewEvidence(view, data, state) {
+  const evidence = data.viewEvidence;
+  const content = document.getElementById("view-trust-content");
+  const body = document.querySelector("#view-coverage tbody");
+  if (!evidence || !content || !body) return;
+  const active = [view.x, view.y].map((id) => evidence.indicators[id]).filter(Boolean);
+  content.replaceChildren();
+  body.replaceChildren();
+  for (const item of active) {
+    const year = item.coverage.find((row) => row.year === state.year);
+    const p = document.createElement("p");
+    p.textContent = `Source: ${item.source}. Update: ${item.release}. Grain: ${item.natural_grain}. Transforms: ${item.transforms}. Current-year coverage: ${year ? `${year.status}, ${year.source_units} of ${year.target_units}` : "unavailable"}. Archive: ${item.archive_url}.`;
+    content.appendChild(p);
+    for (const row of item.coverage) {
+      const tr = document.createElement("tr");
+      for (const value of [item.source_id, row.year, `${row.status}, ${row.source_units} of ${row.target_units}`]) {
+        const td = document.createElement("td");
+        td.textContent = String(value);
+        tr.appendChild(td);
+      }
+      body.appendChild(tr);
+    }
+  }
+  const procurement = evidence.procurement_status;
+  if (procurement) {
+    const p = document.createElement("p");
+    p.textContent = `Status: Awards are not disbursements. 2025 is unavailable. Failed gates: ${procurement.failed_gates.join(", ")}. The ${procurement.snapshot_anomalies.invalid_award_date_count} invalid and ${procurement.snapshot_anomalies.future_award_date_count} future award dates are snapshot-wide, not 2025-row anomalies. Snapshot: ${procurement.snapshot_identity}.`;
+    content.appendChild(p);
   }
 }
 
@@ -2675,7 +2713,7 @@ function activeCaveats(view, data, state) {
 
 // ---------- story switcher UI ----------
 
-function renderStorySwitcher(stories, state, view, render) {
+function renderStorySwitcher(stories, state, view, data, render) {
   const nav = document.getElementById("story-switcher");
   nav.replaceChildren();
   // A preset tab counts as active only when the user has not deviated from
@@ -2686,11 +2724,15 @@ function renderStorySwitcher(stories, state, view, render) {
     btn.type = "button";
     btn.setAttribute("aria-pressed", s.id === activeId ? "true" : "false");
     btn.className = "story-btn" + (s.id === activeId ? " active" : "");
+    const unavailable = failedIndicator(data, s.x) || failedIndicator(data, s.y);
+    btn.disabled = unavailable;
+    if (unavailable) btn.title = "Unavailable because its supporting data did not load.";
     btn.textContent = t(
       `stories.${s.id}.tab_label`,
       s.tab_label || s.headline.split(".")[0],
     );
     btn.addEventListener("click", () => {
+      if (unavailable) return;
       track("story", { id: s.id });
       state.story = s;
       state.xIndicator = s.x;
@@ -2741,7 +2783,7 @@ function renderIndicatorPickers(state, view, data, render) {
       };
     }
     for (const opt of select.options) {
-      opt.disabled = opt.value === otherId;
+      opt.disabled = opt.value === otherId || failedIndicator(data, opt.value);
     }
     select.value = currentId;
   };
@@ -3031,7 +3073,7 @@ function showIndicatorPanel(anchorBtn, kind, currentId, otherId, data) {
       const li = document.createElement("li");
       li.className = "ipanel-item";
       li.setAttribute("role", "option");
-      const sameAsOther = ind.id === otherId;
+      const sameAsOther = ind.id === otherId || failedIndicator(data, ind.id);
       const isCurrent = ind.id === currentId;
       if (isCurrent) li.classList.add("active");
       if (sameAsOther) li.classList.add("disabled");
@@ -3342,6 +3384,11 @@ async function main() {
     const findingEl = document.getElementById("story-finding");
     if (!findingEl) return;
     const prefix = t("finding.prefix", "What the data shows.");
+    if (failedIndicator(data, view.x) || failedIndicator(data, view.y)) {
+      findingEl.textContent = "This finding is unavailable because supporting data did not load. Refresh to retry.";
+      findingEl.hidden = false;
+      return;
+    }
     const f = !view.isCustom ? view.finding : null;
     if (view.isCustom) {
       const lf = computeLiveFinding(view, data, state);
@@ -3488,6 +3535,7 @@ async function main() {
       // Computed finding: the data-grounded answer to the story's question.
       // (Year-dependent, so the autoplay fast path renderFrame() calls it too.)
       updateFindingBox(view);
+      renderViewEvidence(view, data, state);
       // Axis caveats: awards-not-disbursement, single-snapshot, short-panel.
       const caveatEl = document.getElementById("story-caveat");
       if (caveatEl) {
@@ -3542,7 +3590,7 @@ async function main() {
       // Indicator pickers (X + Y dropdowns)
       renderIndicatorPickers(state, view, data, render);
       // Story tabs (mark active when view matches preset exactly)
-      renderStorySwitcher(data.stories, state, view, render);
+      renderStorySwitcher(data.stories, state, view, data, render);
       // Year stepper + compare year selector
       renderYearControls(state, view, render);
       // Chart-type strip active state. The Panels tab (the side-by-side
@@ -3823,9 +3871,12 @@ async function main() {
   // Optional indicator files that failed to fetch degraded to empty series
   // (population also drives bubble size). Tell the reader once, quietly.
   if (data.optionalFailures && data.optionalFailures.length) {
-    console.warn("optional data files failed to load:", data.optionalFailures);
+    console.warn("optional data files failed to load:", data.optionalFailures.map((f) => f.path));
     const optNotice = document.getElementById("optional-load-notice");
-    if (optNotice) optNotice.hidden = false;
+    if (optNotice) {
+      optNotice.hidden = false;
+      optNotice.textContent = "Some optional indicators are unavailable because their data did not load. Refresh to retry.";
+    }
     // Without a signal, a corrupt or missing optional file degrades every
     // visitor's chart for weeks before anyone notices.
     track("soft_fail", { files: data.optionalFailures.join(",").slice(0, 200) });
@@ -3839,6 +3890,45 @@ async function main() {
   document.getElementById("csv-all").addEventListener("click", () => {
     track("export", { fmt: "csv", scope: "all" });
     downloadCsv(state.view || state.story, data, state, true);
+  });
+
+  function downloadText(text, filename, type) {
+    const url = URL.createObjectURL(new Blob([text], { type }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  function viewBundle() {
+    const view = state.view || state.story;
+    const params = canonicalParams(state, view);
+    params.delete("embed");
+    const viewUrl = `${window.location.origin}${window.location.pathname}#${params.toString()}`;
+    const sourceIds = [view.x, view.y].map((id) => data.viewEvidence.indicators[id]?.source_id);
+    const citation = `dataviz.ph. ${view.headline}. ${viewUrl}. Accessed ${data.manifest?.built_at || "committed build"}.`;
+    return {
+      canonical_state: { ...Object.fromEntries(params), year: state.year },
+      csv_field_contract: ["psgc", "province", "island_group", "year", "x_indicator", "x_value", "x_unit", "y_indicator", "y_value", "y_unit", "population_2020", "interpolated", "extrapolated"],
+      citation,
+      method_url: `${window.location.origin}/methodology`,
+      view_url: viewUrl,
+      source_ids: sourceIds,
+      build_id: data.manifest?.built_at || "unknown",
+      warnings: [view.x, view.y].flatMap((id) => data.viewEvidence.indicators[id]?.warnings || []),
+      coverage: [view.x, view.y].map((id) => data.viewEvidence.indicators[id]?.coverage || []),
+    };
+  }
+
+  document.getElementById("metadata-json").addEventListener("click", () => {
+    const view = state.view || state.story;
+    downloadText(JSON.stringify(viewBundle(), null, 2) + "\n", `dataviz-ph-${view.id || "view"}-${state.year}-metadata.json`, "application/json");
+  });
+
+  document.getElementById("citation-text").addEventListener("click", () => {
+    const view = state.view || state.story;
+    downloadText(viewBundle().citation + "\n", `dataviz-ph-${view.id || "view"}-${state.year}-citation.txt`, "text/plain;charset=utf-8");
   });
 
   // Island-group focus filter: each legend row toggles its group in/out of the
@@ -4572,6 +4662,7 @@ async function main() {
     state.logX = next.logX;
     state.sel = next.sel;
     state.deflate = next.deflate;
+    state.extrapolate = next.extrapolate;
     state.grp = next.grp;
     state.speed = next.speed;
     state.colorBy = next.colorBy;

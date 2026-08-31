@@ -262,6 +262,8 @@
         <h2 data-i18n="controls.download">Download</h2>
         <button id="csv" type="button">CSV</button>
         <button id="csv-all" type="button" data-i18n="controls.csv_all">CSV (all years)</button>
+        <button id="metadata-json" type="button" data-i18n="controls.metadata_json">Metadata JSON</button>
+        <button id="citation-text" type="button" data-i18n="controls.citation_text">Citation text</button>
         <button id="png" type="button">PNG</button>
         <button id="svg" type="button">SVG</button>
         <button id="share" type="button" data-i18n="controls.link">Link</button>
@@ -270,6 +272,18 @@
       </div>
     </aside>
   </main>
+
+  <section id="view-evidence-panel" aria-label="view evidence">
+    <details id="view-trust">
+      <summary>Why trust this view?</summary>
+      <div id="view-trust-content"></div>
+      <table id="view-coverage">
+        <caption>Coverage for the active indicators</caption>
+        <thead><tr><th scope="col">Indicator</th><th scope="col">Year</th><th scope="col">Coverage</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </details>
+  </section>
 
   <section id="sr-data" aria-label="text version of current chart">
     <h2 class="sr-only">Text version of current chart</h2>

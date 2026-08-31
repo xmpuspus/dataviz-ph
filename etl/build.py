@@ -391,6 +391,82 @@ def write_procurement_status() -> dict:
     return status
 
 
+def build_view_evidence() -> dict:
+    """Build the small provenance contract used by the explorer."""
+    indicators = json.loads((PUBLIC_DATA / "indicators.json").read_text())
+    procurement = json.loads((PUBLIC_DATA / "procurement_status.json").read_text())
+    file_by_indicator = {
+        "poverty": "poverty.json",
+        "subsistence_incidence": "subsistence.json",
+        "dpwh_spend_per_capita": "dpwh_spend_per_capita.json",
+        "all_spend_per_capita": "all_spend_per_capita.json",
+        "doh_spend_per_capita": "doh_spend_per_capita.json",
+        "infra_spend_per_capita": "infra_spend_per_capita.json",
+        "gdp_per_capita": "gdp_per_capita.json",
+        "dpwh_share_pct": "dpwh_share_pct.json",
+        "population": "population.json",
+        "poverty_change_pp": "poverty_change_pp.json",
+        "cpi_yoy_pct": "cpi_yoy_pct.json",
+        "dpwh_spend_per_capita_cum": "dpwh_spend_per_capita_cum.json",
+        "region_cpi_yoy_pct": "region_cpi_yoy_pct.json",
+        "region_poverty": "region_poverty.json",
+    }
+    expected = {"provinces": 82, "regions": 18}
+    out = {}
+    for indicator in indicators:
+        indicator_id = indicator["id"]
+        unit_set = indicator.get("unit_set", "provinces")
+        rows = json.loads((PUBLIC_DATA / file_by_indicator[indicator_id]).read_text())
+        coverage = []
+        for year in indicator["panel_years"]:
+            source_units = {
+                row["psgc"]
+                for row in rows
+                if row["year"] == year and row.get("psgc") not in {None, "000000000"}
+            }
+            count = len(source_units)
+            coverage.append(
+                {
+                    "year": year,
+                    "target_units": expected[unit_set],
+                    "source_units": count,
+                    "status": "full"
+                    if count == expected[unit_set]
+                    else "partial"
+                    if count
+                    else "unavailable",
+                }
+            )
+        source_url = indicator.get("source_url") or "https://openstat.psa.gov.ph/"
+        if indicator_id in {
+            "poverty",
+            "subsistence_incidence",
+            "poverty_change_pp",
+            "region_poverty",
+        }:
+            source_url = source_url.replace("DB__1E__FY", "DB__1F__FY")
+        out[indicator_id] = {
+            "unit_set": unit_set,
+            "natural_grain": "province" if unit_set == "provinces" else "region",
+            "years": indicator["panel_years"],
+            "source": indicator["source"],
+            "source_url": source_url,
+            "archive_url": source_url,
+            "release": indicator.get("vintage", "Committed data release"),
+            "transforms": indicator.get("definition", "No additional transform."),
+            "warnings": [indicator["coverage_label"]] if indicator.get("coverage_label") else [],
+            "coverage": coverage,
+            "source_id": file_by_indicator[indicator_id],
+        }
+    depth = json.loads((PUBLIC_DATA / "poverty_depth_coverage.json").read_text())
+    return {
+        "schema_version": 1,
+        "indicators": out,
+        "supplemental_coverage": {"poverty_depth": depth},
+        "procurement_status": procurement,
+    }
+
+
 def main(no_cache: bool = False) -> None:
     if no_cache:
         psa_openstat.clear_cache()
@@ -1457,6 +1533,7 @@ def refresh_manifest() -> None:
     what actually ships. This is the cheap counterpart to a full `main()` build.
     """
     procurement_status = write_procurement_status()
+    write_json("view_evidence.json", build_view_evidence())
     files = sorted(p for p in PUBLIC_DATA.glob("*.json") if p.name != "manifest.json")
     row_counts = {}
     for f in files:
