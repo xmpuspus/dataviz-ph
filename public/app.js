@@ -280,7 +280,7 @@ async function loadData() {
     fetchJson("data/indicators.json"),
     fetchJson("data/stories.json"),
     optJson("data/pair_headlines.json", {}),
-    fetchJson("data/manifest.json").catch(() => null),
+    fetchJson("data/manifest.json"),
     fetchJson("data/view_evidence.json"),
   ]);
   return {
@@ -2500,7 +2500,7 @@ function renderViewEvidence(view, data, state) {
   const procurement = evidence.procurement_status;
   if (procurement) {
     const p = document.createElement("p");
-    p.textContent = `Status: ${evidence.procurement_warning} ${procurement.candidate_year} is ${procurement.status}. Failed gates: ${procurement.failed_gates.join(", ")}. The ${procurement.snapshot_anomalies.invalid_award_date_count} invalid and ${procurement.snapshot_anomalies.future_award_date_count} future award dates are snapshot-wide. Snapshot: ${procurement.snapshot_identity}.`;
+    p.textContent = `Status: ${evidence.procurement_warning} ${procurement.candidate_year} is ${procurement.status}. Failed gates: ${procurement.failed_gates.join(", ")}. The ${procurement.snapshot_anomalies.invalid_award_date_count} invalid and ${procurement.snapshot_anomalies.future_award_date_count} future award dates are ${procurement.snapshot_anomalies.scope}. Snapshot: ${procurement.snapshot_identity}.`;
     content.appendChild(p);
   }
 }

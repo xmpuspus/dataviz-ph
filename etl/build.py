@@ -1537,6 +1537,8 @@ def refresh_automated_psa_public_data() -> None:
             "poverty_depth": len(poverty_depth),
         },
     }
+    write_procurement_status()
+    write_json("view_evidence.json", build_view_evidence())
     write_json(
         "manifest.json",
         build_manifest(row_counts=row_counts, derived=existing.get("derived", {}), inputs=inputs),
