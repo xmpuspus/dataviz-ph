@@ -70,6 +70,7 @@ def test_embed_kit_has_a_snippet_per_preset() -> None:
         assert f"story={s['id']}&amp;embed=1" in html, f"embed kit missing snippet for {s['id']}"
     assert html.count('class="copy"') == len(STORIES), "one copy button per preset expected"
     assert (PUBLIC / "embed-kit.js").exists(), "missing public/embed-kit.js"
+    assert "The embed keeps the active view state" in html
 
 
 def test_share_pages_match_generator() -> None:

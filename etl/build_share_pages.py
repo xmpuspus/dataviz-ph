@@ -197,6 +197,7 @@ def _embed_kit(stories: list[dict]) -> str:
       (MIT). Method notes: <a href="/methodology">dataviz.ph/methodology</a>.<br>
       <strong>Custom views.</strong> Any view you build in the explorer has its own URL —
       add <code>&amp;embed=1</code> to that link to embed exactly what you see.
+      The embed keeps the active view state and links back to the full explorer.
       <a class="home" href="/">&larr; Back to the explorer</a>
     </div>
   </main>
