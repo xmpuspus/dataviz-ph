@@ -2651,6 +2651,22 @@ function syncDetailPlacement() {
   }
 }
 
+function syncMobileControlShell(state, data) {
+  const narrow = window.matchMedia("(max-width: 1099px)").matches;
+  const controls = document.getElementById("controls");
+  const shell = document.getElementById("mobile-control-shell");
+  const toggle = document.getElementById("mobile-controls-toggle");
+  const summary = document.getElementById("mobile-selected-summary");
+  if (!controls || !shell || !toggle || !summary) return;
+  const visible = narrow && !state.embed;
+  shell.hidden = !visible;
+  controls.classList.toggle("mobile-controls-open", visible && state.mobileControlsOpen);
+  toggle.setAttribute("aria-expanded", visible && state.mobileControlsOpen ? "true" : "false");
+  const units = unitsOf(state.view || state.story, data);
+  const selected = [...state.sel].map((id) => units[id]).filter(Boolean);
+  summary.textContent = selected.map((area) => area.name).join(", ");
+}
+
 function renderSelChips(state, data, render) {
   const root = document.getElementById("selected-chips");
   const hint = document.getElementById("selected-hint");
@@ -3515,6 +3531,7 @@ async function main() {
     sizeBy: initial.sizeBy,
     view: null,
     howtoDismissed: readHowtoDismissed(),
+    mobileControlsOpen: false,
     // Guided-narrative arc state (Rosling hook->reveal->twist->release). null when
     // the reader is in free explore; an object {beat, annotation, dim, quadrant}
     // while the arc is running. render() reads it to overlay on-chart narration.
@@ -3938,6 +3955,7 @@ async function main() {
       attachAxisInfoButtons(chart, view, data, state.chartType);
       // Selection chips
       renderSelChips(state, data, render);
+      syncMobileControlShell(state, data);
       // SR mirror
       renderSrTable(view, data, state, render);
       // URL hash
@@ -4809,6 +4827,24 @@ async function main() {
   document.getElementById("year-prev").addEventListener("click", () => {
     stepYear(state, -1, render);
   });
+
+  const mobileControlsToggle = document.getElementById("mobile-controls-toggle");
+  mobileControlsToggle.addEventListener("click", () => {
+    state.mobileControlsOpen = !state.mobileControlsOpen;
+    render();
+    if (state.mobileControlsOpen) {
+      queueMicrotask(() => document.getElementById("search")?.focus());
+    }
+  });
+
+  document.getElementById("mobile-trust-link").addEventListener("click", () => {
+    const trust = document.getElementById("view-trust");
+    const summary = trust?.querySelector(":scope > summary");
+    if (!trust || !summary) return;
+    trust.open = true;
+    summary.scrollIntoView({ block: "start" });
+    summary.focus();
+  });
   document.getElementById("year-next").addEventListener("click", () => {
     stepYear(state, +1, render);
   });
@@ -4867,6 +4903,12 @@ async function main() {
 
   // Keyboard year scrubbing works only from a non-interactive chart surface.
   window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && state.mobileControlsOpen) {
+      state.mobileControlsOpen = false;
+      render();
+      queueMicrotask(() => mobileControlsToggle.focus());
+      return;
+    }
     const target = e.target;
     if (
       target &&
@@ -4891,7 +4933,10 @@ async function main() {
     }
   });
 
-  window.addEventListener("resize", () => chart.resize());
+  window.addEventListener("resize", () => {
+    chart.resize();
+    syncMobileControlShell(state, data);
+  });
   // Re-place the finding/caveat when crossing the mobile breakpoint (rotate/resize).
   window.matchMedia("(max-width: 1099px)").addEventListener("change", syncDetailPlacement);
   window.addEventListener("hashchange", () => {

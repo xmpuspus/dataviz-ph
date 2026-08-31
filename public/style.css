@@ -23,6 +23,7 @@ html, body {
   font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 16px;
   line-height: 1.45;
+  overflow-x: clip;
 }
 
 /* Tint the page chrome a hair off-white so the white content column reads as a
@@ -510,6 +511,8 @@ main {
   padding: 0.9rem 1.25rem 1rem;
   border-left: 1px solid var(--rule);
 }
+
+#mobile-control-shell { display: none; }
 
 @media (max-width: 1099px) {
   #controls { border-left: 0; border-top: 1px solid var(--rule); }
@@ -1348,12 +1351,73 @@ footer .disclaimer {
 /* --- Responsive ------------------------------------------------------- */
 
 @media (max-width: 1099px) {
-  #topbar { padding: 0.55rem 1rem; }
+  #topbar {
+    padding: max(0.55rem, env(safe-area-inset-top))
+      max(1rem, env(safe-area-inset-right)) 0.55rem
+      max(1rem, env(safe-area-inset-left));
+  }
   #title-strip { padding: 0.7rem 1rem 0.4rem; }
   #story-headline { font-size: 1.35rem; }
   #title-strip .tagline { font-size: 0.78rem; }
   #chart { height: 540px; }
-  #controls { padding: 0.8rem 1rem 1rem; }
+  #mobile-control-shell {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.5rem;
+    align-items: center;
+    margin: 0.75rem 1rem;
+    padding: 0.65rem max(0.75rem, env(safe-area-inset-right))
+      0.65rem max(0.75rem, env(safe-area-inset-left));
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: var(--soft);
+  }
+  #mobile-control-shell[hidden] { display: none; }
+  #mobile-controls-toggle,
+  #mobile-trust-link,
+  #mobile-selected-summary {
+    min-height: 44px;
+    font: inherit;
+  }
+  #mobile-controls-toggle,
+  #mobile-trust-link {
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+  }
+  #mobile-selected-summary {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--muted);
+    overflow-wrap: anywhere;
+  }
+  #controls {
+    display: none;
+    padding: 0.8rem max(1rem, env(safe-area-inset-right))
+      calc(1rem + env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  }
+  #controls.mobile-controls-open { display: block; }
+
+  #play-speed {
+    width: 44px;
+    height: 44px;
+  }
+
+  button,
+  a[href],
+  input:not([type="hidden"]),
+  select,
+  summary {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  a[href],
+  summary {
+    align-items: center;
+  }
+  a[href] { display: inline-flex; }
   .story-why { margin: 0.4rem 1rem 0.6rem; }
 
   /* WCAG 2.5.5: every touch target reaches 44px on small screens. */
@@ -1374,7 +1438,8 @@ footer .disclaimer {
 }
 
 @media (max-width: 520px) {
-  #topbar { gap: 0.6rem; }
+  #topbar { gap: 0.3rem; }
+  .topbar-right { gap: 0.45rem; font-size: 0.78rem; }
   #story-switcher {
     width: 100%;
     order: 3;
@@ -1386,9 +1451,10 @@ footer .disclaimer {
   }
   #story-switcher::-webkit-scrollbar { display: none; }
   .story-btn { white-space: nowrap; flex-shrink: 0; }
-  #title-strip { flex-direction: column; align-items: stretch; gap: 0.5rem; }
-  /* Four chart-type buttons as a tidy 2x2 block instead of a lopsided wrap. */
-  #chart-type-strip { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; }
+  #title-strip { flex-direction: column; align-items: stretch; gap: 0.3rem; }
+  #title-strip .tagline { display: none; }
+  #chart-type-strip { display: flex; overflow-x: auto; }
+  .chart-type-btn { flex: 0 0 auto; }
   .chart-type-btn { justify-content: center; }
   .chart-type-btn .ct-label { display: inline; }
   #chart { height: 460px; }
@@ -1411,6 +1477,8 @@ footer .disclaimer {
     width: max-content;
     margin: 0.45rem auto 0.6rem;
   }
+
+  #chart-howto { display: none; }
 }
 
 /* Landscape phones: a 460-540px chart overflows a ~375px-tall viewport and pushes
@@ -1422,6 +1490,15 @@ footer .disclaimer {
   #story-headline { font-size: 1.1rem; }
   #title-strip .tagline { display: none; }
   #topbar { padding-top: 0.35rem; padding-bottom: 0.35rem; }
+  #story-switcher {
+    order: 3;
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+  #story-start { padding: 0.45rem 0.85rem; }
+  #story-start p { display: none; }
+  .story-start-actions { margin-top: 0.35rem; }
   #chart-howto { display: none; }
 }
 
@@ -1432,6 +1509,7 @@ footer .disclaimer {
    can still flip views. A small fixed chip credits dataviz.ph and links out. */
 body.embed-mode #topbar,
 body.embed-mode #controls,
+body.embed-mode #mobile-control-shell,
 body.embed-mode footer,
 body.embed-mode #chart-howto,
 body.embed-mode #mobile-detail-slot,
@@ -1461,8 +1539,8 @@ body.embed-mode #chart {
 
 #embed-chip {
   position: fixed;
-  right: 10px;
-  bottom: 10px;
+  right: max(10px, env(safe-area-inset-right));
+  bottom: max(10px, env(safe-area-inset-bottom));
   z-index: 50;
   font-size: 0.72rem;
   font-weight: 700;

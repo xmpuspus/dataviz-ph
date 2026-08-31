@@ -161,6 +161,12 @@
          Empty and display:none on desktop, where they stay in the title strip. -->
     <div id="mobile-detail-slot"></div>
 
+    <section id="mobile-control-shell" aria-label="mobile controls">
+      <button id="mobile-controls-toggle" type="button" aria-controls="controls" aria-expanded="false" data-i18n="controls.mobile_controls">Show controls</button>
+      <p id="mobile-selected-summary" aria-live="polite"></p>
+      <button id="mobile-trust-link" type="button" data-i18n="controls.mobile_trust">Why trust this view?</button>
+    </section>
+
     <aside id="controls" aria-label="controls">
       <!-- Sidebar pickers retained for keyboard / screen-reader fallback,
            but visually hidden. Primary affordance lives on the chart axes. -->
