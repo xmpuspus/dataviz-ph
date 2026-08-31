@@ -99,6 +99,14 @@ def test_refreshed_population_and_gdp_contracts_keep_reviewed_totals() -> None:
     }
 
 
+def test_poverty_depth_rows_keep_published_precision_and_coverage_reasons() -> None:
+    rows = _load("poverty_depth.json")
+    assert all("se" in row and "ci_lo" in row and "ci_hi" in row for row in rows)
+    assert all(row["ci_lo"] <= row["ci_hi"] for row in rows)
+    coverage = _load("poverty_depth_coverage.json")
+    assert all("missing_reasons" in row for row in coverage)
+
+
 def test_rate_files_within_0_100() -> None:
     for name in ("poverty.json", "subsistence.json", "region_poverty.json"):
         for r in _load(name):
