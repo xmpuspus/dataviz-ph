@@ -17,6 +17,7 @@ from pathlib import Path
 
 import httpx
 
+from etl.geography import MAGUINDANAO_CODE, enrich_analysis_provinces
 from etl.psa_openstat import _RETRY  # reuse the same retry policy
 
 PSGC_BASE = "https://psgc.gitlab.io/api"
@@ -151,25 +152,14 @@ def _normalize_capitalization(name: str) -> str:
 
 
 def load_provinces() -> dict[str, dict]:
-    """Return {psgc_code: {name, island_group, region_code}} for 82 units.
+    """Return the stable 82 analysis units backed by the PSGC crosswalk.
 
     island_group is one of: luzon, visayas, mindanao, ncr, barmm.
-    Population is NOT included here; the build orchestrator enriches it from PSA.
+    Source-native current PSGC identifiers are retained alongside the legacy
+    analysis IDs; the build orchestrator replaces any committed population
+    value with the selected population-source denominator.
     """
-    raw = _fetch_provinces_raw()
-    out: dict[str, dict] = {}
-    for p in raw:
-        out[p["code"]] = {
-            "name": _normalize_capitalization(p["name"]),
-            "island_group": _island_group(p),
-            "region_code": p["regionCode"],
-        }
-    out[NCR_CODE] = {
-        "name": "Metro Manila",
-        "island_group": "ncr",
-        "region_code": NCR_CODE,
-    }
-    return out
+    return enrich_analysis_provinces()
 
 
 def _name_to_code_index(provinces: dict[str, dict]) -> dict[str, str]:
@@ -206,6 +196,10 @@ def normalize_name(
     s = _strip_parens(raw.strip()).lower()
     if not s:
         return None
+    if s in {"maguindanao del norte", "maguindanao del sur"}:
+        # Current PSA PSGC has two source provinces, but the historical chart
+        # retains a single pre-2022 analytical Maguindanao unit.
+        return MAGUINDANAO_CODE if MAGUINDANAO_CODE in provinces else None
     if s in SKIPPED_NAMES:
         return None
     # NCR shortcut: matches '..NATIONAL CAPITAL REGION (NCR)' regional row after cleaning
