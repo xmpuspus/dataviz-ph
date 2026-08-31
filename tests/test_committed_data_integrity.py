@@ -105,6 +105,14 @@ def test_poverty_depth_rows_keep_published_precision_and_coverage_reasons() -> N
     assert all(row["ci_lo"] <= row["ci_hi"] for row in rows)
     coverage = _load("poverty_depth_coverage.json")
     assert all("missing_reasons" in row for row in coverage)
+    partial = [row for row in coverage if row["status"] == "partial"]
+    assert partial
+    assert {reason for row in partial for reason in row["missing_reasons"].values()} == {
+        "source_marker_dash"
+    }
+    assert any(row["source_warnings"] for row in partial)
+    assert any(row.get("source_revision_markers") for row in rows)
+    assert any(row.get("source_small_sample_warning") for row in rows)
 
 
 def test_rate_files_within_0_100() -> None:

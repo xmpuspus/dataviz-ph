@@ -51,14 +51,41 @@ def compute_dpwh_share(dpwh_spend: list[dict], all_spend: list[dict]) -> list[di
     return out
 
 
-def poverty_depth_coverage(rows: list[dict], expected_units: int, units: set[str]) -> list[dict]:
+def poverty_depth_coverage(
+    rows: list[dict],
+    expected_units: int,
+    units: set[str],
+    *,
+    missing_evidence: list[dict] | None = None,
+    measures: tuple[str, ...] | None = None,
+    years: tuple[int, ...] | None = None,
+) -> list[dict]:
     """Describe published poverty-depth coverage without averaging unsafe values."""
     coverage = []
-    for measure in psa_openstat.POVERTY_DEPTH_MEASURES:
-        for year in POVERTY_ANCHORS:
+    evidence = missing_evidence or []
+    for measure in measures or tuple(psa_openstat.POVERTY_DEPTH_MEASURES):
+        for year in years or tuple(POVERTY_ANCHORS):
             observed = sum(row["measure"] == measure and row["year"] == year for row in rows)
             present = {
                 row["psgc"] for row in rows if row["measure"] == measure and row["year"] == year
+            }
+            missing = sorted(units - present)
+            evidence_by_psgc = {
+                item["psgc"]: item
+                for item in evidence
+                if item["measure"] == measure and item["year"] == year and item["psgc"] in missing
+            }
+            revision_warnings = {
+                row["psgc"]: row["source_revision_markers"]
+                for row in rows
+                if row["measure"] == measure
+                and row["year"] == year
+                and row.get("source_revision_markers")
+            }
+            source_warnings = {
+                psgc: ["source_small_sample_warning"]
+                for psgc, item in evidence_by_psgc.items()
+                if item.get("source_small_sample_warning")
             }
             coverage.append(
                 {
@@ -67,13 +94,18 @@ def poverty_depth_coverage(rows: list[dict], expected_units: int, units: set[str
                     "expected_units": expected_units,
                     "observed_units": observed,
                     "status": "full" if observed == expected_units else "partial",
-                    "missing_psgcs": sorted(units - present),
+                    "missing_psgcs": missing,
                     "missing_status": "none"
                     if observed == expected_units
                     else "source_unavailable",
                     "missing_reasons": {
-                        psgc: "source_unavailable" for psgc in sorted(units - present)
+                        psgc: evidence_by_psgc.get(psgc, {}).get(
+                            "reason", "source_unit_not_published"
+                        )
+                        for psgc in missing
                     },
+                    "source_warnings": source_warnings,
+                    "revision_warnings": revision_warnings,
                     "warning": (
                         "PSA publishes this measure at its natural grain. The build does not "
                         "average rates or custom-roll up HUC estimates."
@@ -443,12 +475,22 @@ def main(no_cache: bool = False) -> None:
 
     print(">> fetch poverty-depth measures at the published area grain")
     poverty_depth = []
+    poverty_depth_missing = []
     for table in psa_openstat.POVERTY_DEPTH_MEASURES:
-        poverty_depth.extend(psa_openstat.fetch_poverty_depth(table, provinces, normalize_name))
+        poverty_depth.extend(
+            psa_openstat.fetch_poverty_depth(
+                table, provinces, normalize_name, poverty_depth_missing
+            )
+        )
     for row in poverty_depth:
         schema = "poor_families_thousands" if row["kind"] == "count" else "poverty_gap_pct"
         validate.validate_all([row], schema=schema)
-    poverty_depth_status = poverty_depth_coverage(poverty_depth, n_units, set(provinces))
+    poverty_depth_status = poverty_depth_coverage(
+        poverty_depth,
+        n_units,
+        set(provinces),
+        missing_evidence=poverty_depth_missing,
+    )
 
     # Carry the 95% CI + CV through onto anchor years only (interpolated years are
     # model estimates, not survey estimates, so they carry no precision).
@@ -1285,13 +1327,23 @@ def refresh_automated_psa_public_data() -> None:
     psa_openstat.require_source_years(gdp_published, range(2018, 2026), "PPA per-capita GDP")
     gdp = psa_openstat.recompute_gdp_per_capita(gdp_total, gdp_published)
     poverty_depth = []
+    poverty_depth_missing = []
     for table in psa_openstat.POVERTY_DEPTH_MEASURES:
-        poverty_depth.extend(psa_openstat.fetch_poverty_depth(table, provinces, normalize_name))
+        poverty_depth.extend(
+            psa_openstat.fetch_poverty_depth(
+                table, provinces, normalize_name, poverty_depth_missing
+            )
+        )
     for measure in psa_openstat.POVERTY_DEPTH_MEASURES:
         validate.validate_uniqueness(
             [row for row in poverty_depth if row["measure"] == measure], measure
         )
-    poverty_depth_status = poverty_depth_coverage(poverty_depth, len(provinces), set(provinces))
+    poverty_depth_status = poverty_depth_coverage(
+        poverty_depth,
+        len(provinces),
+        set(provinces),
+        missing_evidence=poverty_depth_missing,
+    )
     validate.validate_coverage(population, len(provinces), PANEL_YEARS, "population")
     validate.validate_uniqueness(population, "population")
     validate.validate_uniqueness(gdp, "gdp_per_capita")

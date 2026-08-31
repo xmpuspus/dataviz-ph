@@ -10,12 +10,14 @@ from pathlib import Path
 import pytest
 
 from etl import psa_openstat
+from etl.build import poverty_depth_coverage
 from etl.geography import HUC_LABEL_ALIASES, HUC_TO_PARENT
 from etl.psgc import huc_parent, load_provinces, normalize_name
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "psa"
 CONTRACT = FIXTURE_DIR / "automated-refresh-contracts.json"
 CONTENT = FIXTURE_DIR / "official-refresh-representative.json"
+FULL_CONTENT = FIXTURE_DIR / "official-refresh-full-responses.json"
 
 
 def _fixtures() -> tuple[dict, dict]:
@@ -64,6 +66,7 @@ def _huc_parent(name: str) -> str | None:
 
 def test_reviewed_source_fixtures_pin_all_eight_upstream_responses() -> None:
     contract, content = _fixtures()
+    full = json.loads(FULL_CONTENT.read_text())
     expected = {
         "population_2024",
         "gdp_total",
@@ -77,12 +80,12 @@ def test_reviewed_source_fixtures_pin_all_eight_upstream_responses() -> None:
 
     assert expected <= set(contract)
     assert content["fetched_at"] == "2026-08-31T10:43:00+08:00"
+    assert full["canonicalization"] == "JSON sorted keys, compact separators, UTF-8, SHA-256"
     for name in expected:
-        for digest in contract[name].values():
-            if isinstance(digest, str) and digest.endswith(".px"):
-                continue
-            assert len(digest) == 64
-            int(digest, 16)
+        source = full["tables"][name]
+        assert _canonical_sha256(source["metadata"]) == contract[name]["metadata_sha256"]
+        if "payload" in source:
+            assert _canonical_sha256(source["payload"]) == contract[name]["payload_sha256"]
     for name in ("population_2024", "gdp_total", "gdp_per_capita", "gdp_industry"):
         source = content["tables"][name]
         assert (
@@ -94,14 +97,23 @@ def test_reviewed_source_fixtures_pin_all_eight_upstream_responses() -> None:
                 _canonical_sha256(source["payload"])
                 == contract[name]["representative_payload_sha256"]
             )
+            selected_cells = math.prod(
+                len(item["selection"]["values"]) for item in source["query"]["query"]
+            )
+            assert len(source["payload"]["data"]) == selected_cells
     depth = content["poverty_depth"]
     for name, source in depth["tables"].items():
         assert (
-            _canonical_sha256(depth["metadata"]) == contract[name]["representative_metadata_sha256"]
+            _canonical_sha256(source["metadata"])
+            == contract[name]["representative_metadata_sha256"]
         )
         assert (
             _canonical_sha256(source["payload"]) == contract[name]["representative_payload_sha256"]
         )
+        selected_cells = math.prod(
+            len(item["selection"]["values"]) for item in source["query"]["query"]
+        )
+        assert len(source["payload"]["data"]) == selected_cells
 
 
 def test_population_fixture_uses_real_loader_and_prevents_regional_double_count(
@@ -114,14 +126,12 @@ def test_population_fixture_uses_real_loader_and_prevents_regional_double_count(
     rows = psa_openstat.fetch_population_2024(provinces, normalize_name, huc_parent)
 
     values = {row["psgc"]: row["value"] for row in rows}
-    assert values == {
-        "023100000": 1_733_048,
-        "072200000": 497_813,
-        "126300000": 722_059,
-        "130000000": 14_001_751,
-        "150700000": 151_297,
-        "153800000": 1_938_054,
-    }
+    assert values["023100000"] == 1_733_048
+    assert values["072200000"] == 5_228_149
+    assert values["126300000"] == 1_732_068
+    assert values["130000000"] == 14_001_751
+    assert values["150700000"] == 693_244
+    assert values["153800000"] == 1_938_054
     assert sum(values.values()) < 112_729_484
     assert queries == [content["tables"]["population_2024"]["query"]]
 
@@ -157,6 +167,50 @@ def test_population_geography_contract_has_all_reviewed_huc_identities_once() ->
     assert huc_parent("City of Cotabato") is None
 
 
+def test_population_fixture_rolls_every_reviewed_huc_once(monkeypatch) -> None:
+    _, content = _fixtures()
+    source = content["tables"]["population_2024"]
+    queries = _load_table(monkeypatch, "population_2024", content)
+    provinces = load_provinces()
+
+    rows = psa_openstat.fetch_population_2024(provinces, normalize_name, huc_parent)
+    by_psgc = {row["psgc"]: row["value"] for row in rows}
+    labels = dict(
+        zip(
+            source["metadata"]["variables"][0]["values"],
+            source["metadata"]["variables"][0]["valueTexts"],
+            strict=True,
+        )
+    )
+    source_values = {
+        entry["key"][0]: int(entry["values"][0]) for entry in source["payload"]["data"]
+    }
+    reviewed_hucs = {
+        code: huc_parent(psa_openstat._clean_geo_text(label))
+        for code, label in labels.items()
+        if huc_parent(psa_openstat._clean_geo_text(label))
+    }
+
+    assert len(reviewed_hucs) == 18
+    for code, parent in reviewed_hucs.items():
+        parent_source = sum(
+            value
+            for source_code, value in source_values.items()
+            if normalize_name(
+                psa_openstat._clean_geo_text(labels[source_code]), provinces, series="population"
+            )
+            == parent
+        )
+        huc_source = sum(
+            value
+            for source_code, value in source_values.items()
+            if huc_parent(psa_openstat._clean_geo_text(labels[source_code])) == parent
+        )
+        assert by_psgc[parent] == parent_source + huc_source
+        assert source_values[code] > 0
+    assert queries == [source["query"]]
+
+
 @pytest.mark.parametrize("table", ["gdp_total", "gdp_per_capita"])
 def test_ppa_fixture_selects_constant_price_rows_and_complete_year_contract(
     monkeypatch, table: str
@@ -172,7 +226,7 @@ def test_ppa_fixture_selects_constant_price_rows_and_complete_year_contract(
 
     rows = loader(provinces, normalize_name, huc_parent)
 
-    assert {row["year"] for row in rows} == {2018, 2025}
+    assert {row["year"] for row in rows} == set(range(2018, 2026))
     assert {row["source_id"] for row in rows} == {"0", "83", "84", "132", "133"}
     if table == "gdp_total":
         assert math.isclose(rows[0]["value"], 5_814_440_130_224.75)
@@ -211,7 +265,8 @@ def test_ppa_recomputation_rejects_missing_extra_and_duplicate_source_pairs() ->
 
 def test_industry_fixture_checks_contract_without_summing_sectors(monkeypatch) -> None:
     _, content = _fixtures()
-    source = content["tables"]["gdp_industry"]
+    full = json.loads(FULL_CONTENT.read_text())
+    source = full["tables"]["gdp_industry"]
     monkeypatch.setattr(
         psa_openstat, "discover_table", lambda _name: (source["path"], source["metadata"])
     )
@@ -223,7 +278,7 @@ def test_industry_fixture_checks_contract_without_summing_sectors(monkeypatch) -
     assert contract["unit"] == "thousand Philippine pesos"
     assert contract["decimals"] == 12
     assert contract["years"] == list(range(2018, 2026))
-    assert source["suppression_markers"] == ["..", "...", "-", "/s"]
+    assert content["tables"]["gdp_industry"]["suppression_markers"] == ["..", "...", "-", "/s"]
 
 
 @pytest.mark.parametrize(
@@ -231,8 +286,8 @@ def test_industry_fixture_checks_contract_without_summing_sectors(monkeypatch) -
     [
         ("poverty_poor_families", "count", True),
         ("poverty_income_gap", "rate", True),
-        ("poverty_poverty_gap", "rate", False),
-        ("poverty_severity", "rate", True),
+        ("poverty_poverty_gap", "rate", True),
+        ("poverty_severity", "rate", False),
     ],
 )
 def test_poverty_depth_fixtures_use_real_loader_and_keep_safe_source_rows(
@@ -242,7 +297,7 @@ def test_poverty_depth_fixtures_use_real_loader_and_keep_safe_source_rows(
     depth = content["poverty_depth"]
     source = depth["tables"][table]
     monkeypatch.setattr(psa_openstat, "discover_table", lambda _name: (source["path"], {}))
-    monkeypatch.setattr(psa_openstat, "_fetch_or_cache", lambda *_args: depth["metadata"])
+    monkeypatch.setattr(psa_openstat, "_fetch_or_cache", lambda *_args: source["metadata"])
     queries: list[dict] = []
 
     def query_payload(_url: str, _prefix: str, _path: str, query: dict) -> dict:
@@ -252,16 +307,55 @@ def test_poverty_depth_fixtures_use_real_loader_and_keep_safe_source_rows(
     monkeypatch.setattr(psa_openstat, "_query_payload", query_payload)
     provinces = load_provinces()
 
-    rows = psa_openstat.fetch_poverty_depth(table, provinces, normalize_name)
+    missing: list[dict] = []
+    rows = psa_openstat.fetch_poverty_depth(table, provinces, normalize_name, missing)
 
     assert {row["kind"] for row in rows} == {expected_kind}
     assert {row["unit"] for row in rows} == {psa_openstat.POVERTY_DEPTH_MEASURES[table]["unit"]}
-    expected = {("153800000", 2023), ("175300000", 2023)}
-    if expect_ncr:
-        expected.add(("130000000", 2023))
-    assert {(row["psgc"], row["year"]) for row in rows} == expected
+    keys = {(row["psgc"], row["year"]) for row in rows}
+    assert {("153800000", 2023), ("175300000", 2023)} <= keys
+    assert (("130000000", 2023) in keys) is expect_ncr
     assert all(row["psgc"] != "190870000" for row in rows)
-    assert queries == [depth["query"]]
+    assert all("se" in row and "ci_lo" in row and "ci_hi" in row for row in rows)
+    assert queries == [source["query"]]
+    if table == "poverty_severity":
+        assert any(row.get("source_small_sample_warning") for row in rows)
+        assert any(item["reason"] == "source_marker_dash" for item in missing)
+
+
+def test_poverty_coverage_keeps_specific_source_markers_and_revision_warnings() -> None:
+    rows = [
+        {
+            "psgc": "012800000",
+            "year": 2023,
+            "value": 0.3,
+            "measure": "poverty_severity",
+            "source_revision_markers": ["r1"],
+        }
+    ]
+    missing = [
+        {
+            "psgc": "130000000",
+            "year": 2023,
+            "measure": "poverty_severity",
+            "reason": "source_marker_dash",
+            "source_marker": "-",
+            "source_small_sample_warning": True,
+        }
+    ]
+
+    coverage = poverty_depth_coverage(
+        rows,
+        2,
+        {"012800000", "130000000"},
+        missing_evidence=missing,
+        measures=("poverty_severity",),
+        years=(2023,),
+    )
+
+    assert coverage[0]["missing_reasons"] == {"130000000": "source_marker_dash"}
+    assert coverage[0]["source_warnings"]["130000000"] == ["source_small_sample_warning"]
+    assert coverage[0]["revision_warnings"]["012800000"] == ["r1"]
 
 
 def test_cache_identity_changes_with_query_and_source_years_reject_gaps() -> None:
@@ -275,3 +369,4 @@ def test_cache_identity_changes_with_query_and_source_years_reject_gaps() -> Non
 
 def test_clean_geo_text_recovers_reviewed_palawan_label() -> None:
     assert psa_openstat._clean_geo_text("Palawan (w/o the City of Puerto Princesa") == "Palawan"
+    assert psa_openstat._clean_geo_text("....Ilocos Norte **, 2/, 3/") == "Ilocos Norte"

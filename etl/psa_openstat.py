@@ -68,7 +68,7 @@ POVERTY_DEPTH_MEASURES = {
 
 INDUSTRY_REVIEWED_SEMANTICS = {
     "provenance": "PSA OpenSTAT reviewed metadata, 2026-08-31",
-    "metadata_sha256": "954a899c17de429d3593f1d7524d406a48a6a77f985047ee24ff39e32590be75",
+    "metadata_sha256": "306ae4217ea402feafa9e0bfacb1eb024a276283428fc57e98a44a0c660fa2fc",
     "unit": "thousand Philippine pesos",
     "decimals": 12,
     "suppression_markers": ["-", "..", "...", "/s"],
@@ -155,6 +155,10 @@ def _clean_geo_text(text: str) -> str:
     s = text.lstrip(".").strip()
     if s.lower().startswith("palawan (w/o the city of puerto princesa"):
         return "Palawan"
+    # PSA inserts one or two asterisks before numbered footnotes for estimates
+    # that need a source warning. Remove them for identity matching; callers
+    # inspect the raw label first when they need to preserve the warning.
+    s = re.sub(r"\*+", "", s).strip()
     # Iteratively peel trailing footnotes: '/a', '1/', '2/', 'r1', etc.
     # Examples seen: 'Sulu r1, 1/, 2/, 3/, c/', 'Cebu /a', 'Tawi-tawi 1/, 3/, b/'.
     while True:
@@ -679,6 +683,11 @@ def validate_gdp_industry_contract() -> dict:
         variable for variable in metadata["variables"] if variable["code"] == "Type of Valuation"
     )
     year = next(variable for variable in metadata["variables"] if variable["code"] == "Year")
+    metadata_sha256 = sha256(
+        json.dumps(metadata, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    if metadata_sha256 != INDUSTRY_REVIEWED_SEMANTICS["metadata_sha256"]:
+        raise ValueError("PPA industry metadata differs from the reviewed source response")
     if len(sector["values"]) != 16:
         raise ValueError(f"PPA industry contract needs 16 sectors, got {len(sector['values'])}")
     valuation_text = " ".join(valuation["valueTexts"]).lower()
@@ -696,7 +705,12 @@ def validate_gdp_industry_contract() -> dict:
     }
 
 
-def fetch_poverty_depth(table: str, provinces: dict, normalize_name) -> list[dict]:
+def fetch_poverty_depth(
+    table: str,
+    provinces: dict,
+    normalize_name,
+    missing_evidence: list[dict] | None = None,
+) -> list[dict]:
     """Fetch a poverty-depth measure at its published, non-averaged area grain."""
     contract = POVERTY_DEPTH_MEASURES.get(table)
     if contract is None:
@@ -747,21 +761,49 @@ def fetch_poverty_depth(table: str, provinces: dict, normalize_name) -> list[dic
         if len(key) < 3:
             continue
         role = measure_by_code.get(key[1])
-        value = _to_float(entry.get("values", [None])[0])
-        if role is None or value is None:
+        if role is None:
             continue
-        psgc = normalize_name(
-            _clean_geo_text(labels.get(key[0], "")), provinces, series="poverty_fies"
-        )
+        raw_label = labels.get(key[0], "")
+        psgc = normalize_name(_clean_geo_text(raw_label), provinces, series="poverty_fies")
         if psgc not in provinces:
             continue
         try:
             year = int(years.get(key[2], key[2]))
         except ValueError:
             continue
-        rows_by_key.setdefault(
+        source_small_sample_warning = "*" in raw_label
+        revision_markers = sorted(set(re.findall(r"\br\d+\b", raw_label, flags=re.IGNORECASE)))
+        raw_value = entry.get("values", [None])[0]
+        value = _to_float(raw_value)
+        if value is None:
+            if role == "value" and missing_evidence is not None:
+                reason = (
+                    "source_marker_dash"
+                    if raw_value == "-"
+                    else "source_marker_suppressed"
+                    if raw_value in {"..", "...", "/s"}
+                    else "source_value_unavailable"
+                )
+                missing_evidence.append(
+                    {
+                        "psgc": psgc,
+                        "year": year,
+                        "measure": table,
+                        "reason": reason,
+                        "source_marker": raw_value,
+                        "source_small_sample_warning": source_small_sample_warning,
+                        "source_revision_markers": revision_markers,
+                    }
+                )
+            continue
+        row = rows_by_key.setdefault(
             (psgc, year), {"psgc": psgc, "year": year, "measure": table, **contract}
-        )[role] = value
+        )
+        row[role] = value
+        if source_small_sample_warning:
+            row["source_small_sample_warning"] = True
+        if revision_markers:
+            row["source_revision_markers"] = revision_markers
     rows = [row for row in rows_by_key.values() if "value" in row]
     for row in rows:
         if "ci_lo" in row and "ci_hi" in row and row["ci_lo"] > row["ci_hi"]:
