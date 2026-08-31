@@ -485,6 +485,7 @@ def main(no_cache: bool = False) -> None:
     for row in poverty_depth:
         schema = "poor_families_thousands" if row["kind"] == "count" else "poverty_gap_pct"
         validate.validate_all([row], schema=schema)
+    validate.validate_precision(poverty_depth)
     poverty_depth_status = poverty_depth_coverage(
         poverty_depth,
         n_units,
@@ -572,6 +573,7 @@ def main(no_cache: bool = False) -> None:
         validate.validate_uniqueness(
             [row for row in poverty_depth if row["measure"] == measure], measure
         )
+    validate.validate_precision(poverty_depth)
     validate.validate_uniqueness(dpwh_spend, "dpwh_spend_per_capita")
     validate.validate_uniqueness(all_spend, "all_spend_per_capita")
 
