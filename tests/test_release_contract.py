@@ -63,14 +63,16 @@ def test_browser_gate_cannot_self_skip_missing_dependencies() -> None:
 
 def test_security_workflow_scans_secrets_and_dependencies() -> None:
     security = (ROOT / ".github/workflows/security.yml").read_text()
-    assert "gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e" in security
-    assert "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}" in security
+    # The binary is pinned by version and checked by digest, so a moved release
+    # tag cannot change what runs.
+    assert "GITLEAKS_VERSION: 8.30.0" in security
+    assert re.search(r"GITLEAKS_SHA256: [0-9a-f]{64}", security)
+    assert "sha256sum --check --strict" in security
+    assert "gitleaks git --config .gitleaks.toml" in security
+    assert "gitleaks dir --config .gitleaks.toml" in security
     assert re.search(r"astral-sh/setup-uv@[0-9a-f]{40}", security)
-    assert (
-        "uvx --python 3.12.4 pip-audit==2.10.1 --requirement requirements.lock --no-deps"
-        in security
-    )
-    assert "GITLEAKS_CONFIG: .gitleaks.toml" in security
+    assert "pip-audit==2.10.1 --strict" in security
+    assert "--path /tmp/audit-env/lib/python3.12/site-packages" in security
     assert re.search(r"actions/setup-node@[0-9a-f]{40}", security)
     assert 'node-version: "24.20.0"' in security
     assert "npm ci" in security
