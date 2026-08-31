@@ -138,6 +138,22 @@ def test_region_geography_failure_disables_the_active_regional_finding(page, bas
     assert "unavailable" in page.locator("#view-trust").inner_text().lower()
 
 
+@pytest.mark.parametrize(
+    ("path", "indicator"),
+    [
+        ("doh_spend_per_capita.json", "doh_spend_per_capita"),
+        ("infra_spend_per_capita.json", "infra_spend_per_capita"),
+        ("dpwh_share_pct.json", "dpwh_share_pct"),
+        ("poverty_change_pp.json", "poverty_change_pp"),
+        ("dpwh_spend_per_capita_cum.json", "dpwh_spend_per_capita_cum"),
+    ],
+)
+def test_optional_indicator_failure_disables_native_choices(page, base_url, path, indicator):
+    page.route(f"**/data/{path}", lambda route: route.fulfill(status=500))
+    _goto(page, base_url)
+    assert page.locator(f'#x-select option[value="{indicator}"]').is_disabled()
+
+
 def test_curated_view_anchors_match_story_contract(page, base_url):
     _goto(page, base_url)
     stories = json.loads((PUBLIC / "data" / "stories.json").read_text())
@@ -172,6 +188,8 @@ def test_history_restores_extrapolate_selection_and_groups(page, base_url):
     )
     page.wait_for_function("() => location.hash.includes('extrap=on')")
     page.go_back(wait_until="networkidle")
+    page.wait_for_function("() => !location.hash.includes('extrap=on')")
+    assert page.locator("#extrap-toggle").get_attribute("aria-pressed") == "false"
     page.go_forward(wait_until="networkidle")
     page.wait_for_function("() => location.hash.includes('extrap=on')")
     assert page.locator("#extrap-toggle").get_attribute("aria-pressed") == "true"

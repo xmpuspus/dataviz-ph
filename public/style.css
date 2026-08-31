@@ -796,6 +796,13 @@ select:focus-visible {
 #view-trust-content dd { margin: 0; }
 #curated-view-links { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.7rem; }
 #curated-view-links a { font-size: 0.8rem; color: var(--brand-hot); }
+
+@media (max-width: 520px) {
+  #view-trust-content dl { display: block; }
+  #view-trust-content dt { margin-top: 0.45rem; }
+  #view-trust-content dd { margin-top: 0.1rem; }
+  #view-trust-content details > p { overflow-wrap: anywhere; }
+}
 #view-coverage { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.85rem; }
 #view-coverage th, #view-coverage td { padding: 0.3rem; border-top: 1px solid var(--rule); overflow-wrap: anywhere; text-align: left; }
 
