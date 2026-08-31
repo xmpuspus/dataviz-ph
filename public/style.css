@@ -1075,8 +1075,9 @@ select:focus-visible {
 .ipanel-item:hover { background: var(--soft); }
 .ipanel-item.active { background: var(--brand); color: #fff; }
 .ipanel-item.active .ipanel-meta { color: rgba(255, 255, 255, 0.75); }
-.ipanel-item.disabled { color: #b4b4b4; cursor: not-allowed; background: #fafafa; }
+.ipanel-item.disabled { color: #595959; cursor: not-allowed; background: #fafafa; }
 .ipanel-item.disabled:hover { background: #fafafa; }
+.ipanel-item.active-option { outline: 2px solid var(--ink); outline-offset: -2px; }
 
 .ipanel-name { font-size: 0.9rem; font-weight: 600; }
 .ipanel-meta { font-size: 0.76rem; color: var(--muted); }

@@ -3086,10 +3086,20 @@ function attachAxisInfoButtons(chart, view, data, chartType) {
     pick.type = "button";
     pick.id = `axis-pick-${kind}`;
     pick.className = "axis-pick-btn";
-    pick.setAttribute("aria-haspopup", "listbox");
-    pick.setAttribute("aria-label", `${kind === "x" ? "X" : "Y"} axis indicator: ${info.name}. Click to change.`);
+    const axisLabel = kind === "x" ? t("controls.axis_x", "X axis") : t("controls.axis_y", "Y axis");
+    const label = indicatorName(indicatorId, data);
+    pick.setAttribute("aria-haspopup", "dialog");
+    pick.setAttribute("aria-expanded", "false");
+    pick.setAttribute("aria-controls", "indicator-panel");
+    pick.setAttribute(
+      "aria-label",
+      tFill(t("controls.axis_picker", "{axis} indicator: {name}. Choose an indicator."), {
+        axis: axisLabel,
+        name: label,
+      }),
+    );
     pick.innerHTML = `<span class="axis-pick-name"></span><span class="axis-pick-caret">▾</span>`;
-    pick.querySelector(".axis-pick-name").textContent = info.name;
+    pick.querySelector(".axis-pick-name").textContent = label;
     pick.addEventListener("click", (e) => {
       e.stopPropagation();
       showIndicatorPanel(pick, kind, indicatorId, otherId, data);
@@ -3147,47 +3157,61 @@ function showIndicatorPanel(anchorBtn, kind, currentId, otherId, data) {
   panel.id = "indicator-panel";
   panel.className = `indicator-panel indicator-panel-${kind}`;
   panel.setAttribute("role", "dialog");
-  panel.setAttribute("aria-label", `${kind === "x" ? "X" : "Y"} axis indicator picker`);
+  panel.setAttribute("aria-modal", "false");
+  panel.setAttribute("aria-labelledby", "indicator-panel-title");
+  anchorBtn.setAttribute("aria-expanded", "true");
 
   const header = document.createElement("div");
   header.className = "ipanel-head";
   const title = document.createElement("strong");
-  title.textContent = kind === "x" ? "X axis" : "Y axis";
+  title.id = "indicator-panel-title";
+  title.textContent = kind === "x" ? t("controls.axis_x", "X axis") : t("controls.axis_y", "Y axis");
   header.appendChild(title);
   const close = document.createElement("button");
   close.type = "button";
   close.className = "ipanel-close";
-  close.setAttribute("aria-label", "close");
+  close.setAttribute("aria-label", t("controls.close", "Close"));
   close.textContent = "×";
   close.addEventListener("click", closeIndicatorPanel);
   header.appendChild(close);
   panel.appendChild(header);
 
-  const search = document.createElement("input");
-  search.type = "search";
-  search.className = "ipanel-search";
-  search.placeholder = "Filter indicators";
-  search.setAttribute("aria-label", "filter indicators by name");
-  panel.appendChild(search);
-
   const list = document.createElement("ul");
   list.className = "ipanel-list";
   list.setAttribute("role", "listbox");
+  list.setAttribute("tabindex", "0");
+  list.setAttribute("aria-label", t("controls.axis_picker_list", "Indicators"));
   panel.appendChild(list);
 
   const allIndicators = Object.values(data.indicators);
   // Offer only indicators from the same unit set as the current pick: regional
   // and provincial indicators share no rows, so cross-set pairs plot nothing.
   const panelUnitSet = ((data.indicators || {})[currentId] || {}).unit_set || "provinces";
-  function renderList(filter = "") {
+  let activeIndex = 0;
+  let choices = [];
+  function setActive(index) {
+    if (!choices.length) return;
+    activeIndex = (index + choices.length) % choices.length;
+    const active = choices[activeIndex];
+    list.setAttribute("aria-activedescendant", active.id);
+    for (const option of choices) option.classList.toggle("active-option", option === active);
+    active.scrollIntoView({ block: "nearest" });
+  }
+  function chooseActive() {
+    const active = choices[activeIndex];
+    if (!active) return;
+    const id = active.dataset.indicator;
+    _indicatorPickHandler(kind, id);
+    closeIndicatorPanel(`axis-pick-${kind}`);
+  }
+  function renderList() {
     list.replaceChildren();
-    const q = filter.trim().toLowerCase();
     const filtered = allIndicators.filter(
       (i) =>
         !i.national_only &&
-        (i.unit_set || "provinces") === panelUnitSet &&
-        (!q || i.name.toLowerCase().includes(q) || (i.unit || "").toLowerCase().includes(q)),
+        (i.unit_set || "provinces") === panelUnitSet,
     );
+    choices = [];
     for (const ind of filtered) {
       const li = document.createElement("li");
       li.className = "ipanel-item";
@@ -3196,14 +3220,15 @@ function showIndicatorPanel(anchorBtn, kind, currentId, otherId, data) {
       const isCurrent = ind.id === currentId;
       const name = document.createElement("div");
       name.className = "ipanel-name";
-      name.textContent = ind.name;
+      name.textContent = indicatorName(ind.id, data);
       if (isCurrent) li.classList.add("active");
       if (sameAsOther) li.classList.add("disabled");
       if (failedIndicator(data, ind.id)) {
         li.setAttribute("aria-disabled", "true");
-        name.textContent = `${ind.name} (${t("trust.unavailable", "unavailable")})`;
+        name.textContent = `${indicatorName(ind.id, data)} (${t("trust.unavailable", "unavailable")})`;
       }
       li.dataset.indicator = ind.id;
+      li.id = `axis-option-${kind}-${ind.id}`;
       li.setAttribute("aria-selected", isCurrent ? "true" : "false");
       const meta = document.createElement("div");
       meta.className = "ipanel-meta";
@@ -3213,24 +3238,36 @@ function showIndicatorPanel(anchorBtn, kind, currentId, otherId, data) {
       li.appendChild(name);
       if (unit || flag) li.appendChild(meta);
       if (!sameAsOther) {
-        li.tabIndex = 0;
+        li.tabIndex = -1;
+        choices.push(li);
         li.addEventListener("click", () => {
           _indicatorPickHandler(kind, ind.id);
-          closeIndicatorPanel();
-        });
-        li.addEventListener("keydown", (e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            _indicatorPickHandler(kind, ind.id);
-            closeIndicatorPanel();
-          }
+          closeIndicatorPanel(`axis-pick-${kind}`);
         });
       }
       list.appendChild(li);
     }
+    setActive(Math.max(0, choices.findIndex((option) => option.dataset.indicator === currentId)));
   }
   renderList();
-  search.addEventListener("input", () => renderList(search.value));
+  list.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActive(activeIndex + 1);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive(activeIndex - 1);
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      setActive(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      setActive(choices.length - 1);
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      chooseActive();
+    }
+  });
 
   // Position the panel near the anchor, clamped to chart bounds.
   const aRect = anchorBtn.getBoundingClientRect();
@@ -3248,7 +3285,7 @@ function showIndicatorPanel(anchorBtn, kind, currentId, otherId, data) {
   panel.style.maxHeight = `${Math.min(rRect.height - 24, 520)}px`;
 
   root.appendChild(panel);
-  setTimeout(() => search.focus(), 0);
+  setTimeout(() => list.focus(), 0);
   setTimeout(() => {
     document.addEventListener("click", _outsideIndicatorClick, { capture: true });
     document.addEventListener("keydown", _escIndicatorClose);
@@ -3264,7 +3301,7 @@ function _escIndicatorClose(e) {
   if (e.key === "Escape") closeIndicatorPanel();
 }
 
-function closeIndicatorPanel() {
+function closeIndicatorPanel(restoreId = null) {
   const panel = document.getElementById("indicator-panel");
   if (panel) panel.remove();
   _indicatorPanelOpenFor = null;
@@ -3272,8 +3309,12 @@ function closeIndicatorPanel() {
   document.removeEventListener("keydown", _escIndicatorClose);
   // Restore focus to the picker pill that opened the panel (WCAG 2.4.3).
   // No-op if it was detached by a re-render after a selection.
-  if (_indicatorPanelTrigger && document.contains(_indicatorPanelTrigger)) {
-    _indicatorPanelTrigger.focus();
+  const trigger = restoreId
+    ? document.getElementById(restoreId)
+    : _indicatorPanelTrigger;
+  if (trigger && document.contains(trigger)) {
+    trigger.setAttribute("aria-expanded", "false");
+    trigger.focus();
   }
   _indicatorPanelTrigger = null;
 }
